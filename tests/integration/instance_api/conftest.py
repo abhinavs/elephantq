@@ -1,0 +1,48 @@
+"""
+Conftest for Instance API tests
+
+These tests use the instance-based ElephantQ API (app = ElephantQ(), app.job, etc.)
+and create their own isolated ElephantQ instances.
+"""
+
+import os
+
+import pytest
+
+from elephantq.db.connection import close_pool
+from tests.db_utils import clear_table, create_test_database
+
+# Ensure test database URL is set
+os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
+
+
+@pytest.fixture(scope="session", autouse=True)
+async def setup_instance_test_database():
+    """Set up test database once per test session."""
+    await create_test_database()
+    yield
+
+
+@pytest.fixture(autouse=True)
+async def clean_instance_api_state():
+    """Clean instance API state before each test - FAST VERSION."""
+    # Just close existing connections - database setup handled by session fixture
+    await close_pool()
+
+    yield
+
+    # Clean up after test - close connections
+    await close_pool()
+
+
+@pytest.fixture
+async def clean_db():
+    """Additional fixture for tests that need explicit clean database state - FAST VERSION."""
+    # Just clear tables instead of recreating database
+    from elephantq.client import ElephantQ
+
+    app = ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test")
+    pool = await app.get_pool()
+    await clear_table(pool)
+    await app.close()
+    return None

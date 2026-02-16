@@ -1,0 +1,175 @@
+# ElephantQ Docker Compose Configuration
+# Production-ready setup with PostgreSQL, worker, and dashboard
+
+version: "3.8"
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: elephantq_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: elephantq_prod
+      POSTGRES_USER: elephantq
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-your_secure_password}
+      POSTGRES_INITDB_ARGS: "--auth-host=md5"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U elephantq -d elephantq_prod"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - elephantq_network
+
+  # ElephantQ Worker
+  elephantq_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: elephantq_worker
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ELEPHANTQ_DATABASE_URL: postgresql://elephantq:${POSTGRES_PASSWORD:-your_secure_password}@postgres:5432/elephantq_prod
+      ELEPHANTQ_LOG_LEVEL: INFO
+      ELEPHANTQ_DASHBOARD_ENABLED: "true"
+      ELEPHANTQ_JOBS_MODULES: myapp.jobs
+    volumes:
+      - ./logs:/app/logs
+      - ./app:/app/myapp # Mount your application code
+    command: ["elephantq", "start", "--concurrency=4"]
+    healthcheck:
+      test: ["CMD", "elephantq", "health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - elephantq_network
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+        reservations:
+          memory: 256M
+          cpus: "0.5"
+
+  # ElephantQ Dashboard (optional)
+  elephantq_dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: elephantq_dashboard
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      elephantq_worker:
+        condition: service_healthy
+    environment:
+      ELEPHANTQ_DATABASE_URL: postgresql://elephantq:${POSTGRES_PASSWORD:-your_secure_password}@postgres:5432/elephantq_prod
+      ELEPHANTQ_LOG_LEVEL: INFO
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./logs:/app/logs
+    command: ["elephantq", "dashboard", "--host=0.0.0.0", "--port=8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - elephantq_network
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+        reservations:
+          memory: 128M
+          cpus: "0.25"
+
+  # Optional: Priority Worker for urgent jobs
+  elephantq_priority_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: elephantq_priority_worker
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ELEPHANTQ_DATABASE_URL: postgresql://elephantq:${POSTGRES_PASSWORD:-your_secure_password}@postgres:5432/elephantq_prod
+      ELEPHANTQ_LOG_LEVEL: INFO
+      ELEPHANTQ_JOBS_MODULES: myapp.jobs
+    volumes:
+      - ./logs:/app/logs
+      - ./app:/app/myapp
+    command: ["elephantq", "start", "--concurrency=2", "--queues=urgent"]
+    profiles:
+      - priority # Optional service - enable with --profile priority
+    healthcheck:
+      test: ["CMD", "elephantq", "health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - elephantq_network
+
+  # Optional: Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: elephantq_redis
+    restart: always
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    profiles:
+      - cache # Optional service - enable with --profile cache
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - elephantq_network
+
+  # Optional: Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: elephantq_nginx
+    restart: always
+    depends_on:
+      - elephantq_dashboard
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./logs/nginx:/var/log/nginx
+    profiles:
+      - proxy # Optional service - enable with --profile proxy
+    networks:
+      - elephantq_network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  elephantq_network:
+    driver: bridge

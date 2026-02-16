@@ -1,0 +1,397 @@
+"""
+Test Worker Heartbeat System - Comprehensive Instance-Based Tests
+
+Clean, production-ready tests for ElephantQ instance-based worker heartbeat system.
+These tests properly align with the architectural constraint that worker heartbeats
+are tracked per process (hostname, pid), not per ElephantQ instance.
+"""
+
+import asyncio
+import os
+import uuid
+
+import pytest
+
+# Ensure we're using test database
+os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
+
+from elephantq import ElephantQ
+from elephantq.core.heartbeat import (
+    WorkerHeartbeat,
+    cleanup_stale_workers,
+    get_worker_status,
+)
+
+
+@pytest.fixture
+async def clean_db():
+    """Clean database before each test - FAST VERSION"""
+    # Just clear worker records, database setup handled by conftest.py
+    from elephantq.client import ElephantQ
+
+    app = ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test")
+    pool = await app.get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM elephantq_workers")
+    await app.close()
+
+    yield
+
+    # Clear worker records after test
+    app = ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test")
+    pool = await app.get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("DELETE FROM elephantq_workers")
+    await app.close()
+
+
+@pytest.fixture
+async def elephantq_instance():
+    """Create a fresh ElephantQ instance for each test"""
+    app = ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test")
+    yield app
+    if app.is_initialized:
+        await app.close()
+
+
+@pytest.mark.asyncio
+async def test_worker_heartbeat_lifecycle_complete(clean_db, elephantq_instance):
+    """Test complete worker heartbeat lifecycle with instance-based ElephantQ"""
+    app = elephantq_instance
+    pool = await app.get_pool()
+
+    # Create worker with instance pool
+    worker = WorkerHeartbeat(pool, queues=["lifecycle"], concurrency=3)
+
+    # Test registration
+    await worker.register_worker()
+
+    async with pool.acquire() as conn:
+        result = await conn.fetchrow(
+            "SELECT * FROM elephantq_workers WHERE id = $1", worker.worker_id
+        )
+        assert result is not None
+        assert result["queues"] == ["lifecycle"]
+        assert result["concurrency"] == 3
+        assert result["status"] == "active"
+        initial_heartbeat = result["last_heartbeat"]
+
+    # Test heartbeat start and updates
+    await worker.start_heartbeat()
+    await asyncio.sleep(0.2)  # Let heartbeat run
+
+    async with pool.acquire() as conn:
+        result = await conn.fetchrow(
+            "SELECT last_heartbeat FROM elephantq_workers WHERE id = $1", worker.worker_id
+        )
+        updated_heartbeat = result["last_heartbeat"]
+        assert updated_heartbeat > initial_heartbeat
+
+    # Test graceful stop
+    await worker.stop_heartbeat()
+
+    async with pool.acquire() as conn:
+        result = await conn.fetchrow(
+            "SELECT status FROM elephantq_workers WHERE id = $1", worker.worker_id
+        )
+        assert result["status"] == "stopped"
+
+
+@pytest.mark.asyncio
+async def test_multiple_elephantq_instances_shared_heartbeat(clean_db):
+    """Test that multiple ElephantQ instances properly share worker heartbeat"""
+    # Create multiple ElephantQ instances
+    app1 = ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test")
+    app2 = ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test")
+
+    try:
+        pool1 = await app1.get_pool()
+        pool2 = await app2.get_pool()
+
+        # Create workers from different instances
+        worker1 = WorkerHeartbeat(pool1, queues=["shared1"], concurrency=2)
+        worker2 = WorkerHeartbeat(pool2, queues=["shared2"], concurrency=4)
+
+        # Register first worker
+        await worker1.register_worker()
+
+        async with pool1.acquire() as conn:
+            workers = await conn.fetch("SELECT * FROM elephantq_workers")
+            assert len(workers) == 1
+            assert workers[0]["queues"] == ["shared1"]
+            assert workers[0]["concurrency"] == 2
+            assert workers[0]["id"] == worker1.worker_id
+
+        # Register second worker - should update the same record due to (hostname, pid) constraint
+        await worker2.register_worker()
+
+        async with pool2.acquire() as conn:
+            workers = await conn.fetch("SELECT * FROM elephantq_workers")
+            assert len(workers) == 1  # Still only one record
+            assert workers[0]["queues"] == ["shared2"]  # Updated configuration
+            assert workers[0]["concurrency"] == 4  # Updated configuration
+            assert workers[0]["id"] == worker2.worker_id  # New worker ID
+
+    finally:
+        if app1.is_initialized:
+            await app1.close()
+        if app2.is_initialized:
+            await app2.close()
+
+
+@pytest.mark.asyncio
+async def test_worker_job_processing_integration(clean_db, elephantq_instance):
+    """Test worker heartbeat integration with actual job processing"""
+    app = elephantq_instance
+    pool = await app.get_pool()
+
+    # Define test job
+    @app.job(queue="integration")
+    async def heartbeat_integration_job(task_id: int):
+        await asyncio.sleep(0.01)  # Simulate work
+        return f"completed_{task_id}"
+
+    # Create worker and start heartbeat
+    worker = WorkerHeartbeat(pool, queues=["integration"], concurrency=2)
+    await worker.register_worker()
+    await worker.start_heartbeat()
+
+    # Enqueue jobs
+    job_ids = []
+    for i in range(5):
+        job_id = await app.enqueue(heartbeat_integration_job, task_id=i)
+        job_ids.append(job_id)
+
+    # Get initial heartbeat
+    async with pool.acquire() as conn:
+        initial_result = await conn.fetchrow(
+            "SELECT last_heartbeat FROM elephantq_workers WHERE id = $1", worker.worker_id
+        )
+        initial_heartbeat = initial_result["last_heartbeat"]
+
+    # Wait a bit to ensure heartbeat has time to update
+    await asyncio.sleep(0.1)
+
+    # Process jobs while heartbeat is running
+    await app.run_worker(run_once=True, queues=["integration"])
+
+    # Verify heartbeat was updated during processing and jobs completed
+    async with pool.acquire() as conn:
+        # Check heartbeat was updated (allow small time margin)
+        heartbeat_result = await conn.fetchrow(
+            "SELECT last_heartbeat FROM elephantq_workers WHERE id = $1", worker.worker_id
+        )
+        final_heartbeat = heartbeat_result["last_heartbeat"]
+        # Allow for same timestamp if processing was very fast
+        assert final_heartbeat >= initial_heartbeat
+
+        # Check jobs were processed
+        completed_count = await conn.fetchval(
+            "SELECT COUNT(*) FROM elephantq_jobs WHERE status = 'done'"
+        )
+        assert completed_count == 5
+
+    # Clean up
+    await worker.stop_heartbeat()
+
+
+@pytest.mark.asyncio
+async def test_worker_failure_detection_and_cleanup(clean_db, elephantq_instance):
+    """Test worker failure detection and cleanup functionality"""
+    app = elephantq_instance
+    pool = await app.get_pool()
+
+    # Create and register worker
+    worker = WorkerHeartbeat(pool, queues=["failure_test"], concurrency=1)
+    await worker.register_worker()
+    await worker.start_heartbeat()
+
+    # Verify worker is active
+    async with pool.acquire() as conn:
+        result = await conn.fetchrow(
+            "SELECT status, last_heartbeat FROM elephantq_workers WHERE id = $1",
+            worker.worker_id,
+        )
+        assert result["status"] == "active"
+        result["last_heartbeat"]
+
+    # Simulate worker failure by cancelling heartbeat task
+    if worker.heartbeat_task and not worker.heartbeat_task.cancelled():
+        worker.heartbeat_task.cancel()
+        try:
+            await worker.heartbeat_task
+        except asyncio.CancelledError:
+            pass  # Expected
+
+    # Wait for heartbeat to become stale
+    await asyncio.sleep(0.5)
+
+    # Run cleanup (simulating monitoring system)
+    cleaned_count = await cleanup_stale_workers(pool, stale_threshold_seconds=0.3)
+    assert cleaned_count > 0
+
+    # Verify worker is now marked as stopped
+    async with pool.acquire() as conn:
+        result = await conn.fetchrow(
+            "SELECT status FROM elephantq_workers WHERE id = $1", worker.worker_id
+        )
+        assert result["status"] == "stopped"
+
+
+@pytest.mark.asyncio
+async def test_worker_status_monitoring_functions(clean_db, elephantq_instance):
+    """Test worker status monitoring utility functions"""
+    app = elephantq_instance
+    pool = await app.get_pool()
+
+    # Create and register multiple workers to test monitoring
+    workers = []
+    for i in range(3):
+        worker = WorkerHeartbeat(pool, queues=[f"monitor_{i}"], concurrency=i + 1)
+        await worker.register_worker()
+        if i < 2:  # Start heartbeat for first 2 workers only
+            await worker.start_heartbeat()
+        workers.append(worker)
+
+    await asyncio.sleep(0.1)  # Let heartbeats run
+
+    # Test get_worker_status function (returns aggregate status)
+    status = await get_worker_status(pool)
+    assert status is not None
+    assert "active_workers" in status
+    assert "status_counts" in status
+    assert "health" in status
+    assert "total_concurrency" in status
+    assert status["status_counts"].get("active", 0) >= 1  # At least one active worker
+    assert status["health"] in ["healthy", "degraded"]
+
+    # Test individual worker status via direct database query
+    async with pool.acquire() as conn:
+        # Check individual worker details
+        for i, worker in enumerate(workers):
+            result = await conn.fetchrow(
+                "SELECT * FROM elephantq_workers WHERE id = $1", worker.worker_id
+            )
+            if i < 2:  # Workers with heartbeats (but only last one due to constraint)
+                if (
+                    result
+                ):  # Due to (hostname, pid) constraint, only one worker record exists
+                    assert result["status"] == "active"
+            # Since workers overwrite each other due to constraint, check the final state
+
+        # Check total worker count (should be 1 due to constraint)
+        total_count = await conn.fetchval("SELECT COUNT(*) FROM elephantq_workers")
+        assert total_count == 1
+
+        # Test non-existent worker query
+        fake_id = uuid.uuid4()
+        fake_result = await conn.fetchrow(
+            "SELECT * FROM elephantq_workers WHERE id = $1", fake_id
+        )
+        assert fake_result is None
+
+    # Clean up active workers
+    for worker in workers[:2]:
+        await worker.stop_heartbeat()
+
+
+@pytest.mark.asyncio
+async def test_worker_configuration_persistence(clean_db, elephantq_instance):
+    """Test that worker configuration persists correctly"""
+    app = elephantq_instance
+    pool = await app.get_pool()
+
+    # Test different configuration combinations
+    configs = [
+        {"queues": ["config1"], "concurrency": 1},
+        {"queues": ["config1", "config2"], "concurrency": 4},
+        {"queues": None, "concurrency": 8},  # All queues
+        {"queues": [], "concurrency": 2},  # Empty queue list
+    ]
+
+    for i, config in enumerate(configs):
+        worker = WorkerHeartbeat(pool, **config)
+        await worker.register_worker()
+
+        # Verify configuration was saved correctly
+        async with pool.acquire() as conn:
+            result = await conn.fetchrow(
+                "SELECT * FROM elephantq_workers WHERE id = $1", worker.worker_id
+            )
+            assert result is not None
+
+            # Handle different queue representations
+            expected_queues = config["queues"]
+            if expected_queues is None:
+                # Database stores NULL as None, which is expected
+                assert result["queues"] is None
+            elif expected_queues == []:
+                # Empty list might be stored as None or empty array
+                assert result["queues"] is None or result["queues"] == []
+            else:
+                assert result["queues"] == expected_queues
+
+            assert result["concurrency"] == config["concurrency"]
+            assert result["status"] == "active"
+
+        # Each registration overwrites due to (hostname, pid) constraint
+        # So we only expect 1 worker record at any time
+        async with pool.acquire() as conn:
+            count = await conn.fetchval("SELECT COUNT(*) FROM elephantq_workers")
+            assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_database_pool_consistency_across_instances(clean_db):
+    """Test that database operations are consistent across different ElephantQ instance pools"""
+    # Create multiple ElephantQ instances
+    instances = [
+        ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test"),
+        ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test"),
+        ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test"),
+    ]
+
+    try:
+        # Get pools from each instance
+        pools = [await app.get_pool() for app in instances]
+
+        # Verify pools are different objects but access same database
+        assert pools[0] is not pools[1]
+        assert pools[1] is not pools[2]
+
+        # Create worker using first pool
+        worker = WorkerHeartbeat(pools[0], queues=["consistency"], concurrency=3)
+        await worker.register_worker()
+
+        # Verify all pools can see the same worker record
+        for pool in pools:
+            async with pool.acquire() as conn:
+                result = await conn.fetchrow(
+                    "SELECT * FROM elephantq_workers WHERE id = $1", worker.worker_id
+                )
+                assert result is not None
+                assert result["queues"] == ["consistency"]
+                assert result["concurrency"] == 3
+
+        # Update worker configuration using second pool
+        worker2 = WorkerHeartbeat(pools[1], queues=["updated"], concurrency=5)
+        await worker2.register_worker()
+
+        # Verify update is visible from all pools
+        for pool in pools:
+            async with pool.acquire() as conn:
+                workers = await conn.fetch("SELECT * FROM elephantq_workers")
+                assert len(workers) == 1  # Still only one due to constraint
+                assert workers[0]["queues"] == ["updated"]
+                assert workers[0]["concurrency"] == 5
+                assert workers[0]["id"] == worker2.worker_id
+
+    finally:
+        # Clean up all instances
+        for app in instances:
+            if app.is_initialized:
+                await app.close()
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

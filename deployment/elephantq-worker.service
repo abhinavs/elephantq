@@ -1,0 +1,48 @@
+# ElephantQ Worker systemd Service
+# Place this file in /etc/systemd/system/elephantq-worker.service
+
+[Unit]
+Description=ElephantQ Worker
+After=network.target
+# Note: Remove postgresql.service dependency if PostgreSQL runs on remote server
+# After=network.target postgresql.service
+# Requires=postgresql.service
+
+[Service]
+Type=exec
+User=elephantq
+Group=elephantq
+WorkingDirectory=/opt/elephantq
+Environment=ELEPHANTQ_DATABASE_URL=postgresql://elephantq:password@localhost/elephantq_prod
+Environment=ELEPHANTQ_LOG_LEVEL=INFO
+Environment=ELEPHANTQ_JOBS_MODULES=myapp.jobs
+ExecStart=/opt/elephantq/venv/bin/elephantq start --concurrency=4
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=mixed
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=0
+
+# Security settings
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/elephantq /var/log/elephantq
+
+# Resource limits
+MemoryMax=512M
+CPUQuota=200%
+
+# Health monitoring
+ExecStartPre=/opt/elephantq/venv/bin/elephantq workers
+TimeoutStartSec=30
+WatchdogSec=60
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=elephantq-worker
+
+[Install]
+WantedBy=multi-user.target

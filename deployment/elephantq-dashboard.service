@@ -1,0 +1,48 @@
+# ElephantQ Dashboard systemd Service
+# Place this file in /etc/systemd/system/elephantq-dashboard.service
+
+[Unit]
+Description=ElephantQ Dashboard
+After=network.target elephantq-worker.service
+# Note: Remove postgresql.service dependency if PostgreSQL runs on remote server
+# After=network.target postgresql.service elephantq-worker.service
+# Requires=postgresql.service
+Wants=elephantq-worker.service
+
+[Service]
+Type=exec
+User=elephantq
+Group=elephantq
+WorkingDirectory=/opt/elephantq
+Environment=ELEPHANTQ_DATABASE_URL=postgresql://elephantq:password@localhost/elephantq_prod
+Environment=ELEPHANTQ_LOG_LEVEL=INFO
+Environment=ELEPHANTQ_DASHBOARD_ENABLED=true
+ExecStart=/opt/elephantq/venv/bin/elephantq dashboard --host=0.0.0.0 --port=8000
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=mixed
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=0
+
+# Security settings
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/elephantq /var/log/elephantq
+
+# Resource limits
+MemoryMax=256M
+CPUQuota=100%
+
+# Health monitoring
+ExecStartPre=/opt/elephantq/venv/bin/elephantq ready
+TimeoutStartSec=30
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=elephantq-dashboard
+
+[Install]
+WantedBy=multi-user.target

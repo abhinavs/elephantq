@@ -1,0 +1,15 @@
+# Include migration SQL files
+recursive-include elephantq/db/migrations *.sql
+
+# Include license and readme
+include LICENSE
+include README.md
+
+# Exclude test files, examples, and deployment configs
+exclude tests/
+exclude examples/
+exclude deployment/
+exclude jobs/
+exclude quickstart_test/
+exclude run_tests.py
+exclude release.py
