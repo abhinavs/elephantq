@@ -1,8 +1,16 @@
 # ElephantQ
 
-**All-in-one background job processing for Python (PostgreSQL-backed)**
+**PostgreSQL-first background jobs for Python.**
 
-ElephantQ is a powerful, all-in-one background job processing library for Python. It uses PostgreSQL to provide a robust, reliable, and observable job queue. All features, including a web dashboard, advanced scheduling, and dead-letter queues, are included out of the box.
+ElephantQ is a modern, async-first job queue that uses PostgreSQL as the only backend. No Redis, no broker services, no operational sprawl. You get reliable queues, retries, scheduling, and a dashboard in a single package.
+
+## Why ElephantQ (vs Celery, RQ, Resque)
+
+- One backend: PostgreSQL only. No Redis or broker to deploy or maintain.
+- Async-native API: use `async def` jobs and `await` enqueue.
+- Explicit worker model: predictable production behavior, easy to scale.
+- Built-in dashboard and features in the same package (opt-in flags).
+- Strong DX: clean CLI, clear job discovery, minimal boilerplate.
 
 ## Quick Start
 
@@ -19,23 +27,19 @@ export ELEPHANTQ_DATABASE_URL="postgresql://localhost/your_db"
 elephantq setup
 ```
 
-### Minimal App
+## Minimal App (FastAPI)
 
 ```python
 import elephantq
 from fastapi import FastAPI
 
-elephantq.configure(database_url="postgresql://localhost/myapp")
-
 app = FastAPI()
+
+elephantq.configure(database_url="postgresql://localhost/myapp")
 
 @elephantq.job()
 async def process_upload(file_path: str):
     print(f"Processing {file_path}")
-
-@elephantq.job(retries=5, retry_delay=1, retry_backoff=True, retry_max_delay=30)
-async def resilient_task():
-    ...
 
 @app.post("/upload")
 async def upload_file(file_path: str):
@@ -43,9 +47,9 @@ async def upload_file(file_path: str):
     return {"job_id": job_id}
 ```
 
-### Run Workers
+## Run Workers
 
-ElephantQ always runs workers as a separate process:
+ElephantQ workers always run as a **separate process**.
 
 ```bash
 # Terminal 1: Your app
@@ -56,39 +60,83 @@ export ELEPHANTQ_JOBS_MODULES="app"
 elephantq start --concurrency 4
 ```
 
-## Core Concepts
+## Better Examples
 
-### Global vs Instance API
+### Reliable Retries (Backoff)
 
-**Global API (most apps):**
+```python
+import elephantq
+
+@elephantq.job(retries=5, retry_delay=1, retry_backoff=True, retry_max_delay=30)
+async def resilient_task(user_id: int):
+    ...
+```
+
+### Queue Routing
+
+```python
+import elephantq
+
+@elephantq.job(queue="emails")
+async def send_email(to: str):
+    ...
+
+@elephantq.job(queue="media")
+async def transcode_video(video_id: str):
+    ...
+```
+
+```bash
+# Process only specific queues
+elephantq start --queues emails,media
+```
+
+### Instance-Based API (multi-tenant or separate DBs)
+
+```python
+from elephantq import ElephantQ
+
+billing = ElephantQ(database_url="postgresql://localhost/billing")
+
+@billing.job()
+async def invoice_customer(customer_id: int):
+    ...
+
+await billing.enqueue(invoice_customer, customer_id=123)
+```
+
+### Delayed Jobs (One-Off Scheduling)
 
 ```python
 import elephantq
 
 @elephantq.job()
-async def send_email(to: str):
-    pass
+async def remind_user(user_id: int):
+    ...
 
-await elephantq.enqueue(send_email, to="user@example.com")
+# Run in 10 minutes
+await elephantq.schedule(remind_user, run_in=600, user_id=42)
 ```
 
-**Instance API (microservices / multi-tenant):**
+### Recurring Jobs (Cron)
 
 ```python
-from elephantq import ElephantQ
+import elephantq
 
-user_service = ElephantQ(database_url="postgresql://localhost/users")
+after_midnight = "0 2 * * *"
 
-@user_service.job()
-async def send_welcome_email(user_id: int):
-    pass
+@elephantq.job()
+async def nightly_report():
+    ...
 
-await user_service.enqueue(send_welcome_email, user_id=123)
+await elephantq.features.recurring.cron(after_midnight).schedule(nightly_report)
 ```
+
+Make sure `ELEPHANTQ_SCHEDULING_ENABLED=true` is set when using recurring jobs.
 
 ## Optional Features (Same Package)
 
-ElephantQ includes advanced scheduling, recurring jobs, dashboard, metrics, logging, webhooks, and dead-letter tools in the **same package**. Advanced APIs live under the `elephantq.features` namespace. Features are opt-in via configuration flags, and optional extras install dependencies:
+Advanced features live under `elephantq.features` and are **opt-in** via flags. Core job APIs (`job`, `enqueue`, `schedule`, workers) remain in the main package. The dashboard and monitoring features also require their optional dependencies (see extras below).
 
 ```bash
 pip install elephantq[dashboard]
@@ -96,7 +144,7 @@ pip install elephantq[monitoring]
 pip install elephantq[all]
 ```
 
-Enable features via environment variables:
+Enable feature flags:
 
 ```bash
 export ELEPHANTQ_DASHBOARD_ENABLED=true
@@ -110,22 +158,12 @@ export ELEPHANTQ_TIMEOUTS_ENABLED=true
 export ELEPHANTQ_SECURITY_ENABLED=true
 ```
 
-### Advanced Features (Namespace)
+Example usage:
 
 ```python
 import elephantq
 
-@elephantq.job()
-async def nightly_report():
-    ...
-
-# Recurring scheduler (cron)
-await elephantq.features.recurring.cron("0 2 * * *").schedule(nightly_report)
-
-# Metrics (if enabled)
 metrics = await elephantq.features.metrics.get_system_metrics()
-
-# Dead letter stats (if enabled)
 stats = await elephantq.features.dead_letter.get_stats()
 ```
 
@@ -139,3 +177,10 @@ elephantq dashboard --port 6161  # read-only by default
 elephantq metrics --hours 24
 elephantq dead-letter list
 ```
+
+## Documentation
+
+- `docs/getting-started.md`
+- `docs/cli.md`
+- `docs/scheduling.md`
+- `docs/features.md`
