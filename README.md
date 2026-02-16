@@ -120,7 +120,7 @@ async def nightly_report():
     ...
 
 # Recurring scheduler (cron)
-elephantq.features.recurring.schedule("0 2 * * *").job(nightly_report)
+await elephantq.features.recurring.cron("0 2 * * *").schedule(nightly_report)
 
 # Metrics (if enabled)
 metrics = await elephantq.features.metrics.get_system_metrics()
