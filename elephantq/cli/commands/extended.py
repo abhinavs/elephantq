@@ -254,6 +254,7 @@ def handle_dev_command(args):
         settings = get_settings()
         # Ensure database tables exist for dev
         try:
+            print_status("Running migrations (setup)...", "info")
             await setup_db()
         except Exception as e:
             print_status(f"Database setup failed: {e}", "error")
