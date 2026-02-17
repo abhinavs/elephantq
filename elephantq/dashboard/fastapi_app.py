@@ -215,6 +215,23 @@ def get_dashboard_html() -> str:
             background: radial-gradient(1200px 800px at 20% -10%, var(--bg-soft) 0%, var(--bg) 55%) fixed;
             color: var(--text);
         }
+        h1, h2, h3, .stat-number {
+            font-family: 'Space Grotesk', system-ui, sans-serif;
+        }
+        .pill,
+        .theme-toggle,
+        .theme-toggle button,
+        .btn,
+        .status-badge,
+        .refresh-info,
+        .stat-label,
+        .title p,
+        .notice,
+        .loading,
+        th,
+        td {
+            font-family: 'IBM Plex Mono', ui-monospace, monospace;
+        }
         .page {
             max-width: 1200px;
             margin: 0 auto;
