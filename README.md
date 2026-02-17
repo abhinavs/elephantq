@@ -69,17 +69,7 @@ elephantq start --concurrency 4
 
 ## Dashboard Preview
 
-Dashboard GIF coming soon. The built-in dashboard provides real-time queue visibility, job status, and worker health.
-
-## Docker Quickstart
-
-If you already have PostgreSQL running in Docker:
-
-```bash
-docker run --name elephantq-postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:16
-export ELEPHANTQ_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/postgres"
-elephantq setup
-```
+![ElephantQ Dashboard](docs/assets/elephantq_dashboard.png)
 
 ## ElephantQ vs Alternatives
 
