@@ -248,6 +248,7 @@ def handle_dev_command(args):
         # Dev mode: enable common features by default
         from elephantq.settings import configure as configure_settings
         configure_settings(dashboard_enabled=True, scheduling_enabled=True)
+        print_status("Dev mode enabled: dashboard + scheduler", "info")
 
         settings = get_settings()
         tasks = []
