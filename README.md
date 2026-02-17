@@ -1,6 +1,6 @@
 # ElephantQ
 
-**PostgreSQL-first background jobs for Python.**
+**PostgreSQL-first background jobs for Python.** (Beta)
 
 ElephantQ is a modern, async-first job queue that uses PostgreSQL as the only backend. No Redis, no broker services, no operational sprawl. You get reliable queues, retries, scheduling, and a dashboard in a single package.
 
@@ -11,7 +11,7 @@ ElephantQ is a modern, async-first job queue that uses PostgreSQL as the only ba
 - Explicit worker model: predictable production behavior, easy to scale.
 - Built-in features in the same package (opt-in flags).
 - Strong DX: clean CLI, clear job discovery, minimal boilerplate.
-- Scales well: uses Postgres `LISTEN/NOTIFY` for fast wakeups and row locking for safe concurrency.
+- Scales well: uses Postgres `LISTEN/NOTIFY` for fast wakeups; durable state stays in tables.
 
 ## Quick Start
 
@@ -65,6 +65,16 @@ uvicorn app:app
 # Terminal 2: Workers
 export ELEPHANTQ_JOBS_MODULES="app"
 elephantq start --concurrency 4
+```
+
+### One‑command dev
+
+Start worker + scheduler + dashboard in one go:
+
+```bash
+export ELEPHANTQ_DASHBOARD_ENABLED=true
+export ELEPHANTQ_SCHEDULING_ENABLED=true
+elephantq dev
 ```
 
 ## Dashboard Preview

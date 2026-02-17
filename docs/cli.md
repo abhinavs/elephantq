@@ -18,6 +18,14 @@ elephantq dashboard --host 0.0.0.0 --port 6161
 ```
 This dashboard is read-only.
 
+## Dev (One Command)
+
+```bash
+export ELEPHANTQ_DASHBOARD_ENABLED=true
+export ELEPHANTQ_SCHEDULING_ENABLED=true
+elephantq dev
+```
+
 ## Scheduler
 
 ```bash

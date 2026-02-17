@@ -145,6 +145,40 @@ def register_extended_commands():
         category="features",
     )
 
+    register_simple_command(
+        name="dev",
+        help="Run worker + scheduler + dashboard (dev mode)",
+        description="Start worker, scheduler, and dashboard together for local development",
+        handler=handle_dev_command,
+        arguments=[
+            {
+                "args": ["--concurrency"],
+                "kwargs": {"type": int, "default": 4, "help": "Worker concurrency"},
+            },
+            {
+                "args": ["--queues"],
+                "kwargs": {
+                    "default": None,
+                    "help": "Comma-separated list of queues (default: all queues)",
+                },
+            },
+            {"args": ["--host"], "kwargs": {"default": "127.0.0.1", "help": "Dashboard host"}},
+            {"args": ["--port"], "kwargs": {"type": int, "default": 6161, "help": "Dashboard port"}},
+            {
+                "args": ["--scheduler-interval"],
+                "kwargs": {
+                    "type": int,
+                    "default": 60,
+                    "help": "Scheduler check interval in seconds",
+                },
+            },
+            {"args": ["--no-dashboard"], "kwargs": {"action": "store_true", "help": "Disable dashboard"}},
+            {"args": ["--no-scheduler"], "kwargs": {"action": "store_true", "help": "Disable scheduler"}},
+        ]
+        + instance_arguments,
+        category="dev",
+    )
+
 
 @with_elephantq_context
 def handle_dashboard_command(args):
@@ -199,6 +233,65 @@ def handle_scheduler_command(args):
         except Exception as e:
             print(f"Scheduler error: {e}")
             return 1
+        return 0
+
+    return _run()
+
+
+@with_elephantq_context
+def handle_dev_command(args):
+    async def _run():
+        from elephantq import run_worker, DASHBOARD_AVAILABLE
+        from elephantq.settings import get_settings
+        from elephantq.features.recurring import start_recurring_scheduler
+
+        settings = get_settings()
+        tasks = []
+
+        # Worker always runs
+        queues = None
+        if args.queues:
+            queues = [q.strip() for q in args.queues.split(",") if q.strip()]
+        tasks.append(asyncio.create_task(run_worker(concurrency=args.concurrency, queues=queues)))
+
+        # Scheduler (optional)
+        if not args.no_scheduler:
+            if settings.scheduling_enabled:
+                tasks.append(
+                    asyncio.create_task(start_recurring_scheduler(args.scheduler_interval))
+                )
+            else:
+                print_status(
+                    "Scheduler disabled. Set ELEPHANTQ_SCHEDULING_ENABLED=true to enable.",
+                    "warning",
+                )
+
+        # Dashboard (optional)
+        if not args.no_dashboard:
+            if not DASHBOARD_AVAILABLE:
+                print_status(
+                    "Dashboard not available. Install with: pip install elephantq[dashboard]",
+                    "warning",
+                )
+            elif not settings.dashboard_enabled:
+                print_status(
+                    "Dashboard disabled. Set ELEPHANTQ_DASHBOARD_ENABLED=true to enable.",
+                    "warning",
+                )
+            else:
+                from elephantq.dashboard.fastapi_app import run_dashboard
+
+                tasks.append(asyncio.create_task(run_dashboard(host=args.host, port=args.port)))
+
+        if not tasks:
+            print_status("Nothing to run. Exiting.", "warning")
+            return 1
+
+        try:
+            await asyncio.gather(*tasks)
+        except KeyboardInterrupt:
+            for task in tasks:
+                task.cancel()
         return 0
 
     return _run()
