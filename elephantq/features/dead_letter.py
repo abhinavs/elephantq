@@ -6,7 +6,7 @@ Management of permanently failed jobs, resurrection, bulk operations.
 import json
 import uuid
 from typing import Dict, List, Optional, Any, Tuple
-from datetime import datetime
+from datetime import datetime, timezone
 from dataclasses import dataclass, asdict
 from enum import Enum
 import logging
@@ -61,7 +61,7 @@ class DeadLetterJob:
             last_error=job_record['last_error'] or "",
             dead_letter_reason=reason.value,
             original_created_at=job_record['created_at'],
-            moved_to_dead_letter_at=datetime.utcnow()
+            moved_to_dead_letter_at=datetime.now(timezone.utc)
         )
 
 
@@ -472,7 +472,12 @@ class DeadLetterManager:
             
             oldest_age_hours = 0.0
             if oldest_job:
-                oldest_age_hours = (datetime.utcnow() - oldest_job.replace(tzinfo=None)).total_seconds() / 3600
+                now = datetime.now(timezone.utc)
+                if oldest_job.tzinfo is None:
+                    oldest_job = oldest_job.replace(tzinfo=timezone.utc)
+                else:
+                    oldest_job = oldest_job.astimezone(timezone.utc)
+                oldest_age_hours = (now - oldest_job).total_seconds() / 3600
             
             # Resurrection success rate
             resurrection_stats = await conn.fetchrow(f"""

@@ -2,6 +2,13 @@
 
 **Deploy ElephantQ to production with confidence** - This guide covers everything from simple process management to Kubernetes orchestration.
 
+## Which Deployment Path Should You Use?
+
+- **Systemd**: Best for single Linux servers with direct process control.
+- **Supervisor**: Good for older setups or shared environments.
+- **Docker Compose**: Ideal for staging or small production environments.
+- **Kubernetes**: Best for containerized environments with scaling and autoscaling.
+
 ---
 
 ## 📋 Quick Start

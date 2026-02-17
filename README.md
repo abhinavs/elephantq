@@ -4,13 +4,14 @@
 
 ElephantQ is a modern, async-first job queue that uses PostgreSQL as the only backend. No Redis, no broker services, no operational sprawl. You get reliable queues, retries, scheduling, and a dashboard in a single package.
 
-## Why ElephantQ (vs Celery, RQ, Resque)
+## Why ElephantQ
 
 - One backend: PostgreSQL only. No Redis or broker to deploy or maintain.
 - Async-native API: use `async def` jobs and `await` enqueue.
 - Explicit worker model: predictable production behavior, easy to scale.
-- Built-in dashboard and features in the same package (opt-in flags).
+- Built-in features in the same package (opt-in flags).
 - Strong DX: clean CLI, clear job discovery, minimal boilerplate.
+- Scales well: uses Postgres `LISTEN/NOTIFY` for fast wakeups and row locking for safe concurrency.
 
 ## Quick Start
 
@@ -27,7 +28,13 @@ export ELEPHANTQ_DATABASE_URL="postgresql://localhost/your_db"
 elephantq setup
 ```
 
-## Minimal App (FastAPI)
+## Architecture at a Glance
+
+- Your app enqueues jobs into PostgreSQL.
+- Workers poll and execute jobs independently (scale horizontally).
+- Optional services: dashboard, metrics, webhooks, and dead-letter queue (opt-in).
+
+### Minimal App (FastAPI)
 
 ```python
 import elephantq
@@ -47,7 +54,7 @@ async def upload_file(file_path: str):
     return {"job_id": job_id}
 ```
 
-## Run Workers
+### Run Workers
 
 ElephantQ workers always run as a **separate process**.
 
@@ -60,7 +67,30 @@ export ELEPHANTQ_JOBS_MODULES="app"
 elephantq start --concurrency 4
 ```
 
-## Better Examples
+## Dashboard Preview
+
+Dashboard GIF coming soon. The built-in dashboard provides real-time queue visibility, job status, and worker health.
+
+## Docker Quickstart
+
+If you already have PostgreSQL running in Docker:
+
+```bash
+docker run --name elephantq-postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:16
+export ELEPHANTQ_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/postgres"
+elephantq setup
+```
+
+## ElephantQ vs Alternatives
+
+| Aspect | Celery | RQ | ElephantQ |
+| --- | --- | --- | --- |
+| Backend | Redis/RabbitMQ required | Redis required | ✅ PostgreSQL only |
+| Async API | Requires compatibility layer | Sync-only | ✅ Async-first |
+| Scheduling | Separate component | External scheduler | ✅ Built-in scheduling |
+| Getting started | More setup | Moderate setup | ✅ Minutes to first job |
+
+## Examples (Practical)
 
 ### Reliable Retries (Backoff)
 
@@ -91,20 +121,6 @@ async def transcode_video(video_id: str):
 elephantq start --queues emails,media
 ```
 
-### Instance-Based API (multi-tenant or separate DBs)
-
-```python
-from elephantq import ElephantQ
-
-billing = ElephantQ(database_url="postgresql://localhost/billing")
-
-@billing.job()
-async def invoice_customer(customer_id: int):
-    ...
-
-await billing.enqueue(invoice_customer, customer_id=123)
-```
-
 ### Delayed Jobs (One-Off Scheduling)
 
 ```python
@@ -133,6 +149,37 @@ await elephantq.features.recurring.cron(after_midnight).schedule(nightly_report)
 ```
 
 Make sure `ELEPHANTQ_SCHEDULING_ENABLED=true` is set when using recurring jobs.
+
+### Instance-Based API (Multi-tenant or Separate DBs)
+
+```python
+from elephantq import ElephantQ
+
+billing = ElephantQ(database_url="postgresql://localhost/billing")
+
+@billing.job()
+async def invoice_customer(customer_id: int):
+    ...
+
+await billing.enqueue(invoice_customer, customer_id=123)
+```
+
+## Examples Directory
+
+Runnable examples live in `examples/`:
+
+- `examples/basic_app.py` – minimal FastAPI enqueue flow
+- `examples/recurring_jobs.py` – recurring scheduler patterns
+- `examples/queue_routing.py` – multi-queue routing and worker config
+- `examples/file_processing.py` – background file processing pattern
+- `examples/webhook_delivery.py` – webhook delivery smoke example
+
+## Queue Design Tips
+
+- Use separate queues for different workloads (e.g., `emails`, `media`, `billing`).
+- Keep job payloads small; store large blobs elsewhere and pass IDs.
+- Use retries with backoff for flaky external APIs.
+- Start with 1–4 workers locally; scale by adding worker processes.
 
 ## Optional Features (Same Package)
 
@@ -167,6 +214,19 @@ metrics = await elephantq.features.metrics.get_system_metrics()
 stats = await elephantq.features.dead_letter.get_stats()
 ```
 
+## Troubleshooting
+
+### "Job not registered"
+
+If the worker says a job is not registered, it means the worker did not import your module.
+
+✅ Fix:
+
+```bash
+export ELEPHANTQ_JOBS_MODULES="your_app_module"
+elephantq start
+```
+
 ## CLI
 
 ```bash
@@ -184,3 +244,4 @@ elephantq dead-letter list
 - `docs/cli.md`
 - `docs/scheduling.md`
 - `docs/features.md`
+- `docs/production.md`

@@ -6,7 +6,7 @@ System-wide performance analytics, success rates, processing times, queue statis
 import asyncio
 import time
 from typing import Dict, List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass, field
 from collections import defaultdict, deque
 import json
@@ -102,7 +102,7 @@ class MetricsCollector:
     
     async def get_recent_metrics(self, minutes: int = 60) -> List[JobMetrics]:
         """Get metrics from the last N minutes"""
-        cutoff = datetime.utcnow() - timedelta(minutes=minutes)
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=minutes)
         return [m for m in self.job_metrics if m.timestamp >= cutoff]
     
     async def calculate_throughput(self, queue: str, minutes: int = 5) -> float:
@@ -306,7 +306,7 @@ class MetricsAnalyzer:
             "hourly_trends": [dict(row) for row in hourly_trends],
             "error_patterns": [dict(row) for row in error_patterns],
             "recommendations": await self._generate_recommendations(system_metrics),
-            "generated_at": datetime.utcnow().isoformat()
+            "generated_at": datetime.now(timezone.utc).isoformat()
         }
     
     async def _generate_recommendations(self, metrics: SystemMetrics) -> List[str]:
@@ -369,7 +369,7 @@ class AlertManager:
                     "severity": "high",
                     "title": "Low Success Rate",
                     "message": f"Success rate is {metrics.success_rate:.1f}% (threshold: {self.alert_thresholds['success_rate_min']}%)",
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 })
         
         # Processing time alert
@@ -381,7 +381,7 @@ class AlertManager:
                     "severity": "medium",
                     "title": "High Processing Time",
                     "message": f"95th percentile processing time is {metrics.p95_processing_time_ms:.0f}ms (threshold: {self.alert_thresholds['p95_processing_time_max_ms']}ms)",
-                    "timestamp": datetime.utcnow().isoformat()
+                    "timestamp": datetime.now(timezone.utc).isoformat()
                 })
         
         # Queue backlog alerts
@@ -394,7 +394,7 @@ class AlertManager:
                         "severity": "high",
                         "title": f"Queue Backlog: {queue_stat.queue_name}",
                         "message": f"Queue has {queue_stat.queued_count} backlogged jobs (threshold: {self.alert_thresholds['queue_backlog_max']})",
-                        "timestamp": datetime.utcnow().isoformat()
+                        "timestamp": datetime.now(timezone.utc).isoformat()
                     })
         
         return alerts
@@ -467,7 +467,7 @@ async def start_metrics_collection():
         while True:
             try:
                 # Periodic cleanup of old metrics
-                cutoff = datetime.utcnow() - timedelta(hours=_metrics_collector.retention_hours)
+                cutoff = datetime.now(timezone.utc) - timedelta(hours=_metrics_collector.retention_hours)
                 _metrics_collector.job_metrics = deque(
                     [m for m in _metrics_collector.job_metrics if m.timestamp >= cutoff],
                     maxlen=10000

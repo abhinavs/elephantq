@@ -53,7 +53,14 @@ __all__ = [
     "list_jobs",
     "get_queue_stats",
     "features",
+    "DASHBOARD_AVAILABLE",
 ]
+
+# Dashboard availability flag (for CLI checks)
+try:
+    from .dashboard.fastapi_app import FASTAPI_AVAILABLE as DASHBOARD_AVAILABLE
+except Exception:
+    DASHBOARD_AVAILABLE = False
 
 
 def _get_global_app() -> ElephantQ:

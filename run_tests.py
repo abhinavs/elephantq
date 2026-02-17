@@ -192,6 +192,15 @@ def main():
             "Infrastructure - Queue Processing Behavior",
             ["tests/integration/infrastructure/test_queue_processing_behavior.py"],
         ),
+        (
+            "Integration - Feature Modules",
+            [
+                "tests/integration/test_dashboard_api.py",
+                "tests/integration/test_dead_letter_queue.py",
+                "tests/integration/test_webhooks.py",
+                "tests/integration/test_migrations.py",
+            ],
+        ),
         # UNIT TESTS
         (
             "Unit Tests - Core Modules",

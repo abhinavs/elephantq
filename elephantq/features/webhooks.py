@@ -104,7 +104,7 @@ class WebhookDelivery:
     
     def __post_init__(self):
         if self.created_at is None:
-            self.created_at = datetime.utcnow()
+            self.created_at = datetime.now(timezone.utc)
 
 
 class WebhookSigner:
@@ -366,6 +366,7 @@ class WebhookDispatcher:
                 endpoint_id=endpoint.id,
                 event=event.value,
                 payload=payload.to_dict(),
+                status="pending",
                 max_attempts=endpoint.max_retries
             )
             
@@ -439,7 +440,7 @@ class WebhookDispatcher:
                     if 200 <= response.status < 300:
                         # Success
                         delivery.status = "delivered"
-                        delivery.delivered_at = datetime.utcnow()
+                        delivery.delivered_at = datetime.now(timezone.utc)
                         logger.info(f"Webhook delivered: {delivery.id} -> {endpoint.url}")
                     else:
                         # HTTP error
@@ -460,7 +461,7 @@ class WebhookDispatcher:
             else:
                 # Schedule retry with exponential backoff
                 delay_seconds = min(300, 2 ** (delivery.attempts - 1) * 60)  # Max 5 minutes
-                delivery.next_retry_at = datetime.utcnow().replace(microsecond=0) + \
+                delivery.next_retry_at = datetime.now(timezone.utc).replace(microsecond=0) + \
                                        asyncio.timedelta(seconds=delay_seconds)
                 delivery.status = "pending"
                 logger.warning(f"Webhook delivery failed, will retry: {delivery.id} -> {endpoint.url}: {e}")
