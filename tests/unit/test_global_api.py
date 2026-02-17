@@ -114,11 +114,13 @@ class TestGlobalAPI:
 
             # Call global schedule
             run_at = datetime.now() + timedelta(hours=1)
-            job_id = await elephantq.schedule(test_job, run_at=run_at, message="test")
+            job_id = await elephantq.schedule(
+                test_job, run_at=run_at, connection="conn", message="test"
+            )
 
             # Should have called enqueue with scheduled_at parameter
             mock_enqueue.assert_called_once_with(
-                test_job, scheduled_at=run_at, message="test"
+                test_job, connection="conn", scheduled_at=run_at, message="test"
             )
             assert job_id == "scheduled-job-id"
 

@@ -168,6 +168,7 @@ async def schedule(
     *,
     run_at: Optional[datetime] = None,
     run_in: Optional[Union[int, float, timedelta]] = None,
+    connection=None,
     **kwargs,
 ):
     """
@@ -188,7 +189,7 @@ async def schedule(
         else:
             raise ValueError("run_in must be int, float (seconds), or timedelta")
 
-    return await enqueue(job_func, scheduled_at=run_at, **kwargs)
+    return await enqueue(job_func, connection=connection, scheduled_at=run_at, **kwargs)
 
 
 async def run_worker(
