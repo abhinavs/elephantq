@@ -241,6 +241,9 @@ def handle_scheduler_command(args):
 @with_elephantq_context
 def handle_dev_command(args):
     async def _run():
+        import importlib
+        import sys
+
         from elephantq import run_worker, DASHBOARD_AVAILABLE
         from elephantq import setup as setup_db
         from elephantq.settings import get_settings
@@ -259,6 +262,28 @@ def handle_dev_command(args):
         except Exception as e:
             print_status(f"Database setup failed: {e}", "error")
             return 1
+
+        # Discover jobs (explicit and debuggable)
+        if not settings.jobs_modules:
+            print_status(
+                "ELEPHANTQ_JOBS_MODULES is not set. Please configure it to point to your jobs module(s).",
+                "error",
+            )
+            return 1
+
+        print_status(f"Discovering jobs in: {settings.jobs_modules}", "info")
+        modules = [mod.strip() for mod in settings.jobs_modules.split(",") if mod.strip()]
+        for module_name in modules:
+            try:
+                importlib.import_module(module_name)
+                print_status(f"Imported '{module_name}'", "success")
+            except ImportError as e:
+                print_status(
+                    f"Could not import module '{module_name}'. Check ELEPHANTQ_JOBS_MODULES and PYTHONPATH.",
+                    "error",
+                )
+                print_status(f"Details: {e}", "error")
+                return 1
 
         tasks = []
 
