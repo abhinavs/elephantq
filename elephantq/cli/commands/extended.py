@@ -242,6 +242,7 @@ def handle_scheduler_command(args):
 def handle_dev_command(args):
     async def _run():
         from elephantq import run_worker, DASHBOARD_AVAILABLE
+        from elephantq import setup as setup_db
         from elephantq.settings import get_settings
         from elephantq.features.recurring import start_recurring_scheduler
 
@@ -251,6 +252,13 @@ def handle_dev_command(args):
         print_status("Dev mode enabled: dashboard + scheduler", "info")
 
         settings = get_settings()
+        # Ensure database tables exist for dev
+        try:
+            await setup_db()
+        except Exception as e:
+            print_status(f"Database setup failed: {e}", "error")
+            return 1
+
         tasks = []
 
         # Worker always runs
