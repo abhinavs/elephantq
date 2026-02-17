@@ -39,13 +39,13 @@ def create_dashboard_app() -> "FastAPI":
     settings = get_settings()
     if not settings.dashboard_enabled:
         raise RuntimeError("Dashboard is disabled. Set ELEPHANTQ_DASHBOARD_ENABLED=true")
-    
+
     app = FastAPI(
         title="ElephantQ Dashboard",
         description="Real-time job monitoring and management",
         version="1.0.0"
     )
-    
+
     # Add CORS middleware
     app.add_middleware(
         CORSMiddleware,
@@ -54,32 +54,32 @@ def create_dashboard_app() -> "FastAPI":
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    
+
     @app.get("/", response_class=HTMLResponse)
     async def dashboard_home():
         """Main dashboard page"""
         return get_dashboard_html()
-    
+
     @app.get("/api/stats")
     async def api_job_stats() -> Dict[str, int]:
         """Get job statistics by status"""
         return await get_job_stats()
-    
+
     @app.get("/api/jobs")
     async def api_recent_jobs(limit: int = 50, queue: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get recent jobs"""
         return await get_recent_jobs(limit=limit, queue=queue)
-    
+
     @app.get("/api/queues")
     async def api_queue_stats() -> List[Dict[str, Any]]:
         """Get queue statistics"""
         return await get_queue_stats()
-    
+
     @app.get("/api/metrics")
     async def api_job_metrics(hours: int = 24) -> Dict[str, Any]:
         """Get job processing metrics"""
         return await get_job_metrics(hours=hours)
-    
+
     @app.get("/api/jobs/{job_id}")
     async def api_job_details(job_id: str) -> Dict[str, Any]:
         """Get job details"""
@@ -87,7 +87,7 @@ def create_dashboard_app() -> "FastAPI":
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
         return job
-    
+
     @app.post("/api/jobs/{job_id}/retry")
     async def api_retry_job(job_id: str) -> Dict[str, str]:
         """Retry a failed job"""
@@ -97,7 +97,7 @@ def create_dashboard_app() -> "FastAPI":
         if not success:
             raise HTTPException(status_code=400, detail="Unable to retry job")
         return {"message": "Job queued for retry"}
-    
+
     @app.delete("/api/jobs/{job_id}")
     async def api_delete_job(job_id: str) -> Dict[str, str]:
         """Delete a job"""
@@ -107,7 +107,7 @@ def create_dashboard_app() -> "FastAPI":
         if not success:
             raise HTTPException(status_code=400, detail="Unable to delete job")
         return {"message": "Job deleted"}
-    
+
     @app.post("/api/jobs/{job_id}/cancel")
     async def api_cancel_job(job_id: str) -> Dict[str, str]:
         """Cancel a queued job"""
@@ -117,22 +117,22 @@ def create_dashboard_app() -> "FastAPI":
         if not success:
             raise HTTPException(status_code=400, detail="Unable to cancel job")
         return {"message": "Job cancelled"}
-    
+
     @app.get("/api/workers/stats")
     async def api_worker_stats() -> Dict[str, Any]:
         """Get worker statistics and health information"""
         return await get_worker_stats()
-    
+
     @app.get("/api/jobs/timeline")
     async def api_job_timeline(hours: int = 24) -> List[Dict[str, Any]]:
         """Get job processing timeline for visualization"""
         return await get_job_timeline(hours=hours)
-    
+
     @app.get("/api/jobs/types")
     async def api_job_types_stats() -> List[Dict[str, Any]]:
         """Get statistics grouped by job type/name"""
         return await get_job_types_stats()
-    
+
     @app.get("/api/jobs/search")
     async def api_search_jobs(
         query: Optional[str] = None,
@@ -151,12 +151,12 @@ def create_dashboard_app() -> "FastAPI":
             limit=limit,
             offset=offset
         )
-    
+
     @app.get("/api/system/health")
     async def api_system_health() -> Dict[str, Any]:
         """Get overall system health metrics"""
         return await get_system_health()
-    
+
     return app
 
 
@@ -172,144 +172,218 @@ def get_dashboard_html() -> str:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ElephantQ Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background-color: #f5f7fa;
-            color: #333;
+        :root {
+            --bg: #0f1220;
+            --bg-soft: #161a2e;
+            --panel: #1b213b;
+            --panel-2: #141a30;
+            --text: #eef1ff;
+            --muted: #b6bdd8;
+            --accent: #f4b266;
+            --accent-2: #72e3a7;
+            --danger: #ff6b6b;
+            --warning: #ffd166;
+            --shadow: rgba(0, 0, 0, 0.35);
+            --border: rgba(255, 255, 255, 0.08);
         }
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            text-align: center;
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: 'Space Grotesk', system-ui, sans-serif;
+            background: radial-gradient(1200px 800px at 20% -10%, #2a2f52 0%, var(--bg) 55%) fixed;
+            color: var(--text);
+        }
+        .page {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 28px 20px 60px;
+        }
+        .topbar {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+            justify-content: space-between;
+            background: linear-gradient(135deg, #2d2f55 0%, #1c2542 100%);
+            border: 1px solid var(--border);
+            padding: 18px 22px;
+            border-radius: 16px;
+            box-shadow: 0 12px 30px var(--shadow);
+            margin-bottom: 22px;
+        }
+        .title {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .title h1 {
+            font-size: 28px;
+            margin: 0;
+            letter-spacing: 0.5px;
+        }
+        .title p {
+            margin: 0;
+            color: var(--muted);
+            font-size: 14px;
+        }
+        .pill {
+            font-family: 'IBM Plex Mono', ui-monospace, monospace;
+            font-size: 12px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: var(--panel-2);
+            border: 1px solid var(--border);
+            color: var(--muted);
         }
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
             margin-bottom: 20px;
         }
         .stat-card {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            text-align: center;
+            background: linear-gradient(160deg, #202749 0%, #141a30 100%);
+            border: 1px solid var(--border);
+            padding: 18px;
+            border-radius: 14px;
+            box-shadow: 0 10px 22px var(--shadow);
         }
         .stat-number {
-            font-size: 2em;
-            font-weight: bold;
-            margin-bottom: 5px;
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 6px;
         }
         .stat-label {
-            color: #666;
-            font-size: 0.9em;
+            color: var(--muted);
+            font-size: 13px;
         }
         .section {
-            background: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            margin-bottom: 20px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            padding: 18px;
+            border-radius: 16px;
+            margin-bottom: 18px;
+            box-shadow: 0 10px 22px var(--shadow);
         }
         .section h2 {
-            margin-top: 0;
-            color: #667eea;
+            margin: 0 0 12px 0;
+            font-size: 18px;
+            color: var(--accent);
+        }
+        .table-wrap {
+            overflow-x: auto;
         }
         table {
             width: 100%;
             border-collapse: collapse;
-            margin-top: 15px;
+            min-width: 720px;
         }
         th, td {
-            padding: 12px;
+            padding: 12px 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
             text-align: left;
-            border-bottom: 1px solid #eee;
+            font-size: 13px;
+            color: var(--text);
         }
         th {
-            background-color: #f8f9fa;
+            color: var(--muted);
             font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-size: 11px;
         }
         .status-badge {
             padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.8em;
-            font-weight: bold;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
         }
-        .status-done { background-color: #d4edda; color: #155724; }
-        .status-queued { background-color: #fff3cd; color: #856404; }
-        .status-failed { background-color: #f8d7da; color: #721c24; }
-        .status-dead_letter { background-color: #f5c6cb; color: #491217; }
+        .status-done { background: rgba(114, 227, 167, 0.18); color: #bdf7d9; }
+        .status-queued { background: rgba(255, 209, 102, 0.18); color: #ffe2a3; }
+        .status-failed { background: rgba(255, 107, 107, 0.18); color: #ffc0c0; }
+        .status-dead_letter { background: rgba(255, 107, 107, 0.12); color: #ffb0b0; }
         .loading {
             text-align: center;
-            padding: 20px;
-            color: #666;
+            padding: 16px;
+            color: var(--muted);
+            font-size: 14px;
         }
         .refresh-info {
             text-align: center;
-            color: #666;
-            font-size: 0.9em;
+            color: var(--muted);
+            font-size: 12px;
             margin-top: 20px;
         }
         .btn {
-            background: #667eea;
-            color: white;
+            background: var(--accent);
+            color: #1a1a1a;
             border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
+            padding: 7px 12px;
+            border-radius: 8px;
             cursor: pointer;
-            font-size: 0.9em;
+            font-size: 12px;
             margin: 2px;
+            font-weight: 600;
         }
-        .btn:hover {
-            background: #5a6fd8;
-        }
+        .btn:hover { opacity: 0.9; }
         .btn-danger {
-            background: #dc3545;
+            background: var(--danger);
+            color: #1a1a1a;
         }
-        .btn-danger:hover {
-            background: #c82333;
+        @media (max-width: 820px) {
+            .topbar { flex-direction: column; align-items: flex-start; }
+            table { min-width: 540px; }
+        }
+        @media (max-width: 520px) {
+            .page { padding: 18px 14px 40px; }
+            .stat-number { font-size: 24px; }
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>ElephantQ Dashboard</h1>
-        <p>Real-time job monitoring and management</p>
-    </div>
-
-    <div class="stats-grid" id="stats-grid">
-        <div class="loading">Loading statistics...</div>
-    </div>
-
-    <div class="section">
-        <h2>Recent Jobs</h2>
-        <div id="jobs-table">
-            <div class="loading">Loading jobs...</div>
+    <div class="page">
+        <div class="topbar">
+            <div class="title">
+                <h1>ElephantQ Dashboard</h1>
+                <p>Real-time job monitoring and system signals</p>
+            </div>
+            <div class="pill">Auto-refresh: 30s</div>
         </div>
-    </div>
 
-    <div class="section">
-        <h2>Queue Statistics</h2>
-        <div id="queue-stats">
-            <div class="loading">Loading queue stats...</div>
+        <div class="stats-grid" id="stats-grid">
+            <div class="loading">Loading statistics...</div>
         </div>
-    </div>
 
-    <div class="section">
-        <h2>Performance Metrics (24h)</h2>
-        <div id="metrics">
-            <div class="loading">Loading metrics...</div>
+        <div class="section">
+            <h2>Recent Jobs</h2>
+            <div class="table-wrap" id="jobs-table">
+                <div class="loading">Loading jobs...</div>
+            </div>
         </div>
-    </div>
 
-    <div class="refresh-info">
-        Dashboard auto-refreshes every 30 seconds
+        <div class="section">
+            <h2>Queue Statistics</h2>
+            <div class="table-wrap" id="queue-stats">
+                <div class="loading">Loading queue stats...</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Performance Metrics (24h)</h2>
+            <div id="metrics">
+                <div class="loading">Loading metrics...</div>
+            </div>
+        </div>
+
+        <div class="refresh-info">
+            Dashboard auto-refreshes every 30 seconds
+        </div>
     </div>
 
     <script>
@@ -324,19 +398,24 @@ def get_dashboard_html() -> str:
             }
         }
 
-        function formatDate(dateString) {
-            return new Date(dateString).toLocaleString();
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const date = new Date(dateStr);
+            return date.toLocaleString();
         }
 
-        function createStatusBadge(status) {
-            return `<span class="status-badge status-${status}">${status}</span>`;
+        function formatDuration(ms) {
+            if (!ms) return '-';
+            if (ms < 1000) return `${ms.toFixed(0)}ms`;
+            if (ms < 60000) return `${(ms/1000).toFixed(1)}s`;
+            return `${(ms/60000).toFixed(1)}m`;
         }
 
         async function updateStats() {
             const stats = await fetchData('/api/stats');
             if (!stats) return;
 
-            document.getElementById('stats-grid').innerHTML = `
+            const html = `
                 <div class="stat-card">
                     <div class="stat-number">${stats.total}</div>
                     <div class="stat-label">Total Jobs</div>
@@ -347,7 +426,7 @@ def get_dashboard_html() -> str:
                 </div>
                 <div class="stat-card">
                     <div class="stat-number">${stats.done}</div>
-                    <div class="stat-label">Completed</div>
+                    <div class="stat-label">Done</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-number">${stats.failed}</div>
@@ -358,20 +437,21 @@ def get_dashboard_html() -> str:
                     <div class="stat-label">Dead Letter</div>
                 </div>
             `;
+
+            document.getElementById('stats-grid').innerHTML = html;
         }
 
         async function updateJobs() {
-            const jobs = await fetchData('/api/jobs?limit=20');
+            const jobs = await fetchData('/api/jobs');
             if (!jobs) return;
 
-            let tableHtml = `
+            let html = `
                 <table>
                     <thead>
                         <tr>
-                            <th>Job Name</th>
+                            <th>Job</th>
                             <th>Status</th>
                             <th>Queue</th>
-                            <th>Priority</th>
                             <th>Attempts</th>
                             <th>Created</th>
                             <th>Actions</th>
@@ -381,81 +461,90 @@ def get_dashboard_html() -> str:
             `;
 
             jobs.forEach(job => {
-                tableHtml += `
+                html += `
                     <tr>
-                        <td>${job.job_name}</td>
-                        <td>${createStatusBadge(job.status)}</td>
+                        <td>${job.job_name.split('.').pop()}</td>
+                        <td><span class="status-badge status-${job.status}">${job.status}</span></td>
                         <td>${job.queue}</td>
-                        <td>${job.priority}</td>
                         <td>${job.attempts}/${job.max_attempts}</td>
                         <td>${formatDate(job.created_at)}</td>
                         <td>
-                            ${CAN_WRITE && (job.status === 'failed' || job.status === 'dead_letter') ? 
-                                `<button class="btn" onclick="retryJob('${job.id}')">Retry</button>` : ''
-                            }
-                            ${CAN_WRITE ? `<button class="btn btn-danger" onclick="deleteJob('${job.id}')">Delete</button>` : ''}
+                            ${CAN_WRITE === 'true' ? `
+                                <button class="btn" onclick="retryJob('${job.id}')">Retry</button>
+                                <button class="btn btn-danger" onclick="deleteJob('${job.id}')">Delete</button>
+                            ` : ''}
                         </td>
                     </tr>
                 `;
             });
 
-            tableHtml += '</tbody></table>';
-            document.getElementById('jobs-table').innerHTML = tableHtml;
+            html += '</tbody></table>';
+            document.getElementById('jobs-table').innerHTML = html;
         }
 
         async function updateQueueStats() {
             const queues = await fetchData('/api/queues');
             if (!queues) return;
 
-            let tableHtml = `
+            let html = `
                 <table>
                     <thead>
                         <tr>
                             <th>Queue</th>
-                            <th>Total Jobs</th>
+                            <th>Total</th>
                             <th>Queued</th>
                             <th>Done</th>
                             <th>Failed</th>
-                            <th>Avg Processing (ms)</th>
+                            <th>Dead Letter</th>
+                            <th>Avg Processing</th>
                         </tr>
                     </thead>
                     <tbody>
             `;
 
             queues.forEach(queue => {
-                tableHtml += `
+                html += `
                     <tr>
-                        <td><strong>${queue.queue}</strong></td>
+                        <td>${queue.queue}</td>
                         <td>${queue.total_jobs}</td>
                         <td>${queue.queued}</td>
                         <td>${queue.done}</td>
-                        <td>${queue.failed + queue.dead_letter}</td>
-                        <td>${queue.avg_processing_time_ms ? Math.round(queue.avg_processing_time_ms) : 'N/A'}</td>
+                        <td>${queue.failed}</td>
+                        <td>${queue.dead_letter}</td>
+                        <td>${formatDuration(queue.avg_processing_time_ms)}</td>
                     </tr>
                 `;
             });
 
-            tableHtml += '</tbody></table>';
-            document.getElementById('queue-stats').innerHTML = tableHtml;
+            html += '</tbody></table>';
+            document.getElementById('queue-stats').innerHTML = html;
         }
 
         async function updateMetrics() {
             const metrics = await fetchData('/api/metrics');
             if (!metrics) return;
 
-            document.getElementById('metrics').innerHTML = `
+            const html = `
                 <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-number">${metrics.total_processed}</div>
-                        <div class="stat-label">Jobs Processed</div>
+                        <div class="stat-label">Processed</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${metrics.successful}</div>
+                        <div class="stat-label">Successful</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-number">${metrics.failed}</div>
+                        <div class="stat-label">Failed</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-number">${metrics.success_rate}%</div>
                         <div class="stat-label">Success Rate</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-number">${metrics.avg_processing_time_ms}ms</div>
-                        <div class="stat-label">Avg Processing Time</div>
+                        <div class="stat-number">${formatDuration(metrics.avg_processing_time_ms)}</div>
+                        <div class="stat-label">Avg Time</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-number">${metrics.jobs_per_hour}</div>
@@ -463,37 +552,31 @@ def get_dashboard_html() -> str:
                     </div>
                 </div>
             `;
+
+            document.getElementById('metrics').innerHTML = html;
         }
 
         async function retryJob(jobId) {
-            if (!CAN_WRITE) return;
+            if (!confirm('Retry this job?')) return;
             try {
                 const response = await fetch(`/api/jobs/${jobId}/retry`, { method: 'POST' });
                 if (response.ok) {
-                    alert('Job queued for retry');
                     await updateAll();
-                } else {
-                    alert('Failed to retry job');
                 }
             } catch (error) {
-                alert('Error retrying job');
+                console.error('Error retrying job:', error);
             }
         }
 
         async function deleteJob(jobId) {
-            if (!CAN_WRITE) return;
-            if (!confirm('Are you sure you want to delete this job?')) return;
-            
+            if (!confirm('Delete this job?')) return;
             try {
                 const response = await fetch(`/api/jobs/${jobId}`, { method: 'DELETE' });
                 if (response.ok) {
-                    alert('Job deleted');
                     await updateAll();
-                } else {
-                    alert('Failed to delete job');
                 }
             } catch (error) {
-                alert('Error deleting job');
+                console.error('Error deleting job:', error);
             }
         }
 
@@ -522,12 +605,12 @@ async def run_dashboard(host: str = "127.0.0.1", port: int = 6161):
     """Run the dashboard server"""
     if not FASTAPI_AVAILABLE:
         raise ImportError("FastAPI is required for dashboard. Install with: pip install fastapi uvicorn")
-    
+
     app = create_dashboard_app()
     config = uvicorn.Config(app, host=host, port=port, log_level="info")
     server = uvicorn.Server(config)
-    
+
     print(f"ElephantQ Dashboard starting at http://{host}:{port}")
     print("Press Ctrl+C to stop")
-    
+
     await server.serve()
