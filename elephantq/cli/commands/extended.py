@@ -275,10 +275,14 @@ def handle_dev_command(args):
         jobs_modules = args.jobs_modules or settings.jobs_modules
         if args.pythonpath:
             import os
+            import pathlib
 
+            extra_path = str(pathlib.Path(args.pythonpath).resolve())
             os.environ["PYTHONPATH"] = (
-                f"{args.pythonpath}:{os.environ.get('PYTHONPATH', '')}".strip(":")
+                f"{extra_path}:{os.environ.get('PYTHONPATH', '')}".strip(":")
             )
+            if extra_path not in sys.path:
+                sys.path.insert(0, extra_path)
 
         if not jobs_modules:
             print_status(
