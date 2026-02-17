@@ -20,6 +20,17 @@ async def send_email(to: str):
 await elephantq.schedule(send_email, run_in=timedelta(minutes=10), to="user@example.com")
 ```
 
+### Transactional scheduling
+
+If you need the schedule to be part of an existing database transaction, pass a connection:
+
+```python
+pool = await elephantq.get_pool()
+async with pool.acquire() as conn:
+    async with conn.transaction():
+        await elephantq.schedule(send_email, run_in=60, connection=conn, to="user@example.com")
+```
+
 ## Recurring (cron)
 
 ```python
@@ -29,7 +40,7 @@ import elephantq
 async def daily_report():
     pass
 
-elephantq.features.recurring.schedule("0 9 * * *").job(daily_report)
+await elephantq.features.recurring.cron("0 9 * * *").schedule(daily_report)
 ```
 
 ## Recurring (interval)
