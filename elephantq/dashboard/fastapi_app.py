@@ -190,11 +190,26 @@ def get_dashboard_html() -> str:
             --shadow: rgba(0, 0, 0, 0.35);
             --border: rgba(255, 255, 255, 0.08);
         }
+
+        [data-theme="light"] {
+            --bg: #f6f4ef;
+            --bg-soft: #f2efe9;
+            --panel: #ffffff;
+            --panel-2: #f5f2ec;
+            --text: #1c1c1c;
+            --muted: #5b6270;
+            --accent: #ffb04a;
+            --accent-2: #2aa07a;
+            --danger: #e04b4b;
+            --warning: #d9a441;
+            --shadow: rgba(0, 0, 0, 0.12);
+            --border: rgba(0, 0, 0, 0.08);
+        }
         * { box-sizing: border-box; }
         body {
             margin: 0;
             font-family: 'Space Grotesk', system-ui, sans-serif;
-            background: radial-gradient(1200px 800px at 20% -10%, #2a2f52 0%, var(--bg) 55%) fixed;
+            background: radial-gradient(1200px 800px at 20% -10%, var(--bg-soft) 0%, var(--bg) 55%) fixed;
             color: var(--text);
         }
         .page {
@@ -237,6 +252,12 @@ def get_dashboard_html() -> str:
             background: var(--panel-2);
             border: 1px solid var(--border);
             color: var(--muted);
+        }
+        .topbar-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
         }
         .stats-grid {
             display: grid;
@@ -331,6 +352,11 @@ def get_dashboard_html() -> str:
             margin: 2px;
             font-weight: 600;
         }
+        .btn-ghost {
+            background: transparent;
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
         .btn:hover { opacity: 0.9; }
         .btn-danger {
             background: var(--danger);
@@ -353,7 +379,10 @@ def get_dashboard_html() -> str:
                 <h1>ElephantQ Dashboard</h1>
                 <p>Real-time job monitoring and system signals</p>
             </div>
-            <div class="pill">Auto-refresh: 30s</div>
+            <div class="topbar-actions">
+                <button class="btn btn-ghost" id="theme-toggle" type="button">Theme: system</button>
+                <div class="pill">Auto-refresh: 30s</div>
+            </div>
         </div>
 
         <div class="stats-grid" id="stats-grid">
@@ -388,9 +417,47 @@ def get_dashboard_html() -> str:
 
     <script>
         const CAN_WRITE = __ELEPHANTQ_CAN_WRITE__;
+        const THEME_KEY = 'elephantq_theme';
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
+
+        function applyTheme(theme) {
+            if (theme === 'system') {
+                document.documentElement.removeAttribute('data-theme');
+            } else {
+                document.documentElement.setAttribute('data-theme', theme);
+            }
+            const label = theme === 'system' ? (prefersDark.matches ? 'dark (system)' : 'light (system)') : theme;
+            const btn = document.getElementById('theme-toggle');
+            if (btn) btn.textContent = `Theme: ${label}`;
+        }
+
+        function getStoredTheme() {
+            return localStorage.getItem(THEME_KEY) || 'system';
+        }
+
+        function cycleTheme() {
+            const current = getStoredTheme();
+            const next = current === 'system' ? 'light' : current === 'light' ? 'dark' : 'system';
+            localStorage.setItem(THEME_KEY, next);
+            applyTheme(next);
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            applyTheme(getStoredTheme());
+            const btn = document.getElementById('theme-toggle');
+            if (btn) btn.addEventListener('click', cycleTheme);
+            prefersDark.addEventListener('change', () => {
+                if (getStoredTheme() === 'system') applyTheme('system');
+            });
+        });
+
+
         async function fetchData(url) {
             try {
                 const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
                 return await response.json();
             } catch (error) {
                 console.error('Error fetching data:', error);
@@ -483,41 +550,51 @@ def get_dashboard_html() -> str:
         }
 
         async function updateQueueStats() {
-            const queues = await fetchData('/api/queues');
-            if (!queues) return;
+            try {
+                const queues = await fetchData('/api/queues');
+                if (!queues) return;
 
-            let html = `
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Queue</th>
-                            <th>Total</th>
-                            <th>Queued</th>
-                            <th>Done</th>
-                            <th>Failed</th>
-                            <th>Dead Letter</th>
-                            <th>Avg Processing</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
+                if (!Array.isArray(queues) || queues.length === 0) {
+                    document.getElementById('queue-stats').innerHTML = '<div class="loading">No queues yet</div>';
+                    return;
+                }
 
-            queues.forEach(queue => {
-                html += `
-                    <tr>
-                        <td>${queue.queue}</td>
-                        <td>${queue.total_jobs}</td>
-                        <td>${queue.queued}</td>
-                        <td>${queue.done}</td>
-                        <td>${queue.failed}</td>
-                        <td>${queue.dead_letter}</td>
-                        <td>${formatDuration(queue.avg_processing_time_ms)}</td>
-                    </tr>
+                let html = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Queue</th>
+                                <th>Total</th>
+                                <th>Queued</th>
+                                <th>Done</th>
+                                <th>Failed</th>
+                                <th>Dead Letter</th>
+                                <th>Avg Processing</th>
+                            </tr>
+                        </thead>
+                        <tbody>
                 `;
-            });
 
-            html += '</tbody></table>';
-            document.getElementById('queue-stats').innerHTML = html;
+                queues.forEach(queue => {
+                    html += `
+                        <tr>
+                            <td>${queue.queue}</td>
+                            <td>${queue.total_jobs}</td>
+                            <td>${queue.queued}</td>
+                            <td>${queue.done}</td>
+                            <td>${queue.failed}</td>
+                            <td>${queue.dead_letter}</td>
+                            <td>${formatDuration(queue.avg_processing_time_ms)}</td>
+                        </tr>
+                    `;
+                });
+
+                html += '</tbody></table>';
+                document.getElementById('queue-stats').innerHTML = html;
+            } catch (error) {
+                console.error('Error updating queue stats:', error);
+                document.getElementById('queue-stats').innerHTML = '<div class="loading">Unable to load queue stats</div>';
+            }
         }
 
         async function updateMetrics() {
