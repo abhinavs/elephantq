@@ -170,6 +170,7 @@ async def enqueue_job(
     queue: Optional[str] = None,
     scheduled_at: Optional[datetime] = None,
     unique: Optional[bool] = None,
+    connection: Optional[asyncpg.Connection] = None,
     **kwargs,
 ) -> str:
     """
@@ -185,6 +186,7 @@ async def enqueue_job(
         queue: Queue name. If None, uses job default
         scheduled_at: When to execute the job. If None, executes immediately
         unique: Override job's unique setting. If True, prevents duplicate queued jobs
+        connection: Optional existing asyncpg connection for transactional enqueue
         **kwargs: Arguments to pass to the job function
 
     Returns:
@@ -209,20 +211,19 @@ async def enqueue_job(
     final_unique = unique if unique is not None else job_meta["unique"]
     scheduled_at = _normalize_scheduled_time(scheduled_at)
 
-    # Handle unique job checking
-    if final_unique:
-        args_hash = compute_args_hash(kwargs)
-        async with pool.acquire() as conn:
+    args_hash = compute_args_hash(kwargs) if final_unique else None
+
+    async def _enqueue_with_connection(conn: asyncpg.Connection) -> str:
+        # Handle unique job checking
+        if final_unique:
             existing_job_id = await _handle_unique_job_check(conn, job_name, args_hash)
             if existing_job_id:
                 return existing_job_id
 
-    # Create and insert job record
-    job_id = str(uuid.uuid4())
-    args_json = json.dumps(kwargs, default=str)
-    args_hash = compute_args_hash(kwargs) if final_unique else None
+        # Create and insert job record
+        job_id = str(uuid.uuid4())
+        args_json = json.dumps(kwargs, default=str)
 
-    async with pool.acquire() as conn:
         await _create_job_record(
             conn,
             job_id,
@@ -235,8 +236,16 @@ async def enqueue_job(
             final_unique,
             scheduled_at,
         )
+        return job_id
 
-    return job_id
+    if connection is not None:
+        return await _enqueue_with_connection(connection)
+
+    if pool is None:
+        raise ValueError("pool is required when no connection is provided")
+
+    async with pool.acquire() as conn:
+        return await _enqueue_with_connection(conn)
 
 
 async def enqueue(
@@ -245,6 +254,7 @@ async def enqueue(
     queue: Optional[str] = None,
     scheduled_at: Optional[datetime] = None,
     unique: Optional[bool] = None,
+    connection: Optional[asyncpg.Connection] = None,
     **kwargs,
 ) -> str:
     """
@@ -259,6 +269,7 @@ async def enqueue(
         queue: Queue name. If None, uses job default
         scheduled_at: When to execute the job. If None, executes immediately
         unique: Override job's unique setting. If True, prevents duplicate queued jobs
+        connection: Optional existing asyncpg connection for transactional enqueue
         **kwargs: Arguments to pass to the job function
 
     Returns:
@@ -281,6 +292,7 @@ async def enqueue(
         queue=queue,
         scheduled_at=scheduled_at,
         unique=unique,
+        connection=connection,
         **kwargs,
     )
 

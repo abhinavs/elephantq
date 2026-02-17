@@ -157,10 +157,10 @@ def job(**kwargs):
     return decorator
 
 
-async def enqueue(job_func, **kwargs):
+async def enqueue(job_func, connection=None, **kwargs):
     """Enqueue a job using the global ElephantQ instance."""
     app = _get_global_app()
-    return await app.enqueue(job_func, **kwargs)
+    return await app.enqueue(job_func, connection=connection, **kwargs)
 
 
 async def schedule(

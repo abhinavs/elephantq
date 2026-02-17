@@ -199,6 +199,7 @@ def main():
                 "tests/integration/test_dead_letter_queue.py",
                 "tests/integration/test_webhooks.py",
                 "tests/integration/test_migrations.py",
+                "tests/integration/test_transactional_enqueue.py",
             ],
         ),
         # UNIT TESTS

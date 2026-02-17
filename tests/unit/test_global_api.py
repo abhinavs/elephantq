@@ -94,7 +94,9 @@ class TestGlobalAPI:
             job_id = await elephantq.enqueue(test_job, message="test")
 
             # Should have called app.enqueue
-            mock_enqueue.assert_called_once_with(test_job, message="test")
+            mock_enqueue.assert_called_once_with(
+                test_job, connection=None, message="test"
+            )
             assert job_id == "test-job-id"
 
     @pytest.mark.asyncio

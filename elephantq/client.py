@@ -177,12 +177,13 @@ class ElephantQ:
 
         return decorator
 
-    async def enqueue(self, job_func, **kwargs):
+    async def enqueue(self, job_func, connection=None, **kwargs):
         """
         Enqueue a job for processing.
 
         Args:
             job_func: Job function to enqueue
+            connection: Optional existing asyncpg connection for transactional enqueue
             **kwargs: Job arguments and options
 
         Returns:
@@ -193,7 +194,9 @@ class ElephantQ:
         # Import here to avoid circular dependencies
         from .core.queue import enqueue_job
 
-        return await enqueue_job(self._pool, self._job_registry, job_func, **kwargs)
+        return await enqueue_job(
+            self._pool, self._job_registry, job_func, connection=connection, **kwargs
+        )
 
     async def schedule(self, job_func, run_at, **kwargs):
         """
