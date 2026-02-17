@@ -174,6 +174,14 @@ def register_extended_commands():
             },
             {"args": ["--no-dashboard"], "kwargs": {"action": "store_true", "help": "Disable dashboard"}},
             {"args": ["--no-scheduler"], "kwargs": {"action": "store_true", "help": "Disable scheduler"}},
+            {
+                "args": ["--jobs-modules"],
+                "kwargs": {"help": "Comma-separated job modules (overrides ELEPHANTQ_JOBS_MODULES)"},
+            },
+            {
+                "args": ["--pythonpath"],
+                "kwargs": {"help": "Extra PYTHONPATH to add for job discovery"},
+            },
         ]
         + instance_arguments,
         category="dev",
@@ -264,15 +272,23 @@ def handle_dev_command(args):
             return 1
 
         # Discover jobs (explicit and debuggable)
-        if not settings.jobs_modules:
+        jobs_modules = args.jobs_modules or settings.jobs_modules
+        if args.pythonpath:
+            import os
+
+            os.environ["PYTHONPATH"] = (
+                f"{args.pythonpath}:{os.environ.get('PYTHONPATH', '')}".strip(":")
+            )
+
+        if not jobs_modules:
             print_status(
                 "ELEPHANTQ_JOBS_MODULES is not set. Please configure it to point to your jobs module(s).",
                 "error",
             )
             return 1
 
-        print_status(f"Discovering jobs in: {settings.jobs_modules}", "info")
-        modules = [mod.strip() for mod in settings.jobs_modules.split(",") if mod.strip()]
+        print_status(f"Discovering jobs in: {jobs_modules}", "info")
+        modules = [mod.strip() for mod in jobs_modules.split(",") if mod.strip()]
         for module_name in modules:
             try:
                 importlib.import_module(module_name)

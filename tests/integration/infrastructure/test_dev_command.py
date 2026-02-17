@@ -34,6 +34,8 @@ async def test_dev_command_help():
     assert "dev" in result.stdout.lower()
     assert "dashboard" in result.stdout.lower()
     assert "scheduler" in result.stdout.lower()
+    assert "jobs-modules" in result.stdout.lower()
+    assert "pythonpath" in result.stdout.lower()
 
 
 @pytest.mark.asyncio
