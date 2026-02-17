@@ -245,6 +245,10 @@ def handle_dev_command(args):
         from elephantq.settings import get_settings
         from elephantq.features.recurring import start_recurring_scheduler
 
+        # Dev mode: enable common features by default
+        from elephantq.settings import configure as configure_settings
+        configure_settings(dashboard_enabled=True, scheduling_enabled=True)
+
         settings = get_settings()
         tasks = []
 
