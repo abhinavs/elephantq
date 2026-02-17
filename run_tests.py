@@ -167,6 +167,7 @@ def main():
             [
                 "tests/integration/infrastructure/test_cli_integration.py",
                 "tests/integration/infrastructure/test_cli_queue_behavior.py",
+                "tests/integration/infrastructure/test_dev_command.py",
             ],
         ),
         (
