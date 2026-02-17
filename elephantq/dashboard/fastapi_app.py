@@ -172,6 +172,7 @@ def get_dashboard_html() -> str:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ElephantQ Dashboard</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🐘</text></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -187,6 +188,7 @@ def get_dashboard_html() -> str:
             --accent-2: #72e3a7;
             --danger: #ff6b6b;
             --warning: #ffd166;
+            --info: #8db5ff;
             --shadow: rgba(0, 0, 0, 0.35);
             --border: rgba(255, 255, 255, 0.08);
         }
@@ -199,9 +201,10 @@ def get_dashboard_html() -> str:
             --text: #1c1c1c;
             --muted: #5b6270;
             --accent: #ffb04a;
-            --accent-2: #2aa07a;
+            --accent-2: #2c7a66;
             --danger: #e04b4b;
             --warning: #d9a441;
+            --info: #2b5ea8;
             --shadow: rgba(0, 0, 0, 0.12);
             --border: rgba(0, 0, 0, 0.08);
         }
@@ -261,6 +264,34 @@ def get_dashboard_html() -> str:
             gap: 10px;
             align-items: center;
             flex-wrap: wrap;
+        }
+        .theme-toggle {
+            display: inline-flex;
+            border: 1px solid var(--border);
+            background: var(--panel-2);
+            border-radius: 999px;
+            padding: 2px;
+            gap: 4px;
+            font-family: 'IBM Plex Mono', ui-monospace, monospace;
+            font-size: 12px;
+        }
+        .theme-toggle button {
+            border: none;
+            background: transparent;
+            color: var(--muted);
+            padding: 6px 10px;
+            border-radius: 999px;
+            cursor: pointer;
+            font-weight: 500;
+            font-family: inherit;
+        }
+        .theme-toggle button.active {
+            background: var(--accent-2);
+            color: #0f131f;
+        }
+        [data-theme="light"] .theme-toggle button.active {
+            background: #1f2a3a;
+            color: #f6f4ef;
         }
         .stats-grid {
             display: grid;
@@ -352,39 +383,77 @@ def get_dashboard_html() -> str:
             margin-top: 20px;
         }
         .notice {
-            background: rgba(255, 209, 102, 0.16);
-            border: 1px solid rgba(255, 209, 102, 0.4);
-            color: #ffe2a3;
+            background: rgba(141, 181, 255, 0.16);
+            border: 1px solid rgba(141, 181, 255, 0.35);
+            color: #cfe0ff;
             padding: 10px 14px;
-            border-radius: 10px;
+            border-radius: 12px;
             font-size: 12px;
-            margin-bottom: 14px;
+            margin: 0 0 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
         [data-theme="light"] .notice {
-            background: rgba(255, 176, 74, 0.18);
-            border: 1px solid rgba(255, 176, 74, 0.5);
-            color: #6b4a00;
+            background: #eef5ff;
+            border: 1px solid #c4d6f2;
+            color: #274060;
         }
         .btn {
-            background: var(--accent);
-            color: #1a1a1a;
-            border: none;
+            background: transparent;
+            color: var(--text);
+            border: 1px solid var(--border);
             padding: 7px 12px;
-            border-radius: 8px;
+            border-radius: 10px;
             cursor: pointer;
             font-size: 12px;
             margin: 2px;
             font-weight: 600;
+            transition: all 0.15s ease;
+            font-family: 'IBM Plex Mono', ui-monospace, monospace;
+        }
+        .btn:hover {
+            transform: translateY(-1px);
+            border-color: rgba(114, 227, 167, 0.55);
+            background: rgba(114, 227, 167, 0.12);
+        }
+        [data-theme="light"] .btn:hover {
+            border-color: rgba(44, 122, 102, 0.45);
+            background: rgba(44, 122, 102, 0.12);
         }
         .btn-ghost {
             background: transparent;
             color: var(--text);
             border: 1px solid var(--border);
         }
+        .btn-primary {
+            border-color: rgba(163, 152, 255, 0.45);
+            color: #efe8ff;
+            background: rgb(221 214 254 / 0.4);
+        }
+        [data-theme="light"] .btn-primary {
+            border-color: rgba(124, 101, 188, 0.35);
+            color: #3b2f63;
+            background: rgb(221 214 254 / 0.7);
+        }
         .btn:hover { opacity: 0.9; }
         .btn-danger {
-            background: var(--danger);
-            color: #1a1a1a;
+            border-color: rgba(225, 104, 104, 0.4);
+            color: #ffd8d8;
+            background: rgba(225, 104, 104, 0.16);
+        }
+        .btn-danger:hover {
+            border-color: rgba(225, 104, 104, 0.7);
+            background: rgba(225, 104, 104, 0.26);
+        }
+        [data-theme="light"] .btn-danger {
+            border-color: rgba(200, 80, 80, 0.35);
+            color: #6a1d1d;
+            background: rgba(200, 80, 80, 0.1);
+        }
+        [data-theme="light"] .btn-danger:hover {
+            border-color: rgba(200, 80, 80, 0.6);
+            background: rgba(200, 80, 80, 0.18);
         }
         @media (max-width: 820px) {
             .topbar { flex-direction: column; align-items: flex-start; }
@@ -404,7 +473,11 @@ def get_dashboard_html() -> str:
                 <p>Real-time job monitoring and system signals</p>
             </div>
             <div class="topbar-actions">
-                <button class="btn btn-ghost" id="theme-toggle" type="button">Theme: system</button>
+                <div class="theme-toggle" id="theme-toggle" role="group" aria-label="Theme toggle">
+                    <button type="button" data-theme="light">Light</button>
+                    <button type="button" data-theme="dark">Dark</button>
+                </div>
+                <button class="btn btn-ghost" id="refresh-btn" type="button">Refresh</button>
                 <div class="pill">Auto-refresh: 30s</div>
             </div>
         </div>
@@ -437,6 +510,7 @@ def get_dashboard_html() -> str:
 
         <div class="refresh-info">
             Dashboard auto-refreshes every 30 seconds
+            <span id="last-updated"></span>
         </div>
     </div>
 
@@ -445,42 +519,43 @@ def get_dashboard_html() -> str:
         const THEME_KEY = 'elephantq_theme';
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
 
-        function applyTheme(theme) {
-            if (theme === 'system') {
-                const systemTheme = prefersDark.matches ? 'dark' : 'light';
-                document.documentElement.setAttribute('data-theme', systemTheme);
-            } else {
-                document.documentElement.setAttribute('data-theme', theme);
-            }
-            const label = theme === 'system' ? (prefersDark.matches ? 'dark (system)' : 'light (system)') : theme;
-            const btn = document.getElementById('theme-toggle');
-            if (btn) btn.textContent = `Theme: ${label}`;
+        function applyTheme(theme, source) {
+            const resolved = theme || (prefersDark.matches ? 'dark' : 'light');
+            document.documentElement.setAttribute('data-theme', resolved);
+            const toggle = document.getElementById('theme-toggle');
+            if (!toggle) return;
+            const buttons = toggle.querySelectorAll('button[data-theme]');
+            buttons.forEach((btn) => {
+                const isActive = btn.dataset.theme === resolved;
+                btn.classList.toggle('active', isActive);
+                btn.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            });
+            toggle.setAttribute('data-source', source || 'system');
         }
 
         function getStoredTheme() {
-            return localStorage.getItem(THEME_KEY) || 'system';
-        }
-
-        
-        function cycleTheme() {
-            const current = getStoredTheme();
-            const systemTheme = prefersDark.matches ? 'dark' : 'light';
-            if (current === 'system') {
-                const next = systemTheme === 'dark' ? 'light' : 'dark';
-                localStorage.setItem(THEME_KEY, next);
-                applyTheme(next);
-            } else {
-                localStorage.setItem(THEME_KEY, 'system');
-                applyTheme('system');
-            }
+            return localStorage.getItem(THEME_KEY);
         }
 
         window.addEventListener('DOMContentLoaded', () => {
-            applyTheme(getStoredTheme());
-            const btn = document.getElementById('theme-toggle');
-            if (btn) btn.addEventListener('click', cycleTheme);
+            const storedTheme = getStoredTheme();
+            applyTheme(storedTheme, storedTheme ? 'user' : 'system');
+            const toggle = document.getElementById('theme-toggle');
+            if (toggle) {
+                toggle.addEventListener('click', (event) => {
+                    const target = event.target;
+                    if (!target || !target.dataset || !target.dataset.theme) return;
+                    const nextTheme = target.dataset.theme;
+                    localStorage.setItem(THEME_KEY, nextTheme);
+                    applyTheme(nextTheme, 'user');
+                });
+            }
+            const refreshBtn = document.getElementById('refresh-btn');
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', () => updateAll());
+            }
             prefersDark.addEventListener('change', () => {
-                if (getStoredTheme() === 'system') applyTheme('system');
+                if (!getStoredTheme()) applyTheme(null, 'system');
             });
         });
 
@@ -511,9 +586,20 @@ def get_dashboard_html() -> str:
             return `${(ms/60000).toFixed(1)}m`;
         }
 
+        function setFallback(targetId, message) {
+            const target = document.getElementById(targetId);
+            if (!target) return;
+            if (target.querySelector('.loading')) {
+                target.innerHTML = `<div class="loading">${message}</div>`;
+            }
+        }
+
         async function updateStats() {
             const stats = await fetchData('/api/stats');
-            if (!stats) return;
+            if (!stats) {
+                setFallback('stats-grid', 'Stats unavailable. Check database connectivity.');
+                return;
+            }
 
             const html = `
                 <div class="stat-card">
@@ -544,8 +630,8 @@ def get_dashboard_html() -> str:
         function updateModeNotice() {
             const notice = document.getElementById('mode-notice');
             if (!notice) return;
-            if (CAN_WRITE !== 'true') {
-                notice.innerHTML = '<div class="notice">Read-only mode: set ELEPHANTQ_DASHBOARD_WRITE_ENABLED=true to enable actions.</div>';
+            if (!CAN_WRITE) {
+                notice.innerHTML = '<div class="notice">Read-only mode. Set ELEPHANTQ_DASHBOARD_WRITE_ENABLED=true to enable actions.</div>';
             } else {
                 notice.innerHTML = '';
             }
@@ -553,8 +639,12 @@ def get_dashboard_html() -> str:
 
         async function updateJobs() {
             const jobs = await fetchData('/api/jobs');
-            if (!jobs) return;
+            if (!jobs) {
+                setFallback('jobs-table', 'Jobs unavailable. Check database connectivity.');
+                return;
+            }
 
+            const actionsEnabled = CAN_WRITE === true;
             let html = `
                 <table>
                     <thead>
@@ -564,13 +654,14 @@ def get_dashboard_html() -> str:
                             <th>Queue</th>
                             <th>Attempts</th>
                             <th>Created</th>
-                            <th>Actions</th>
+                            ${actionsEnabled ? '<th>Actions</th>' : ''}
                         </tr>
                     </thead>
                     <tbody>
             `;
 
             jobs.forEach(job => {
+                const canRetry = job.status === 'failed' || job.status === 'dead_letter';
                 html += `
                     <tr>
                         <td>${job.job_name.split('.').pop()}</td>
@@ -578,12 +669,11 @@ def get_dashboard_html() -> str:
                         <td>${job.queue}</td>
                         <td>${job.attempts}/${job.max_attempts}</td>
                         <td>${formatDate(job.created_at)}</td>
+                        ${actionsEnabled ? `
                         <td>
-                            ${CAN_WRITE === 'true' ? `
-                                <button class="btn" onclick="retryJob('${job.id}')">Retry</button>
-                                <button class="btn btn-danger" onclick="deleteJob('${job.id}')">Delete</button>
-                            ` : ''}
-                        </td>
+                            ${canRetry ? `<button class="btn btn-primary" onclick="retryJob('${job.id}')">Retry</button>` : ''}
+                            <button class="btn btn-danger" onclick="deleteJob('${job.id}')">Delete</button>
+                        </td>` : ''}
                     </tr>
                 `;
             });
@@ -593,56 +683,57 @@ def get_dashboard_html() -> str:
         }
 
         async function updateQueueStats() {
-            try {
-                const queues = await fetchData('/api/queues');
-                if (!queues) return;
-
-                if (!Array.isArray(queues) || queues.length === 0) {
-                    document.getElementById('queue-stats').innerHTML = '<div class="loading">No queues yet</div>';
-                    return;
-                }
-
-                let html = `
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Queue</th>
-                                <th>Total</th>
-                                <th>Queued</th>
-                                <th>Done</th>
-                                <th>Failed</th>
-                                <th>Dead Letter</th>
-                                <th>Avg Processing</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                `;
-
-                queues.forEach(queue => {
-                    html += `
-                        <tr>
-                            <td>${queue.queue}</td>
-                            <td>${queue.total_jobs}</td>
-                            <td>${queue.queued}</td>
-                            <td>${queue.done}</td>
-                            <td>${queue.failed}</td>
-                            <td>${queue.dead_letter}</td>
-                            <td>${formatDuration(queue.avg_processing_time_ms)}</td>
-                        </tr>
-                    `;
-                });
-
-                html += '</tbody></table>';
-                document.getElementById('queue-stats').innerHTML = html;
-            } catch (error) {
-                console.error('Error updating queue stats:', error);
-                document.getElementById('queue-stats').innerHTML = '<div class="loading">Unable to load queue stats. Ensure workers are running and database is reachable.</div>';
+            const queues = await fetchData('/api/queues');
+            if (!queues) {
+                setFallback('queue-stats', 'Unable to load queue stats. Ensure the database is reachable and workers are running.');
+                return;
             }
+
+            if (!Array.isArray(queues) || queues.length === 0) {
+                document.getElementById('queue-stats').innerHTML = '<div class="loading">No queues yet</div>';
+                return;
+            }
+
+            let html = `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Queue</th>
+                            <th>Total</th>
+                            <th>Queued</th>
+                            <th>Done</th>
+                            <th>Failed</th>
+                            <th>Dead Letter</th>
+                            <th>Avg Processing</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+
+            queues.forEach(queue => {
+                html += `
+                    <tr>
+                        <td>${queue.queue}</td>
+                        <td>${queue.total_jobs}</td>
+                        <td>${queue.queued}</td>
+                        <td>${queue.done}</td>
+                        <td>${queue.failed}</td>
+                        <td>${queue.dead_letter}</td>
+                        <td>${formatDuration(queue.avg_processing_time_ms)}</td>
+                    </tr>
+                `;
+            });
+
+            html += '</tbody></table>';
+            document.getElementById('queue-stats').innerHTML = html;
         }
 
         async function updateMetrics() {
             const metrics = await fetchData('/api/metrics');
-            if (!metrics) return;
+            if (!metrics) {
+                setFallback('metrics', 'Metrics unavailable. Check database connectivity.');
+                return;
+            }
 
             const html = `
                 <div class="stats-grid">
@@ -702,12 +793,17 @@ def get_dashboard_html() -> str:
 
         async function updateAll() {
             updateModeNotice();
-            await Promise.all([
+            await Promise.allSettled([
                 updateStats(),
                 updateJobs(),
                 updateQueueStats(),
                 updateMetrics()
             ]);
+            const lastUpdated = document.getElementById('last-updated');
+            if (lastUpdated) {
+                const now = new Date();
+                lastUpdated.textContent = ` · Last updated at ${now.toLocaleTimeString()}`;
+            }
         }
 
         // Initial load
