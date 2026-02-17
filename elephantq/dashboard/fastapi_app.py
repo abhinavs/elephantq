@@ -341,6 +341,15 @@ def get_dashboard_html() -> str:
             font-size: 12px;
             margin-top: 20px;
         }
+        .notice {
+            background: rgba(255, 209, 102, 0.16);
+            border: 1px solid rgba(255, 209, 102, 0.4);
+            color: #ffe2a3;
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 12px;
+            margin-bottom: 14px;
+        }
         .btn {
             background: var(--accent);
             color: #1a1a1a;
@@ -385,6 +394,7 @@ def get_dashboard_html() -> str:
             </div>
         </div>
 
+        <div id="mode-notice"></div>
         <div class="stats-grid" id="stats-grid">
             <div class="loading">Loading statistics...</div>
         </div>
@@ -506,6 +516,16 @@ def get_dashboard_html() -> str:
             `;
 
             document.getElementById('stats-grid').innerHTML = html;
+        }
+
+        function updateModeNotice() {
+            const notice = document.getElementById('mode-notice');
+            if (!notice) return;
+            if (CAN_WRITE !== 'true') {
+                notice.innerHTML = '<div class="notice">Dashboard is in read-only mode. Set ELEPHANTQ_DASHBOARD_WRITE_ENABLED=true to enable actions.</div>';
+            } else {
+                notice.innerHTML = '';
+            }
         }
 
         async function updateJobs() {
@@ -658,6 +678,7 @@ def get_dashboard_html() -> str:
         }
 
         async function updateAll() {
+            updateModeNotice();
             await Promise.all([
                 updateStats(),
                 updateJobs(),
