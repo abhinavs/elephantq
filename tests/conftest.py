@@ -3,7 +3,6 @@ import os
 
 import pytest
 
-from elephantq.db.connection import close_pool
 from tests.db_utils import clear_table, create_test_database
 
 # Ensure test database URL is set
@@ -30,10 +29,9 @@ async def setup_test_database():
 @pytest.fixture(autouse=True)
 async def clean_test_state():
     """Clean test state before each test to ensure isolation."""
-    # Ensure database exists and is clean
-    await create_test_database()
-
     # Clean up any existing connections
+    from elephantq.db.connection import close_pool
+
     await close_pool()
 
     # Configure global ElephantQ app to use test database consistently
@@ -41,7 +39,7 @@ async def clean_test_state():
 
     elephantq.configure(database_url="postgresql://postgres@localhost/elephantq_test")
 
-    # Get fresh pool and clear any existing jobs (use global app's pool for consistency)
+    # Get pool and clear any existing jobs (use global app's pool for consistency)
     global_app = elephantq._get_global_app()
     app_pool = await global_app.get_pool()
     await clear_table(app_pool)

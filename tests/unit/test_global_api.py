@@ -16,8 +16,6 @@ def reset_global_app():
     """Reset global app state before each test"""
     elephantq._global_app = None
     yield
-    if elephantq._global_app and elephantq._global_app.is_initialized:
-        asyncio.run(elephantq._global_app.close())
     elephantq._global_app = None
 
 
