@@ -229,6 +229,9 @@ def get_dashboard_html() -> str:
             box-shadow: 0 12px 30px var(--shadow);
             margin-bottom: 22px;
         }
+        [data-theme="light"] .topbar {
+            background: linear-gradient(135deg, #fff6e8 0%, #f2f5ff 100%);
+        }
         .title {
             display: flex;
             flex-direction: column;
@@ -271,6 +274,9 @@ def get_dashboard_html() -> str:
             padding: 18px;
             border-radius: 14px;
             box-shadow: 0 10px 22px var(--shadow);
+        }
+        [data-theme="light"] .stat-card {
+            background: linear-gradient(160deg, #ffffff 0%, #f5f2ec 100%);
         }
         .stat-number {
             font-size: 28px;
@@ -329,6 +335,10 @@ def get_dashboard_html() -> str:
         .status-queued { background: rgba(255, 209, 102, 0.18); color: #ffe2a3; }
         .status-failed { background: rgba(255, 107, 107, 0.18); color: #ffc0c0; }
         .status-dead_letter { background: rgba(255, 107, 107, 0.12); color: #ffb0b0; }
+        [data-theme="light"] .status-done { background: rgba(42, 160, 122, 0.18); color: #1b5e4b; }
+        [data-theme="light"] .status-queued { background: rgba(255, 176, 74, 0.22); color: #6b4a00; }
+        [data-theme="light"] .status-failed { background: rgba(224, 75, 75, 0.18); color: #7a1e1e; }
+        [data-theme="light"] .status-dead_letter { background: rgba(224, 75, 75, 0.12); color: #7a1e1e; }
         .loading {
             text-align: center;
             padding: 16px;
@@ -349,6 +359,11 @@ def get_dashboard_html() -> str:
             border-radius: 10px;
             font-size: 12px;
             margin-bottom: 14px;
+        }
+        [data-theme="light"] .notice {
+            background: rgba(255, 176, 74, 0.18);
+            border: 1px solid rgba(255, 176, 74, 0.5);
+            color: #6b4a00;
         }
         .btn {
             background: var(--accent);
@@ -432,7 +447,8 @@ def get_dashboard_html() -> str:
 
         function applyTheme(theme) {
             if (theme === 'system') {
-                document.documentElement.removeAttribute('data-theme');
+                const systemTheme = prefersDark.matches ? 'dark' : 'light';
+                document.documentElement.setAttribute('data-theme', systemTheme);
             } else {
                 document.documentElement.setAttribute('data-theme', theme);
             }
@@ -522,7 +538,7 @@ def get_dashboard_html() -> str:
             const notice = document.getElementById('mode-notice');
             if (!notice) return;
             if (CAN_WRITE !== 'true') {
-                notice.innerHTML = '<div class="notice">Dashboard is in read-only mode. Set ELEPHANTQ_DASHBOARD_WRITE_ENABLED=true to enable actions.</div>';
+                notice.innerHTML = '<div class="notice">Read-only mode: set ELEPHANTQ_DASHBOARD_WRITE_ENABLED=true to enable actions.</div>';
             } else {
                 notice.innerHTML = '';
             }
