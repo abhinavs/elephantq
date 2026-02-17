@@ -57,6 +57,23 @@ await elephantq.enqueue(my_first_job, user_id=123)
 
 ---
 
+## Troubleshooting
+
+**Job not registered?**  
+Ensure the worker can import your module:
+
+```bash
+export ELEPHANTQ_JOBS_MODULES="my_app.tasks"
+elephantq start
+```
+
+**Missing tables?**  
+Run migrations:
+
+```bash
+elephantq setup
+```
+
 ### Docker Quickstart (PostgreSQL)
 
 ```bash
