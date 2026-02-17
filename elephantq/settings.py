@@ -133,8 +133,8 @@ class ElephantQSettings(BaseSettings):
     timeouts_enabled: bool = Field(
         default=False, description="Enable job timeout processing"
     )
-    security_enabled: bool = Field(
-        default=False, description="Enable secret management and security helpers"
+    signing_enabled: bool = Field(
+        default=False, description="Enable signing and secret helpers"
     )
 
     # Timeouts and Intervals

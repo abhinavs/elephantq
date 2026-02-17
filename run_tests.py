@@ -218,6 +218,7 @@ def main():
             [
                 "tests/unit/test_configuration.py",
                 "tests/unit/test_global_api.py",
+                "tests/unit/test_feature_flags.py",
             ],
         ),
     ]

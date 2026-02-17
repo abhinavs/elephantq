@@ -9,7 +9,7 @@ from . import timeout_processor
 from . import dead_letter
 from . import logging
 from . import metrics
-from . import security
+from . import signing
 from . import webhooks
 
 __all__ = [
@@ -24,6 +24,6 @@ __all__ = [
     "dead_letter",
     "logging",
     "metrics",
-    "security",
+    "signing",
     "webhooks",
 ]

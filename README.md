@@ -19,7 +19,7 @@ ElephantQ is a modern, async-first job queue that uses PostgreSQL as the only ba
 
 ```bash
 # 1. Install
-pip install elephantq
+pip install "git+https://github.com/fastjob-dev/fastjob#subdirectory=elephantq"
 
 # 2. Set your database URL
 export ELEPHANTQ_DATABASE_URL="postgresql://localhost/your_db"
@@ -27,6 +27,8 @@ export ELEPHANTQ_DATABASE_URL="postgresql://localhost/your_db"
 # 3. Initialize database (creates tables)
 elephantq setup
 ```
+
+*Note: ElephantQ is not yet on PyPI.*
 
 ## Architecture at a Glance
 
@@ -184,15 +186,16 @@ pip install elephantq[all]
 Enable feature flags:
 
 ```bash
-export ELEPHANTQ_DASHBOARD_ENABLED=true
-export ELEPHANTQ_SCHEDULING_ENABLED=true
-export ELEPHANTQ_DEAD_LETTER_QUEUE_ENABLED=true
-export ELEPHANTQ_METRICS_ENABLED=true
-export ELEPHANTQ_LOGGING_ENABLED=true
-export ELEPHANTQ_WEBHOOKS_ENABLED=true
-export ELEPHANTQ_DEPENDENCIES_ENABLED=true
-export ELEPHANTQ_TIMEOUTS_ENABLED=true
-export ELEPHANTQ_SECURITY_ENABLED=true
+export ELEPHANTQ_DASHBOARD_ENABLED=true           # enable dashboard UI
+export ELEPHANTQ_DASHBOARD_WRITE_ENABLED=true     # allow retry/delete actions
+export ELEPHANTQ_SCHEDULING_ENABLED=true          # recurring + delayed jobs
+export ELEPHANTQ_DEAD_LETTER_QUEUE_ENABLED=true   # dead letter queue
+export ELEPHANTQ_METRICS_ENABLED=true             # metrics endpoints
+export ELEPHANTQ_LOGGING_ENABLED=true             # structured logging
+export ELEPHANTQ_WEBHOOKS_ENABLED=true            # webhooks on job events
+export ELEPHANTQ_DEPENDENCIES_ENABLED=true        # job dependencies
+export ELEPHANTQ_TIMEOUTS_ENABLED=true            # job timeouts
+export ELEPHANTQ_SIGNING_ENABLED=true             # optional helpers (signing, secrets utils)
 ```
 
 Example usage:

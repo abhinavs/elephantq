@@ -18,7 +18,7 @@ import logging
 import aiohttp
 import asyncpg
 from elephantq.db.connection import get_pool
-from .security import SecureWebhookSecret
+from .signing import SecureWebhookSecret
 
 
 logger = logging.getLogger(__name__)
@@ -108,7 +108,7 @@ class WebhookDelivery:
 
 
 class WebhookSigner:
-    """Webhook payload signing for security"""
+    """Webhook payload signing"""
     
     @staticmethod
     def sign_payload(payload: str, secret: str) -> str:

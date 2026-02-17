@@ -35,7 +35,7 @@ from .dead_letter import (
     list_dead_letter_jobs as _list_dead_letter_jobs,
     get_dead_letter_stats as _get_dead_letter_stats
 )
-from .security import (
+from .signing import (
     get_secret_manager as _get_secret_manager,
     encrypt_secret as _encrypt_secret,
     decrypt_secret as _decrypt_secret
@@ -48,7 +48,7 @@ class WebhookManager:
     Centralized webhook management for job lifecycle notifications.
     
     Provides a clean interface for managing webhook endpoints, deliveries,
-    and security without dealing with individual functions.
+    and signing without dealing with individual functions.
     """
     
     def __init__(self):
@@ -172,16 +172,16 @@ class DeadLetterManager:
         return await _get_dead_letter_stats()
 
 
-class SecurityManager:
+class SigningManager:
     """
-    Security and encryption management for sensitive data.
+    Signing and encryption management for sensitive data.
     
-    Centralizes all security-related functionality including secret encryption,
+    Centralizes signing-related functionality including secret encryption,
     key management, and secure storage.
     """
     
     def __init__(self):
-        require_feature("security_enabled", "Security")
+        require_feature("signing_enabled", "Signing")
 
     def encrypt_secret(self, plaintext: str) -> str:
         """Encrypt a secret for secure storage"""
@@ -209,7 +209,7 @@ class ElephantQFeatures:
         self._metrics: Optional[MetricsCollector] = None
         self._logging: Optional[LoggingManager] = None
         self._dead_letter: Optional[DeadLetterManager] = None
-        self._security: Optional[SecurityManager] = None
+        self._signing: Optional[SigningManager] = None
 
     @property
     def webhooks(self) -> WebhookManager:
@@ -236,10 +236,10 @@ class ElephantQFeatures:
         return self._dead_letter
 
     @property
-    def security(self) -> SecurityManager:
-        if self._security is None:
-            self._security = SecurityManager()
-        return self._security
+    def signing(self) -> SigningManager:
+        if self._signing is None:
+            self._signing = SigningManager()
+        return self._signing
     
     async def setup_all(self):
         """Setup all optional features"""
@@ -253,7 +253,7 @@ class ElephantQFeatures:
             "metrics": "collecting",
             "dead_letter": "ready",
             "logging": "configured",
-            "security": "available"
+            "signing": "available"
         }
     
     async def get_status(self):
@@ -266,7 +266,7 @@ class ElephantQFeatures:
             "metrics": await self.metrics.get_system_metrics(),
             "dead_letter": await self.dead_letter.get_stats(),
             "logging": "active",
-            "security": "encrypted"
+            "signing": "ready"
         }
 
 
