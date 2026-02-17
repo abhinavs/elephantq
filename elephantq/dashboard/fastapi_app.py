@@ -298,7 +298,7 @@ def get_dashboard_html() -> str:
         .section h2 {
             margin: 0 0 12px 0;
             font-size: 18px;
-            color: var(--accent);
+            color: var(--accent-2);
         }
         .table-wrap {
             overflow-x: auto;
@@ -461,11 +461,18 @@ def get_dashboard_html() -> str:
             return localStorage.getItem(THEME_KEY) || 'system';
         }
 
+        
         function cycleTheme() {
             const current = getStoredTheme();
-            const next = current === 'system' ? 'light' : current === 'light' ? 'dark' : 'system';
-            localStorage.setItem(THEME_KEY, next);
-            applyTheme(next);
+            const systemTheme = prefersDark.matches ? 'dark' : 'light';
+            if (current === 'system') {
+                const next = systemTheme === 'dark' ? 'light' : 'dark';
+                localStorage.setItem(THEME_KEY, next);
+                applyTheme(next);
+            } else {
+                localStorage.setItem(THEME_KEY, 'system');
+                applyTheme('system');
+            }
         }
 
         window.addEventListener('DOMContentLoaded', () => {
@@ -629,7 +636,7 @@ def get_dashboard_html() -> str:
                 document.getElementById('queue-stats').innerHTML = html;
             } catch (error) {
                 console.error('Error updating queue stats:', error);
-                document.getElementById('queue-stats').innerHTML = '<div class="loading">Unable to load queue stats</div>';
+                document.getElementById('queue-stats').innerHTML = '<div class="loading">Unable to load queue stats. Ensure workers are running and database is reachable.</div>';
             }
         }
 
