@@ -211,7 +211,10 @@ class TestPydanticConfiguration:
         settings = get_settings(reload=True)
 
         # Only ELEPHANTQ_DATABASE_URL should be used (DATABASE_URL ignored)
-        assert settings.database_url == "postgresql://elephantq_user@localhost/elephantq_db"
+        assert (
+            settings.database_url
+            == "postgresql://elephantq_user@localhost/elephantq_db"
+        )
 
     def test_configuration_file_loading(self):
         """Test configuration file loading functionality."""
@@ -253,7 +256,9 @@ class TestPydanticConfiguration:
     def test_get_settings_reload_functionality(self):
         """Test get_settings() reload functionality."""
         # Initial settings
-        os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://initial@localhost/initial_db"
+        os.environ["ELEPHANTQ_DATABASE_URL"] = (
+            "postgresql://initial@localhost/initial_db"
+        )
 
         from elephantq.settings import get_settings
 

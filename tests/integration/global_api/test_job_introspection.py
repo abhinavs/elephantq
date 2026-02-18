@@ -345,8 +345,12 @@ class TestUniqueJobs:
     async def test_unique_override_parameter(self):
         """Test unique parameter override in enqueue"""
         # Non-unique job made unique via parameter
-        job1 = await elephantq.enqueue(simple_task, unique=True, message="override_test")
-        job2 = await elephantq.enqueue(simple_task, unique=True, message="override_test")
+        job1 = await elephantq.enqueue(
+            simple_task, unique=True, message="override_test"
+        )
+        job2 = await elephantq.enqueue(
+            simple_task, unique=True, message="override_test"
+        )
 
         # Should return same job ID
         assert job1 == job2

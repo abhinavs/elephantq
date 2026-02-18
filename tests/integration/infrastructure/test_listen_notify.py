@@ -381,7 +381,9 @@ async def test_notification_failure_fallback(test_db, clean_app):
 
     try:
         elephantq.settings._settings = None
-        os.environ["ELEPHANTQ_NOTIFICATION_TIMEOUT"] = "1.0"  # 1 second polling fallback
+        os.environ["ELEPHANTQ_NOTIFICATION_TIMEOUT"] = (
+            "1.0"  # 1 second polling fallback
+        )
 
         worker_task = asyncio.create_task(app.run_worker(concurrency=1, run_once=False))
         await asyncio.sleep(1.5)

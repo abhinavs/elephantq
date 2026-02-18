@@ -2,48 +2,54 @@
 FastAPI web dashboard for ElephantQ.
 """
 
-from typing import Dict, List, Any, Optional
+from typing import Any, Dict, List, Optional
 
 try:
-    from fastapi import FastAPI, Request, HTTPException
-    from fastapi.responses import HTMLResponse
-    from fastapi.middleware.cors import CORSMiddleware
     import uvicorn
+    from fastapi import FastAPI, HTTPException, Request
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import HTMLResponse
+
     FASTAPI_AVAILABLE = True
 except ImportError:
     FASTAPI_AVAILABLE = False
 
+from elephantq.settings import get_settings
+
 from .app import (
-    get_job_stats,
-    get_recent_jobs,
-    get_queue_stats,
-    get_job_metrics,
-    get_job_details,
-    retry_job,
-    delete_job,
     cancel_job,
-    get_worker_stats,
+    delete_job,
+    get_job_details,
+    get_job_metrics,
+    get_job_stats,
     get_job_timeline,
     get_job_types_stats,
-    search_jobs,
+    get_queue_stats,
+    get_recent_jobs,
     get_system_health,
+    get_worker_stats,
+    retry_job,
+    search_jobs,
 )
-from elephantq.settings import get_settings
 
 
 def create_dashboard_app() -> "FastAPI":
     """Create FastAPI dashboard application"""
     if not FASTAPI_AVAILABLE:
-        raise ImportError("FastAPI is required for dashboard. Install with: pip install fastapi uvicorn")
+        raise ImportError(
+            "FastAPI is required for dashboard. Install with: pip install fastapi uvicorn"
+        )
 
     settings = get_settings()
     if not settings.dashboard_enabled:
-        raise RuntimeError("Dashboard is disabled. Set ELEPHANTQ_DASHBOARD_ENABLED=true")
+        raise RuntimeError(
+            "Dashboard is disabled. Set ELEPHANTQ_DASHBOARD_ENABLED=true"
+        )
 
     app = FastAPI(
         title="ElephantQ Dashboard",
         description="Real-time job monitoring and management",
-        version="1.0.0"
+        version="1.0.0",
     )
 
     # Add CORS middleware
@@ -66,7 +72,9 @@ def create_dashboard_app() -> "FastAPI":
         return await get_job_stats()
 
     @app.get("/api/jobs")
-    async def api_recent_jobs(limit: int = 50, queue: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def api_recent_jobs(
+        limit: int = 50, queue: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
         """Get recent jobs"""
         return await get_recent_jobs(limit=limit, queue=queue)
 
@@ -92,7 +100,9 @@ def create_dashboard_app() -> "FastAPI":
     async def api_retry_job(job_id: str) -> Dict[str, str]:
         """Retry a failed job"""
         if not settings.dashboard_write_enabled:
-            raise HTTPException(status_code=403, detail="Dashboard write actions are disabled")
+            raise HTTPException(
+                status_code=403, detail="Dashboard write actions are disabled"
+            )
         success = await retry_job(job_id)
         if not success:
             raise HTTPException(status_code=400, detail="Unable to retry job")
@@ -102,7 +112,9 @@ def create_dashboard_app() -> "FastAPI":
     async def api_delete_job(job_id: str) -> Dict[str, str]:
         """Delete a job"""
         if not settings.dashboard_write_enabled:
-            raise HTTPException(status_code=403, detail="Dashboard write actions are disabled")
+            raise HTTPException(
+                status_code=403, detail="Dashboard write actions are disabled"
+            )
         success = await delete_job(job_id)
         if not success:
             raise HTTPException(status_code=400, detail="Unable to delete job")
@@ -112,7 +124,9 @@ def create_dashboard_app() -> "FastAPI":
     async def api_cancel_job(job_id: str) -> Dict[str, str]:
         """Cancel a queued job"""
         if not settings.dashboard_write_enabled:
-            raise HTTPException(status_code=403, detail="Dashboard write actions are disabled")
+            raise HTTPException(
+                status_code=403, detail="Dashboard write actions are disabled"
+            )
         success = await cancel_job(job_id)
         if not success:
             raise HTTPException(status_code=400, detail="Unable to cancel job")
@@ -140,7 +154,7 @@ def create_dashboard_app() -> "FastAPI":
         queue: Optional[str] = None,
         job_name: Optional[str] = None,
         limit: int = 100,
-        offset: int = 0
+        offset: int = 0,
     ) -> Dict[str, Any]:
         """Search and filter jobs with pagination"""
         return await search_jobs(
@@ -149,7 +163,7 @@ def create_dashboard_app() -> "FastAPI":
             queue=queue,
             job_name=job_name,
             limit=limit,
-            offset=offset
+            offset=offset,
         )
 
     @app.get("/api/system/health")
@@ -165,7 +179,7 @@ def get_dashboard_html() -> str:
     from elephantq.settings import get_settings
 
     can_write = str(get_settings().dashboard_write_enabled).lower()
-    html = '''
+    html = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -831,14 +845,16 @@ def get_dashboard_html() -> str:
     </script>
 </body>
 </html>
-'''
+"""
     return html.replace("__ELEPHANTQ_CAN_WRITE__", can_write)
 
 
 async def run_dashboard(host: str = "127.0.0.1", port: int = 6161):
     """Run the dashboard server"""
     if not FASTAPI_AVAILABLE:
-        raise ImportError("FastAPI is required for dashboard. Install with: pip install fastapi uvicorn")
+        raise ImportError(
+            "FastAPI is required for dashboard. Install with: pip install fastapi uvicorn"
+        )
 
     app = create_dashboard_app()
     config = uvicorn.Config(app, host=host, port=port, log_level="info")

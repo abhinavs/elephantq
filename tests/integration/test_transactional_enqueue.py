@@ -20,9 +20,7 @@ async def test_transactional_enqueue_rolls_back():
         except RuntimeError:
             pass
 
-        row = await conn.fetchrow(
-            "SELECT id FROM elephantq_jobs WHERE id = $1", job_id
-        )
+        row = await conn.fetchrow("SELECT id FROM elephantq_jobs WHERE id = $1", job_id)
         assert row is None
 
 
@@ -37,9 +35,7 @@ async def test_transactional_enqueue_commits():
         async with conn.transaction():
             job_id = await elephantq.enqueue(txn_job_commit, connection=conn)
 
-        row = await conn.fetchrow(
-            "SELECT id FROM elephantq_jobs WHERE id = $1", job_id
-        )
+        row = await conn.fetchrow("SELECT id FROM elephantq_jobs WHERE id = $1", job_id)
         assert row is not None
 
 
@@ -61,9 +57,7 @@ async def test_transactional_schedule_rolls_back():
         except RuntimeError:
             pass
 
-        row = await conn.fetchrow(
-            "SELECT id FROM elephantq_jobs WHERE id = $1", job_id
-        )
+        row = await conn.fetchrow("SELECT id FROM elephantq_jobs WHERE id = $1", job_id)
         assert row is None
 
 
@@ -77,9 +71,7 @@ async def test_non_transactional_enqueue_commits_immediately():
 
     pool = await get_pool()
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT id FROM elephantq_jobs WHERE id = $1", job_id
-        )
+        row = await conn.fetchrow("SELECT id FROM elephantq_jobs WHERE id = $1", job_id)
         assert row is not None
 
 
@@ -106,7 +98,5 @@ async def test_unique_enqueue_rollback_does_not_block_next_enqueue():
 
     job_id = await elephantq.enqueue(unique_job, payload=unique_payload)
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            "SELECT id FROM elephantq_jobs WHERE id = $1", job_id
-        )
+        row = await conn.fetchrow("SELECT id FROM elephantq_jobs WHERE id = $1", job_id)
         assert row is not None

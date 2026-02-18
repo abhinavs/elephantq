@@ -109,9 +109,7 @@ async def test_retry_mechanism():
     @elephantq.job(retries=3)
     async def flaky_job(job_id: str, should_fail: bool):
         if should_fail:
-            _flaky_job_fail_counts[job_id] = (
-                _flaky_job_fail_counts.get(job_id, 0) + 1
-            )
+            _flaky_job_fail_counts[job_id] = _flaky_job_fail_counts.get(job_id, 0) + 1
             if _flaky_job_fail_counts[job_id] <= 2:
                 raise ValueError("Simulated failure")
         return "Success"

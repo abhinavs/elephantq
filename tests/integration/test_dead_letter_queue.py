@@ -1,9 +1,9 @@
 import pytest
 
 import elephantq
+from elephantq.db.context import get_context_pool
 from elephantq.features import dead_letter
 from elephantq.features.dead_letter import DeadLetterReason
-from elephantq.db.context import get_context_pool
 
 
 @pytest.mark.asyncio

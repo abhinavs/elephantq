@@ -12,7 +12,11 @@ from .core import resolve_elephantq_instance
 
 async def _with_context(args, handler):
     """Run a handler with a properly configured database context."""
-    from elephantq.db.context import DatabaseContext, clear_current_context, set_current_context
+    from elephantq.db.context import (
+        DatabaseContext,
+        clear_current_context,
+        set_current_context,
+    )
 
     try:
         elephantq_instance = await resolve_elephantq_instance(args)
@@ -39,6 +43,7 @@ async def _with_context(args, handler):
 
 def with_elephantq_context(handler: Callable):
     """Decorator to run CLI handlers with a configured database context."""
+
     def wrapper(args):
         try:
             return asyncio.run(_with_context(args, handler))
@@ -67,9 +72,18 @@ def register_extended_commands():
         description="Start the ElephantQ web dashboard for monitoring jobs",
         handler=handle_dashboard_command,
         arguments=[
-            {"args": ["--host"], "kwargs": {"default": "127.0.0.1", "help": "Host to bind to"}},
-            {"args": ["--port"], "kwargs": {"type": int, "default": 6161, "help": "Port to bind to"}},
-            {"args": ["--reload"], "kwargs": {"action": "store_true", "help": "Enable auto-reload"}},
+            {
+                "args": ["--host"],
+                "kwargs": {"default": "127.0.0.1", "help": "Host to bind to"},
+            },
+            {
+                "args": ["--port"],
+                "kwargs": {"type": int, "default": 6161, "help": "Port to bind to"},
+            },
+            {
+                "args": ["--reload"],
+                "kwargs": {"action": "store_true", "help": "Enable auto-reload"},
+            },
         ]
         + instance_arguments,
         category="features",
@@ -131,14 +145,49 @@ def register_extended_commands():
         description="Manage jobs in the dead letter queue",
         handler=handle_dead_letter_command,
         arguments=[
-            {"args": ["action"], "kwargs": {"choices": ["list", "resurrect", "delete", "cleanup", "export"], "help": "Action to perform"}},
-            {"args": ["job_ids"], "kwargs": {"nargs": "*", "help": "Job IDs (for resurrect)"}},
-            {"args": ["--all"], "kwargs": {"action": "store_true", "help": "Apply action to all jobs"}},
+            {
+                "args": ["action"],
+                "kwargs": {
+                    "choices": ["list", "resurrect", "delete", "cleanup", "export"],
+                    "help": "Action to perform",
+                },
+            },
+            {
+                "args": ["job_ids"],
+                "kwargs": {"nargs": "*", "help": "Job IDs (for resurrect)"},
+            },
+            {
+                "args": ["--all"],
+                "kwargs": {"action": "store_true", "help": "Apply action to all jobs"},
+            },
             {"args": ["--filter"], "kwargs": {"help": "Filter by job name pattern"}},
-            {"args": ["--limit"], "kwargs": {"type": int, "default": 50, "help": "Maximum jobs to show"}},
-            {"args": ["--days"], "kwargs": {"type": int, "default": 30, "help": "Remove jobs older than N days"}},
-            {"args": ["--dry-run"], "kwargs": {"action": "store_true", "help": "Show what would be deleted"}},
-            {"args": ["--format"], "kwargs": {"choices": ["csv", "json"], "default": "csv", "help": "Export format"}},
+            {
+                "args": ["--limit"],
+                "kwargs": {"type": int, "default": 50, "help": "Maximum jobs to show"},
+            },
+            {
+                "args": ["--days"],
+                "kwargs": {
+                    "type": int,
+                    "default": 30,
+                    "help": "Remove jobs older than N days",
+                },
+            },
+            {
+                "args": ["--dry-run"],
+                "kwargs": {
+                    "action": "store_true",
+                    "help": "Show what would be deleted",
+                },
+            },
+            {
+                "args": ["--format"],
+                "kwargs": {
+                    "choices": ["csv", "json"],
+                    "default": "csv",
+                    "help": "Export format",
+                },
+            },
             {"args": ["--output"], "kwargs": {"help": "Output file path"}},
         ]
         + instance_arguments,
@@ -151,7 +200,9 @@ def handle_dashboard_command(args):
     from elephantq import DASHBOARD_AVAILABLE
 
     if not DASHBOARD_AVAILABLE:
-        print("Dashboard is not available. Install with: pip install elephantq[dashboard]")
+        print(
+            "Dashboard is not available. Install with: pip install elephantq[dashboard]"
+        )
         return 1
 
     from elephantq.dashboard.fastapi_app import run_dashboard
@@ -181,7 +232,9 @@ def handle_scheduler_command(args):
                 print(f"  Check interval: {status['check_interval']}s")
             return 0
 
-        print(f"Starting ElephantQ recurring scheduler (checking every {args.check_interval}s)")
+        print(
+            f"Starting ElephantQ recurring scheduler (checking every {args.check_interval}s)"
+        )
         print("Use Ctrl+C to stop gracefully")
 
         try:
@@ -227,17 +280,17 @@ def handle_metrics_command(args):
 
 @with_elephantq_context
 def handle_dead_letter_command(args):
-    from elephantq.features.flags import require_feature
     from elephantq.features.dead_letter import (
+        bulk_delete_dead_letter_jobs,
+        bulk_resurrect_jobs,
+        cleanup_old_dead_letter_jobs,
         create_filter,
+        delete_dead_letter_job,
+        export_dead_letter_jobs,
         list_dead_letter_jobs,
         resurrect_job,
-        bulk_resurrect_jobs,
-        delete_dead_letter_job,
-        bulk_delete_dead_letter_jobs,
-        cleanup_old_dead_letter_jobs,
-        export_dead_letter_jobs,
     )
+    from elephantq.features.flags import require_feature
 
     async def _run():
         require_feature("dead_letter_queue_enabled", "Dead letter queue")
@@ -264,7 +317,9 @@ def handle_dead_letter_command(args):
             return 1
 
         if action == "cleanup":
-            return await cleanup_old_dead_letter_jobs(days=args.days, dry_run=args.dry_run)
+            return await cleanup_old_dead_letter_jobs(
+                days=args.days, dry_run=args.dry_run
+            )
 
         if action == "delete":
             if args.all:
@@ -280,7 +335,9 @@ def handle_dead_letter_command(args):
             if not args.output:
                 print("--output is required for export")
                 return 1
-            filename = await export_dead_letter_jobs(filter_criteria, format=args.format)
+            filename = await export_dead_letter_jobs(
+                filter_criteria, format=args.format
+            )
             if args.output and args.output != filename:
                 import os
 

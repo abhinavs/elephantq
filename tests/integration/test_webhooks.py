@@ -1,10 +1,11 @@
 import asyncio
 import json
+
 import pytest
 from aiohttp import web
 
-from elephantq.features import webhooks
 from elephantq.db.connection import get_pool
+from elephantq.features import webhooks
 
 
 @pytest.mark.asyncio

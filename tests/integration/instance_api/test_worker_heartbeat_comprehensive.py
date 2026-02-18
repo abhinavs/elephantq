@@ -82,7 +82,8 @@ async def test_worker_heartbeat_lifecycle_complete(clean_db, elephantq_instance)
 
     async with pool.acquire() as conn:
         result = await conn.fetchrow(
-            "SELECT last_heartbeat FROM elephantq_workers WHERE id = $1", worker.worker_id
+            "SELECT last_heartbeat FROM elephantq_workers WHERE id = $1",
+            worker.worker_id,
         )
         updated_heartbeat = result["last_heartbeat"]
         assert updated_heartbeat > initial_heartbeat
@@ -165,7 +166,8 @@ async def test_worker_job_processing_integration(clean_db, elephantq_instance):
     # Get initial heartbeat
     async with pool.acquire() as conn:
         initial_result = await conn.fetchrow(
-            "SELECT last_heartbeat FROM elephantq_workers WHERE id = $1", worker.worker_id
+            "SELECT last_heartbeat FROM elephantq_workers WHERE id = $1",
+            worker.worker_id,
         )
         initial_heartbeat = initial_result["last_heartbeat"]
 
@@ -179,7 +181,8 @@ async def test_worker_job_processing_integration(clean_db, elephantq_instance):
     async with pool.acquire() as conn:
         # Check heartbeat was updated (allow small time margin)
         heartbeat_result = await conn.fetchrow(
-            "SELECT last_heartbeat FROM elephantq_workers WHERE id = $1", worker.worker_id
+            "SELECT last_heartbeat FROM elephantq_workers WHERE id = $1",
+            worker.worker_id,
         )
         final_heartbeat = heartbeat_result["last_heartbeat"]
         # Allow for same timestamp if processing was very fast

@@ -177,6 +177,7 @@ async def handle_start_command(args):
     # --- BEGIN DISCOVERY SNIPPET ---
     import importlib
     import sys
+
     from elephantq import settings
 
     if not settings.ELEPHANTQ_JOBS_MODULES:

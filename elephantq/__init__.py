@@ -116,7 +116,9 @@ def configure(**kwargs):
     for key, value in kwargs.items():
         elephantq_key = enhanced_to_elephantq.get(key, key)
         if key == "default_queue":
-            settings_kwargs[elephantq_key] = [value] if isinstance(value, str) else value
+            settings_kwargs[elephantq_key] = (
+                [value] if isinstance(value, str) else value
+            )
         else:
             settings_kwargs[elephantq_key] = value
 

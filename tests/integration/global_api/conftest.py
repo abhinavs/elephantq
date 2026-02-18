@@ -46,7 +46,9 @@ async def clean_global_api_state():
             await clear_table(app_pool)
     except Exception:
         # Fallback - just configure without clearing
-        elephantq.configure(database_url="postgresql://postgres@localhost/elephantq_test")
+        elephantq.configure(
+            database_url="postgresql://postgres@localhost/elephantq_test"
+        )
 
     yield
 

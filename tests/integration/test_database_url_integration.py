@@ -50,7 +50,14 @@ async def setup_test_databases():
         # Set up each database with ElephantQ schema using the setup command
         db_url = f"postgresql://postgres@localhost/{db_name}"
         setup_result = subprocess.run(
-            [sys.executable, "-m", "elephantq.cli.main", "setup", "--database-url", db_url],
+            [
+                sys.executable,
+                "-m",
+                "elephantq.cli.main",
+                "setup",
+                "--database-url",
+                db_url,
+            ],
             cwd=str(PROJECT_ROOT),
             capture_output=True,
             text=True,

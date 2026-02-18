@@ -22,7 +22,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 async def run_cli_command(args, timeout=10):
     """Run CLI command and return result"""
     result = subprocess.run(
-            [sys.executable, "-m", "elephantq.cli.main"] + args,
+        [sys.executable, "-m", "elephantq.cli.main"] + args,
         capture_output=True,
         text=True,
         timeout=timeout,

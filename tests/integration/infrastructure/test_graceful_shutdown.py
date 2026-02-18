@@ -171,8 +171,8 @@ async def test_worker_listener_cleanup_handles_errors():
 @pytest.mark.asyncio
 async def test_graceful_shutdown_integration():
     """Integration test for complete graceful shutdown flow"""
-    import signal
     import os
+    import signal
 
     # This test verifies the complete shutdown flow works
     # without race conditions or error spam

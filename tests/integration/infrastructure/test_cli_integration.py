@@ -417,7 +417,9 @@ async def test_cli_database_url_validation():
 async def test_cli_without_database_url_uses_global():
     """Test that CLI without --database-url uses global API"""
     # Run start without --database-url parameter
-    result = run_cli_command(["start", "--run-once", "--queues", "__empty__"], timeout=5)
+    result = run_cli_command(
+        ["start", "--run-once", "--queues", "__empty__"], timeout=5
+    )
     assert result.returncode == 0
 
     # Should show global API configuration

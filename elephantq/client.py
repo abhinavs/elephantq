@@ -319,7 +319,9 @@ class ElephantQ:
 
             try:
                 # Set up LISTEN for job notifications
-                await listen_conn.add_listener("elephantq_new_job", notification_callback)
+                await listen_conn.add_listener(
+                    "elephantq_new_job", notification_callback
+                )
 
                 # Track last cleanup time for periodic cleanup
                 last_cleanup = 0

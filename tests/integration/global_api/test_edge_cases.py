@@ -131,7 +131,9 @@ async def test_job_argument_validation_edge_cases():
 async def test_exception_handling_in_jobs():
     """Test different types of exceptions in job execution"""
     # Enqueue jobs that will raise different exceptions
-    value_error_job = await elephantq.enqueue(exception_job, exception_type="value_error")
+    value_error_job = await elephantq.enqueue(
+        exception_job, exception_type="value_error"
+    )
     type_error_job = await elephantq.enqueue(exception_job, exception_type="type_error")
 
     # Process jobs (they will fail)
@@ -229,7 +231,9 @@ async def test_timezone_and_datetime_handling():
     from datetime import timezone
 
     tz_time = datetime.now(timezone.utc) + timedelta(minutes=30)
-    tz_job = await elephantq.enqueue(simple_job, message="timezone", scheduled_at=tz_time)
+    tz_job = await elephantq.enqueue(
+        simple_job, message="timezone", scheduled_at=tz_time
+    )
 
     # Verify both jobs were scheduled
     naive_status = await elephantq.get_job_status(naive_job)

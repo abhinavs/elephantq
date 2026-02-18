@@ -1,7 +1,7 @@
 import pytest
 
-from elephantq.settings import configure, get_settings
 from elephantq.dashboard.fastapi_app import FASTAPI_AVAILABLE, create_dashboard_app
+from elephantq.settings import configure, get_settings
 
 
 @pytest.mark.skipif(not FASTAPI_AVAILABLE, reason="FastAPI not installed")

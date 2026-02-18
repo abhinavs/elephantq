@@ -367,7 +367,9 @@ async def test_database_context_exception_handling():
 async def test_elephantq_integration_with_contexts():
     """Test integration with ElephantQ functionality using contexts"""
     # Set up environment variables for testing
-    os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
+    os.environ["ELEPHANTQ_DATABASE_URL"] = (
+        "postgresql://postgres@localhost/elephantq_test"
+    )
 
     # Clear settings cache and reload
     elephantq.settings._settings = None

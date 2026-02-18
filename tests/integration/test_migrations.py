@@ -1,16 +1,18 @@
 import subprocess
+
 import asyncpg
 import pytest
 
 from elephantq.db.migration_runner import MigrationRunner
-
 
 MIGRATIONS_DB = "elephantq_migrations_test"
 
 
 @pytest.mark.asyncio
 async def test_migrations_apply_and_idempotent():
-    subprocess.run(["dropdb", "--if-exists", MIGRATIONS_DB], check=False, stderr=subprocess.DEVNULL)
+    subprocess.run(
+        ["dropdb", "--if-exists", MIGRATIONS_DB], check=False, stderr=subprocess.DEVNULL
+    )
     subprocess.run(["createdb", MIGRATIONS_DB], check=True)
 
     db_url = f"postgresql://postgres@localhost/{MIGRATIONS_DB}"
@@ -37,4 +39,8 @@ async def test_migrations_apply_and_idempotent():
             assert "elephantq_migrations" in table_names
         await pool.close()
     finally:
-        subprocess.run(["dropdb", "--if-exists", MIGRATIONS_DB], check=False, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            ["dropdb", "--if-exists", MIGRATIONS_DB],
+            check=False,
+            stderr=subprocess.DEVNULL,
+        )

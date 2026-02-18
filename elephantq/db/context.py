@@ -12,7 +12,8 @@ from typing import Optional
 import asyncpg
 
 from ..client import ElephantQ
-from .connection import _init_connection, get_pool as get_global_pool
+from .connection import _init_connection
+from .connection import get_pool as get_global_pool
 
 logger = logging.getLogger(__name__)
 
