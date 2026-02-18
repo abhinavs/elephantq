@@ -41,12 +41,7 @@ elephantq setup
 - **Feature flag gating** keeps `elephantq.enqueue`, `elephantq.start`, and the global API lean even though dashboard, metrics, signing, and webhooks live in the same repository.
 - **Built-in observability**: CLI reports job counts, the dashboard paints job/queue metrics, and optional metrics/Prometheus data live under `elephantq.features.metrics`.
 
-## Fluent Scheduling API
-
-ElephantQ offers fluent builders so complex scheduling logic stays readable.  
-Use `elephantq.features.recurring.daily().at("09:00").high_priority().schedule(report_job)` for expressive recurring flows,  
-or `elephantq.features.scheduling.schedule_job(task).in_hours(2).enqueue(arg=...)` for ad-hoc delayed execution.  
-Batches via `elephantq.features.scheduling.create_batch().enqueue_all([...])` keep coordinated enqueues atomic and traceable across the same PostgreSQL transaction.
+## Simple Jobs
 
 ### Minimal App (FastAPI)
 
@@ -161,7 +156,17 @@ async def nightly_report():
 await elephantq.features.recurring.cron(after_midnight).schedule(nightly_report)
 ```
 
-Make sure `ELEPHANTQ_SCHEDULING_ENABLED=true` is set when using recurring jobs.
+Make sure `ELEPHANTQ_SCHEDULING_ENABLED=true` is set and the scheduler process is running (`elephantq scheduler`) when using recurring jobs.
+
+## Advanced Fluent Scheduling API
+
+When your workflow grows beyond a single `await elephantq.enqueue(...)`, the fluent builders under `elephantq.features.recurring` and `elephantq.features.scheduling` keep everything declarative but still explicit in code:
+
+- `elephantq.features.recurring.every(5).minutes().high_priority().schedule(report_job)` composes a `TimeIntervalBuilder` that resolves a cron expression for the scheduler handshake.
+- `elephantq.features.scheduling.schedule_job(task)` returns a `JobScheduleBuilder`. Call `.with_queue("slow")`, `.with_priority(10)`, `.with_dependencies("job_a")`, `.with_timeout(60)` and `.enqueue(...)` to stash a fully configured job row in Postgres within a single transaction.
+- Use `elephantq.features.scheduling.create_batch().add(job_func, arg=1).enqueue_all(batch_priority=10)` to enqueue multiple builders together; each builder automatically tags the rows with the batch name so you can track related jobs with `elephantq.get_queue_stats()` or the dashboard.
+
+These builders reuse the same `@elephantq.job()` registry, so feature flags (`ELEPHANTQ_SCHEDULING_ENABLED`, `ELEPHANTQ_DEPENDENCIES_ENABLED`, etc.) still gate behaviour and keep your code debugging story linear.
 
 ### Instance-Based API (Multi-tenant or Separate DBs)
 

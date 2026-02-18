@@ -1,0 +1,41 @@
+# ElephantQ Scheduler systemd Service
+# Place this file in /etc/systemd/system/elephantq-scheduler.service
+
+[Unit]
+Description=ElephantQ Scheduler
+After=network.target elephantq-worker.service
+Requires=elephantq-worker.service
+
+[Service]
+Type=exec
+User=elephantq
+Group=elephantq
+WorkingDirectory=/opt/elephantq
+Environment=ELEPHANTQ_DATABASE_URL=postgresql://elephantq:password@localhost/elephantq_prod
+Environment=ELEPHANTQ_LOG_LEVEL=INFO
+Environment=ELEPHANTQ_SCHEDULING_ENABLED=true
+ExecStart=/opt/elephantq/venv/bin/elephantq scheduler
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=mixed
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=0
+
+# Security settings
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/elephantq /var/log/elephantq
+
+# Resource limits
+MemoryMax=256M
+CPUQuota=100%
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=elephantq-scheduler
+
+[Install]
+WantedBy=multi-user.target
