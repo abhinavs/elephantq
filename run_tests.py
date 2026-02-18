@@ -37,7 +37,13 @@ def _bootstrap_venv(project_root: str) -> None:
 
     _cleanup_legacy_editables(venv_python)
 
-    subprocess.check_call([venv_python, "-m", "pip", "install", "--upgrade", "pip"])
+    try:
+        subprocess.check_call([venv_python, "-m", "pip", "install", "--upgrade", "pip"])
+    except subprocess.CalledProcessError as exc:
+        print(
+            "⚠️ pip upgrade failed inside test venv; continuing with the existing pip installation."
+        )
+        print(f"   Details: {exc}")
     subprocess.check_call(
         [venv_python, "-m", "pip", "install", "-e", ".[dev,dashboard,monitoring]"],
         cwd=project_root,
