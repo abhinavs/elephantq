@@ -28,7 +28,7 @@ export ELEPHANTQ_DATABASE_URL="postgresql://localhost/your_db"
 elephantq setup
 ```
 
-*Note: ElephantQ is not yet on PyPI.*
+_Note: ElephantQ is not yet on PyPI._
 
 ## Architecture at a Glance
 
@@ -42,6 +42,13 @@ elephantq setup
 - **Explicit scheduler command (`elephantq scheduler`)** runs only when you need recurring/cron jobs. For development, `elephantq dev` bundles worker + scheduler + dashboard.
 - **Feature flag gating** keeps `elephantq.enqueue`, `elephantq.start`, and the global API lean even though dashboard, metrics, signing, and webhooks live in the same repository.
 - **Built-in observability**: CLI reports job counts, the dashboard paints job/queue metrics, and optional metrics/Prometheus data live under `elephantq.features.metrics`.
+
+## Fluent Scheduling API
+
+ElephantQ offers fluent builders so complex scheduling logic stays readable.  
+Use `elephantq.features.recurring.daily().at("09:00").high_priority().schedule(report_job)` for expressive recurring flows,  
+or `elephantq.features.scheduling.schedule_job(task).in_hours(2).enqueue(arg=...)` for ad-hoc delayed execution.  
+Batches via `elephantq.features.scheduling.create_batch().enqueue_all([...])` keep coordinated enqueues atomic and traceable across the same PostgreSQL transaction.
 
 ### Minimal App (FastAPI)
 
@@ -90,13 +97,12 @@ ELEPHANTQ_SCHEDULING_ENABLED=true elephantq scheduler
 
 ## ElephantQ vs Alternatives
 
-| Aspect | Celery | Solid Queue | ElephantQ |
-| --- | --- | --- | --- |
-| Backend | Redis/RabbitMQ/SQS or SQLAlchemy; brokers + result stores are configured separately. citeturn0search2 | Rails Active Job backed by PostgreSQL/SQL; runs as part of a Rails app/worker. citeturn0search0 | ✅ PostgreSQL-only; LISTEN/NOTIFY driven worker. |
-| Scheduling | `beat` + `celery` worker; scheduling handled by the broker with separate process. citeturn0search2 | Scheduler lives inside SolidQueue with Rails hooks. citeturn0search0 | Built-in `elephantq scheduler` covering cron/interval + recurring helpers. |
-| Concurrency controls | Worker pools/acks configured per worker; no per-job key locking. | Fine-grained concurrency limits, priorities, pausing, and inline uniqueness. citeturn0search0 | Queue routing, unique jobs, and optional dependency/timeouts for flow control. |
-| Observability | Flower and exporter dashboards; broker-level stats. citeturn0search3 | Rails logging/Active Job dashboards. citeturn0search1 | Built-in dashboard, metrics, CLI reporting, and Prometheus-friendly collectors. |
-| Getting started | More configuration: choose broker + backend + worker command. | Rails app + SolidQueue plus Redis/DB depending on config. | ✅ `pip install` from GitHub, `elephantq start`, `scheduler`, `dashboard`, `dev`. |
+| Aspect          | Celery                       | RQ                 | ElephantQ               |
+| --------------- | ---------------------------- | ------------------ | ----------------------- |
+| Backend         | Redis/RabbitMQ required      | Redis required     | ✅ PostgreSQL only      |
+| Async API       | Requires compatibility layer | Sync-only          | ✅ Async-first          |
+| Scheduling      | Separate component           | External scheduler | ✅ Built-in scheduling  |
+| Getting started | More setup                   | Moderate setup     | ✅ Minutes to first job |
 
 ## Examples (Practical)
 
