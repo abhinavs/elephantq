@@ -9,10 +9,10 @@ This script runs tests in the new isolated structure:
 - Unit tests: Test individual modules
 """
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
-import shutil
 
 
 def _bool_env(name: str) -> bool:
@@ -39,7 +39,7 @@ def _bootstrap_venv(project_root: str) -> None:
 
     try:
         subprocess.check_call([venv_python, "-m", "pip", "install", "--upgrade", "pip"])
-    except subprocess.CalledProcessError as exc:
+    except Exception as exc:  # noqa: PIE786
         print(
             "⚠️ pip upgrade failed inside test venv; continuing with the existing pip installation."
         )
@@ -106,7 +106,19 @@ def run_test_batch(name, test_paths, verbose=True):
         return True
     else:
         print(f"❌ {name} - FAILED")
-        return False
+    return False
+
+
+def run_flake8():
+    """Run flake8 linting in the project"""
+    print("\n============================================================")
+    print("Running flake8 lint checks")
+    print("============================================================")
+
+    python = os.environ.get("ELEPHANTQ_TEST_VENV_PYTHON", sys.executable)
+    result = subprocess.run([python, "-m", "flake8", "elephantq"])
+    if result.returncode != 0:
+        sys.exit(result.returncode)
 
 
 def main():
@@ -121,6 +133,9 @@ def main():
 
     # Bootstrap venv + deps to make this script self-sufficient
     _bootstrap_venv(script_dir)
+
+    # Run linting before the tests to catch formatting issues early
+    run_flake8()
 
     # Avoid row locks during tests when requested
     os.environ.setdefault("ELEPHANTQ_SKIP_UPDATE_LOCK", "true")

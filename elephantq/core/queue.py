@@ -12,7 +12,7 @@ import json
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import asyncpg
 from pydantic import ValidationError
@@ -21,9 +21,6 @@ from elephantq.core.registry import JobRegistry
 from elephantq.db.connection import get_pool
 from elephantq.db.context import get_context_pool
 from elephantq.utils.hashing import compute_args_hash
-
-if TYPE_CHECKING:
-    from elephantq.core.registry import JobRegistry
 
 
 def _validate_job_arguments(job_name: str, job_meta: dict, kwargs: dict) -> None:

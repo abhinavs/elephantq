@@ -202,36 +202,6 @@ class JobScheduleBuilder:
         }
 
 
-class BatchScheduler:
-    """Schedule multiple jobs as a batch"""
-
-    def __init__(self):
-        self.jobs: List[JobScheduleBuilder] = []
-
-    def add_job(self, job_func: Callable[..., Any]) -> JobScheduleBuilder:
-        """Add a job to the batch"""
-        builder = JobScheduleBuilder(job_func)
-        self.jobs.append(builder)
-        return builder
-
-    async def enqueue_all(self) -> List[str]:
-        """Enqueue all jobs in the batch"""
-        job_ids = []
-        for job_builder in self.jobs:
-            job_id = await job_builder.enqueue()
-            job_ids.append(job_id)
-        return job_ids
-
-    def preview_all(self) -> List[Dict[str, Any]]:
-        """Preview all job configurations"""
-        configs = []
-        for job_builder in self.jobs:
-            job_builder.dry_run()
-            config = job_builder._get_configuration()
-            configs.append(config)
-        return configs
-
-
 # Global metadata storage for scheduler features
 _scheduler_metadata: Dict[str, Dict[str, Any]] = {}
 

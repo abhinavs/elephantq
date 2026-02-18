@@ -4,6 +4,8 @@ Consolidated ElephantQ CLI commands - refactored for extensibility
 
 import logging
 
+from elephantq import list_jobs
+
 from ..colors import StatusIcon, print_status
 from ..registry import register_simple_command
 
@@ -622,7 +624,9 @@ async def handle_workers_command(args):
             print("\nActive Workers:")
             for worker in active_workers:
                 uptime = int(worker["uptime_seconds"])
-                uptime_str = f"{uptime//3600}h {(uptime%3600)//60}m {uptime%60}s"
+                uptime_str = (
+                    f"{uptime // 3600}h {(uptime % 3600) // 60}m {uptime % 60}s"
+                )
                 queues_str = (
                     ", ".join(worker["queues"]) if worker["queues"] else "all queues"
                 )
@@ -648,7 +652,7 @@ async def handle_workers_command(args):
             print("\nStale Workers (no recent heartbeat):")
             for worker in stale_workers:
                 stale_time = int(worker["stale_seconds"])
-                stale_str = f"{stale_time//60}m {stale_time%60}s ago"
+                stale_str = f"{stale_time // 60}m {stale_time % 60}s ago"
 
                 print(f"  🔴 {worker['hostname']}:{worker['pid']}")
                 print(f"     Last Heartbeat: {worker['last_heartbeat']} ({stale_str})")

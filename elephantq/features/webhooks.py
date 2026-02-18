@@ -282,7 +282,6 @@ class WebhookRegistry:
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                 updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
             );
-            
             CREATE TABLE IF NOT EXISTS elephantq_webhook_deliveries (
                 id TEXT PRIMARY KEY,
                 endpoint_id TEXT NOT NULL,
@@ -297,10 +296,9 @@ class WebhookRegistry:
                 response_body TEXT,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                 delivered_at TIMESTAMP WITH TIME ZONE,
-                
                 FOREIGN KEY (endpoint_id) REFERENCES elephantq_webhook_endpoints(id) ON DELETE CASCADE
             );
-            
+
             CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_status ON elephantq_webhook_deliveries(status);
             CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_next_retry ON elephantq_webhook_deliveries(next_retry_at);
             CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_endpoint ON elephantq_webhook_deliveries(endpoint_id);

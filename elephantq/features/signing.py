@@ -115,7 +115,7 @@ class SecretManager:
             decoded = base64.urlsafe_b64decode(value.encode("utf-8"))
             # Fernet tokens have specific length requirements
             return len(decoded) >= 73  # Minimum Fernet token length
-        except:
+        except Exception:
             return False
 
 

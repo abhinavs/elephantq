@@ -729,7 +729,6 @@ async def urgent() -> FluentRecurringScheduler:
 # Management functions
 async def start_recurring_scheduler(check_interval: int = 30):
     """Start the global recurring job scheduler"""
-    global _enhanced_scheduler
     _enhanced_scheduler.check_interval = check_interval
     await _enhanced_scheduler.start()
 

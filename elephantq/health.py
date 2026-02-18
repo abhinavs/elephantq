@@ -500,12 +500,7 @@ async def cli_health_check(verbose: bool = False) -> int:
         Exit code (0 = healthy, 1 = unhealthy)
     """
     try:
-        from .cli.colors import (
-            StatusIcon,
-            print_key_value,
-            print_status,
-            warning,
-        )
+        from .cli.colors import StatusIcon, print_key_value, print_status, warning
 
         status = await get_health_status()
 

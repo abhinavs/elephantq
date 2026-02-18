@@ -174,7 +174,7 @@ class DeadLetterManager:
                     tags JSONB,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 );
-                
+
                 CREATE INDEX IF NOT EXISTS idx_{self.table_name}_job_name ON {self.table_name}(job_name);
                 CREATE INDEX IF NOT EXISTS idx_{self.table_name}_queue ON {self.table_name}(queue);
                 CREATE INDEX IF NOT EXISTS idx_{self.table_name}_reason ON {self.table_name}(dead_letter_reason);

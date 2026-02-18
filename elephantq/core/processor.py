@@ -3,7 +3,6 @@ Job processing engine with proper transaction handling
 Core functionality only
 """
 
-import asyncio
 import json
 import logging
 import os
@@ -13,6 +12,7 @@ from typing import List, Optional, Union
 
 import asyncpg
 
+from elephantq.core.heartbeat import WorkerHeartbeat
 from elephantq.core.registry import JobRegistry, get_job
 from elephantq.core.retry import compute_retry_delay_seconds
 

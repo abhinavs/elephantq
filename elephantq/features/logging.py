@@ -184,7 +184,7 @@ class DatabaseLogHandler(logging.Handler):
                     performance_data JSONB,
                     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
                 );
-                
+
                 CREATE INDEX IF NOT EXISTS idx_{self.table_name}_timestamp ON {self.table_name}(timestamp);
                 CREATE INDEX IF NOT EXISTS idx_{self.table_name}_job_id ON {self.table_name}(job_id);
                 CREATE INDEX IF NOT EXISTS idx_{self.table_name}_level ON {self.table_name}(level);

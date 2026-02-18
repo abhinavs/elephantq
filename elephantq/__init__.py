@@ -71,7 +71,7 @@ def _get_global_app() -> ElephantQ:
     The global app is created lazily on first use with default settings.
     If the existing global app is closed, a new one is created automatically.
     """
-    global _global_app, _global_job_registry
+    global _global_app
 
     if _global_app is None or _global_app.is_closed:
         _global_app = ElephantQ()
@@ -103,7 +103,7 @@ def configure(**kwargs):
         async def my_job():
             pass
     """
-    global _global_app, _global_job_registry
+    global _global_app
 
     settings_kwargs = {}
     enhanced_to_elephantq = {
@@ -149,7 +149,6 @@ def job(**kwargs):
     Equivalent to app.job() but uses the global ElephantQ instance.
     Jobs are automatically re-registered if the global instance is recreated.
     """
-    global _global_job_registry
 
     def decorator(func):
         _global_job_registry.append((func, kwargs))

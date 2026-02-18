@@ -8,7 +8,7 @@ including Docker containers, systemd services, and Kubernetes pods.
 import asyncio
 import logging
 import signal
-from typing import Callable, Optional, Set
+from typing import Optional, Set
 
 logger = logging.getLogger(__name__)
 
