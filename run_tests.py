@@ -44,10 +44,16 @@ def _bootstrap_venv(project_root: str) -> None:
             "⚠️ pip upgrade failed inside test venv; continuing with the existing pip installation."
         )
         print(f"   Details: {exc}")
-    subprocess.check_call(
-        [venv_python, "-m", "pip", "install", "-e", ".[dev,dashboard,monitoring]"],
-        cwd=project_root,
-    )
+    try:
+        subprocess.check_call(
+            [venv_python, "-m", "pip", "install", "-e", ".[dev,dashboard,monitoring]"],
+            cwd=project_root,
+        )
+    except subprocess.CalledProcessError as exc:
+        print(
+            "⚠️ Editable install failed inside test venv; continuing with existing packages."
+        )
+        print(f"   Details: {exc}")
 
     env = os.environ.copy()
     env["ELEPHANTQ_TEST_VENV_BOOTSTRAPPED"] = "1"
