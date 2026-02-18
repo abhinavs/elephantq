@@ -89,7 +89,7 @@ elephantq start --concurrency 4
 ELEPHANTQ_SCHEDULING_ENABLED=true elephantq scheduler
 ```
 
-`elephantq dev` bundles worker, scheduler, and dashboard for local experimentation, and the dashboard itself lives behind `ELEPHANTQ_DASHBOARD_ENABLED=true elephantq dashboard`. Add `ELEPHANTQ_DASHBOARD_WRITE_ENABLED=true` if you need retry/delete/cancel buttons.
+The dashboard lives behind `ELEPHANTQ_DASHBOARD_ENABLED=true elephantq dashboard`. Add `ELEPHANTQ_DASHBOARD_WRITE_ENABLED=true` if you need retry/delete/cancel buttons.
 
 ## Dashboard Preview
 
@@ -100,9 +100,10 @@ ELEPHANTQ_SCHEDULING_ENABLED=true elephantq scheduler
 | Aspect          | Celery                       | RQ                 | ElephantQ               |
 | --------------- | ---------------------------- | ------------------ | ----------------------- |
 | Backend         | Redis/RabbitMQ required      | Redis required     | ✅ PostgreSQL only      |
-| Async API       | Requires compatibility layer | Sync-only          | ✅ Async-first          |
-| Scheduling      | Separate component           | External scheduler | ✅ Built-in scheduling  |
-| Getting started | More setup                   | Moderate setup     | ✅ Minutes to first job |
+| Scheduling      | Separate `beat` process       | External scheduler | ✅ Built-in scheduling  |
+| Concurrency     | Worker pools + ack tuning     | Controlled by Redis | Queue routing + unique jobs + dependency/timeouts |
+| Observability   | Flower/exporter dashboards    | rq-dashboard       | Built-in dashboard + metrics |
+| Getting started | More setup                    | Moderate setup     | ✅ Minutes to first job |
 
 ## Examples (Practical)
 
