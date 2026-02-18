@@ -19,7 +19,7 @@ ElephantQ is a modern, async-first job queue that uses PostgreSQL as the only ba
 
 ```bash
 # 1. Install
-pip install "git+https://github.com/fastjob-dev/fastjob#subdirectory=elephantq"
+pip install elephantq
 
 # 2. Set your database URL
 export ELEPHANTQ_DATABASE_URL="postgresql://localhost/your_db"
@@ -27,8 +27,6 @@ export ELEPHANTQ_DATABASE_URL="postgresql://localhost/your_db"
 # 3. Initialize database (creates tables)
 elephantq setup
 ```
-
-_Note: ElephantQ is not yet on PyPI._
 
 ## Architecture at a Glance
 

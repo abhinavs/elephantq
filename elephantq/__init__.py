@@ -30,7 +30,7 @@ from typing import Optional, Union
 from .client import ElephantQ
 from .settings import configure as settings_configure
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 # Global ElephantQ instance for convenience API
 _global_app: ElephantQ = None
