@@ -90,13 +90,13 @@ The dashboard lives behind `ELEPHANTQ_DASHBOARD_ENABLED=true elephantq dashboard
 
 ## ElephantQ vs Alternatives
 
-| Aspect          | Celery                       | RQ                 | ElephantQ               |
-| --------------- | ---------------------------- | ------------------ | ----------------------- |
-| Backend         | Redis/RabbitMQ required      | Redis required     | ✅ PostgreSQL only      |
-| Scheduling      | Separate `beat` process       | External scheduler | ✅ Built-in scheduling  |
-| Concurrency     | Worker pools + ack tuning     | Controlled by Redis | Queue routing + unique jobs + dependency/timeouts |
-| Observability   | Flower/exporter dashboards    | rq-dashboard       | Built-in dashboard + metrics |
-| Getting started | More setup                    | Moderate setup     | ✅ Minutes to first job |
+| Aspect          | Celery                     | RQ                  | ElephantQ                                         |
+| --------------- | -------------------------- | ------------------- | ------------------------------------------------- |
+| Backend         | Redis/RabbitMQ required    | Redis required      | ✅ PostgreSQL only                                |
+| Scheduling      | Separate `beat` process    | External scheduler  | ✅ Built-in scheduling                            |
+| Concurrency     | Worker pools + ack tuning  | Controlled by Redis | Queue routing + unique jobs + dependency/timeouts |
+| Observability   | Flower/exporter dashboards | rq-dashboard        | Built-in dashboard + metrics                      |
+| Getting started | More setup                 | Moderate setup      | ✅ Minutes to first job                           |
 
 ## Examples (Practical)
 

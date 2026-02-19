@@ -132,6 +132,21 @@ class ElephantQ:
                 f"ElephantQ initialization failed: {e}", "ELEPHANTQ_INIT_ERROR"
             ) from e
 
+    def _warn_if_pool_too_small(self, concurrency: int) -> None:
+        """Warn when worker concurrency + headroom exceeds the configured pool max size."""
+        if not self._pool or self._settings.db_pool_max_size <= 0:
+            return
+
+        required_connections = concurrency + self._settings.db_pool_safety_margin
+        if required_connections > self._settings.db_pool_max_size:
+            logger.warning(
+                "Worker concurrency (%s) + pool safety margin (%s) exceeds configured pool max (%s). "
+                "Increase ELEPHANTQ_DB_POOL_MAX_SIZE or reduce concurrency to prevent connection exhaustion.",
+                concurrency,
+                self._settings.db_pool_safety_margin,
+                self._settings.db_pool_max_size,
+            )
+
     async def close(self):
         """
         Close the ElephantQ application and cleanup resources.
@@ -248,6 +263,8 @@ class ElephantQ:
         logger.info(
             f"Starting ElephantQ worker - concurrency: {concurrency}, processing: {queue_info}"
         )
+
+        self._warn_if_pool_too_small(concurrency)
 
         try:
             if run_once:

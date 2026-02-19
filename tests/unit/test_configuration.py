@@ -75,6 +75,7 @@ class TestPydanticConfiguration:
         assert settings.job_timeout is None
         assert settings.db_pool_min_size == 5
         assert settings.db_pool_max_size == 20
+        assert settings.db_pool_safety_margin == 2
         assert settings.log_level == "INFO"
         assert settings.log_format == "simple"
         assert settings.debug is False
@@ -94,6 +95,7 @@ class TestPydanticConfiguration:
         os.environ["ELEPHANTQ_JOB_TIMEOUT"] = "300.0"
         os.environ["ELEPHANTQ_DB_POOL_MIN_SIZE"] = "10"
         os.environ["ELEPHANTQ_DB_POOL_MAX_SIZE"] = "50"
+        os.environ["ELEPHANTQ_DB_POOL_SAFETY_MARGIN"] = "4"
         os.environ["ELEPHANTQ_LOG_LEVEL"] = "DEBUG"
         os.environ["ELEPHANTQ_LOG_FORMAT"] = "structured"
         os.environ["ELEPHANTQ_DEBUG"] = "true"
@@ -115,6 +117,7 @@ class TestPydanticConfiguration:
         assert settings.job_timeout == 300.0
         assert settings.db_pool_min_size == 10
         assert settings.db_pool_max_size == 50
+        assert settings.db_pool_safety_margin == 4
         assert settings.log_level == "DEBUG"
         assert settings.log_format == "structured"
         assert settings.debug is True

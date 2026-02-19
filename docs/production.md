@@ -8,6 +8,9 @@ This is a pragmatic checklist for running ElephantQ in production. It focuses on
 - Run migrations during deployment: `elephantq setup`.
 - Ensure backups and PITR are configured.
 - Monitor connection pool utilization.
+- Tune `ELEPHANTQ_DB_POOL_MIN_SIZE` / `ELEPHANTQ_DB_POOL_MAX_SIZE` together with `ELEPHANTQ_DEFAULT_CONCURRENCY` so you have enough connections for job processing, LISTEN/NOTIFY listeners, and background heartbeats.
+- Set `ELEPHANTQ_DB_POOL_SAFETY_MARGIN` (default `2`) to reserve headroom for scheduler/listener-allocated connections beyond your worker concurrency.
+- Need tighter Postgres control or are you running PgBouncer? Use transaction pooling mode and keep ElephantQ sessions short by releasing connections promptly after each job.
 
 ## 2. Workers
 

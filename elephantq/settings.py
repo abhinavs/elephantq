@@ -261,6 +261,13 @@ class ElephantQSettings(BaseSettings):
         default=20, ge=1, le=200, description="Maximum database connection pool size"
     )
 
+    db_pool_safety_margin: int = Field(
+        default=2,
+        ge=0,
+        le=50,
+        description="Extra connections reserved beyond worker concurrency (listener/heartbeat)",
+    )
+
     # Logging Configuration
     log_level: str = Field(
         default="INFO",
