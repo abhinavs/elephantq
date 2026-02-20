@@ -1,118 +1,124 @@
 # ElephantQ
 
-**PostgreSQL-native background jobs for modern Python apps.**
+Async-native background job queue - built for developers who want solid queues without infrastructure bloat.
 
-ElephantQ delivers async `@job` functions, fluent builders, and operational safety while keeping the surface lean. Advanced capabilities such as the dashboard, metrics, and scheduling live in the same package but stay idle unless you opt them in via feature flags.
+## What is ElephantQ
 
-## Why ElephantQ
+ElephantQ is a background job system for modern async Python. It uses PostgreSQL (`LISTEN/NOTIFY`` + row locks) as the single backend for enqueueing, scheduling, retries, and monitoring—so if you already run Postgres, you already have your queue.
 
-- **One stack:** Jobs live in PostgreSQL, no Redis or message broker to manage.
-- **Async-first:** Define `async def` jobs, `await` `enqueue`, and keep the stack compatible with FastAPI, Starlette, or Django ASGI.
-- **Explicit worker & scheduler processes:** Workers focus on processing; the scheduler handles recurring/cron work; the dashboard sits behind its own flag.
-- **Feature flags, not forks:** Dashboard, metrics, dependencies, dead-letter, signing, and webhooks all share the same codebase but stay dormant unless you flip a flag.
-- **Developer-friendly surface:** Clean CLI output, `ELEPHANTQ_JOBS_MODULES` discovery, fluent builders, and a helpful `run_tests.py` keep the experience predictable.
+## Why ElephantQ exists
 
-## Quick Start (30 seconds)
+- Celery/RQ stacks pull in Redis and heavy configuration even for small workloads.
+- Many Python queues aren’t truly async-first, making FastAPI/Starlette apps jump through hoops.
+- Local development often needs multiple services just to run a job; ElephantQ keeps it to Postgres and your code.
+
+## Why teams choose ElephantQ
+
+- No extra infrastructure: just Postgres.
+- Async from the ground up: coroutine workers fit modern Python.
+- Production ready: retries, scheduling, dead-letter, monitoring are built in.
+- Fast to adopt: install, point at Postgres, start a worker.
+
+## Quick start
 
 ```bash
-# 1. Install
 pip install elephantq
-
-# 2. Point to Postgres
-export ELEPHANTQ_DATABASE_URL="postgresql://user:pass@localhost/mydb"
-export ELEPHANTQ_JOBS_MODULES="app.jobs"
-
-# 3. Create tables
+export ELEPHANTQ_DATABASE_URL="postgresql://postgres@localhost/elephantq"
+export ELEPHANTQ_JOBS_MODULES="app.tasks"
 elephantq setup
-
-# 4. Start a worker (runs jobs forever)
-elephantq start --concurrency 4 --queues=default,emails
+elephantq start --concurrency 4 --queues default,emails
 ```
 
-### Define a job
-
 ```python
+# app/tasks.py
 import elephantq
 
-@elephantq.job(queue="emails", retries=5)
+@elephantq.job(queue="emails", retries=3)
 async def send_welcome(to: str):
-    print("Sending welcome to", to)
+    print("sending welcome to", to)
+
+await elephantq.enqueue(send_welcome, to="team@example.com")
 ```
 
-Then enqueue it from any async context:
+## How it compares
+
+| Feature             | ElephantQ | Celery         | RQ     | Dramatiq       | Arq    |
+| ------------------- | --------- | -------------- | ------ | -------------- | ------ |
+| No Redis dependency | ✅        | ❌             | ❌     | ❌             | ❌     |
+| Async native        | ✅        | ⚠️             | ❌     | ⚠️             | ✅     |
+| Setup complexity    | Low       | High           | Medium | Medium         | Medium |
+| Infra dependencies  | Postgres  | Redis/RabbitMQ | Redis  | Redis/RabbitMQ | Redis  |
+| Learning curve      | Low       | High           | Medium | Medium         | Medium |
+
+## Features
+
+**Core strengths**
+
+- Async-first API: `@job`, `await enqueue`, fluent scheduling.
+- Postgres-only design: one dependable backend for storage and coordination.
+- Simple developer experience: minimal flags, sensible defaults, runnable examples.
+
+**Operational benefits**
+
+- Easy local development: only Postgres required.
+- Minimal infrastructure: no brokers or side services to maintain.
+- Predictable reliability: retries, dead-letter queue, and scheduling are first-class.
+
+**Developer experience**
+
+- Clean API surface; fluent builders like `every(10).minutes().schedule(...)`.
+- Low configuration: env vars + a few CLI commands.
+- Fast onboarding: `examples/` and `tests/` mirror real scenarios.
+
+## Use cases
+
+- Background tasks in async web apps (FastAPI, Starlette).
+- Teams that want job processing without adding Redis.
+- Small to medium production workloads centered on Postgres.
+- Internal tools and dashboards that benefit from a built-in queue UI.
+
+## Fluent scheduling
 
 ```python
-await elephantq.enqueue(send_welcome, to="team@apiclabs.com")
+from elephantq.features.recurring import every
+
+@elephantq.job()
+async def nightly_report():
+    ...
+
+await every(10).minutes().schedule(nightly_report)
 ```
 
-## Workers, Scheduler, Dashboard
+For more control, use `elephantq.features.scheduling.schedule_job(...)` and chain `.with_priority()`, `.depends_on(...)`, `.with_timeout(...)`, or batch multiple jobs.
 
-- **Workers** run with `elephantq start`. They require `ELEPHANTQ_JOBS_MODULES` so the functions you register are importable. The CLI prints queue stats, worker heartbeats, and error hints.
-- **Scheduler** runs with `ELEPHANTQ_SCHEDULING_ENABLED=true elephantq scheduler`. It keeps recurring work separate so workers stay focused on real-time jobs.
-- **Dashboard** is launched via `ELEPHANTQ_DASHBOARD_ENABLED=true elephantq dashboard`. Add `ELEPHANTQ_DASHBOARD_WRITE_ENABLED=true` only in trusted environments (retry/delete actions are gated behind that flag).
+## Built for Production
 
-## Feature overview
+- Architecture: Postgres-backed jobs, `LISTEN/NOTIFY`` for wakeups, `SKIP LOCKED`` for safe concurrency.
+- Reliability: retries with backoff, dead-letter queue, persistent scheduling, at-least-once processing semantics.
+- Operational tooling: CLI for workers/scheduler/dashboard, health checks, connection pool safety warnings.
 
-| Feature | Why it matters | How to enable |
-| --- | --- | --- |
-| Fluent scheduling builders | Compose delayed, cron, or batch jobs with readable code | `elephantq.features.scheduling.schedule_job(...)`, `elephantq.features.recurring.every(...)`; requires `ELEPHANTQ_SCHEDULING_ENABLED=true` |
-| Retries & backoff | Jobs retry with jitter/backoff before hitting dead-letter | Use `@elephantq.job(retries=5, retry_backoff=True)` |
-| Dashboard | Real-time view of queues, workers, and job timeline | `ELEPHANTQ_DASHBOARD_ENABLED=true` + optional `ELEPHANTQ_DASHBOARD_WRITE_ENABLED=true` |
-| Metrics/logging | Structured metrics and logs for production visibility | `ELEPHANTQ_METRICS_ENABLED=true`, `ELEPHANTQ_LOGGING_ENABLED=true` |
-| Dependencies/timeouts | Declare job ordering and per-job timeout policies | `elephantq.features.scheduling.schedule_job(...).depends_on(...).with_timeout(...)` with the appropriate feature flags |
-| Dead-letter queue & webhooks | Inspect and respond to failed jobs | `ELEPHANTQ_DEAD_LETTER_QUEUE_ENABLED=true`; webhooks need `ELEPHANTQ_WEBHOOKS_ENABLED=true` |
-| Connection safety | Keeps worker concurrency in sync with Postgres pool size | tune `ELEPHANTQ_DB_POOL_MAX/MIN_SIZE` + `ELEPHANTQ_DB_POOL_SAFETY_MARGIN` |
+## Dashboard
 
-## Fluent scheduling in code
+Monitor queues, workers, retries, and system health.
 
-```python
-from elephantq.features import scheduling
+![ElephantQ Dashboard](docs/assets/elephantq_dashboard.png)
 
-builder = scheduling.schedule_job(process_upload)
-await (
-    builder.with_queue("processing")
-    .with_priority(10)
-    .with_tags("batch:file")
-    .depends_on(existing_job_id)
-    .with_timeout(60)
-    .in_minutes(5)
-    .enqueue(file_path="/tmp/report.zip")
-)
-```
-
-Builders record metadata via `elephantq.features.scheduling.get_job_metadata()` so dashboards, logs, or metrics clients can surface the full intent.
-
-Recurring jobs use a similar fluent API:
-
-```python
-await scheduling.every(1).days().at("09:00").high_priority().schedule(report_job)
-```
-
-The scheduler reloads persisted definitions (`elephantq_recurring_jobs` table) on restart and respects `ELEPHANTQ_SCHEDULING_ENABLED=true`.
-
-## Observability & operations
-
-- Structured logs and metrics hook into the same event loop. Enable `ELEPHANTQ_METRICS_ENABLED` for Prometheus counters and `ELEPHANTQ_LOGGING_ENABLED` for Serilog-like payloads.
-- Dead-letter queue (`ELEPHANTQ_DEAD_LETTER_QUEUE_ENABLED=true`) keeps failed jobs for inspection; you can resurrect, delete, or export them via the CLI or dashboard.
-- Connection pooling respects `ELEPHANTQ_DEFAULT_CONCURRENCY` and warns when the worker tries to exceed `ELEPHANTQ_DB_POOL_MAX_SIZE`. The new `ELEPHANTQ_DB_POOL_SAFETY_MARGIN` reserves room for the scheduler/listener connections.
-- Use `elephantq.features.webhooks.register_endpoint(...)` to notify other systems about job events, and `elephantq.features.logging.setup(...)` for per-job context logging.
-
-## Resources
-
-- 🧭 [Getting Started](docs/getting-started.md) — a guided setup with troubleshooting tips.
-- 📜 [Feature reference](docs/features.md) — metrics, logging, webhooks, dead-letter, and more.
-- ⏱️ [Scheduling guide](docs/scheduling.md) — fluent builders, batches, and repeated schedules.
-- 🏗️ `deployment/` — sample systemd, supervisor, Docker, and Kubernetes templates.
-- 🧪 `tests/` and `examples/` — runnable snapshots of common workflows.
-
-## Extras
-
-Optional dependencies unlock extra tools:
+## Optional extras
 
 ```bash
-pip install elephantq[dashboard]    # dashboard UI
-pip install elephantq[monitoring]   # metrics + webhooks dependencies
-pip install elephantq[all]          # everything
+pip install elephantq[dashboard]    # dashboard
+pip install elephantq[monitoring]   # metrics + webhook deps
+pip install elephantq[all]          # everything above
 ```
 
-The CLI stays helpful: `elephantq start`, `scheduler`, `dashboard`, `workers`, `metrics`, and a dedicated `run_tests.py` for automated validation.
+## Documentation
+
+- [docs/getting-started.md](docs/getting-started.md)
+- [docs/scheduling.md](docs/scheduling.md)
+- [docs/features.md](docs/features.md)
+- [docs/production.md](docs/production.md)
+- `examples/` and `tests/`
+
+## License
+
+MIT License
