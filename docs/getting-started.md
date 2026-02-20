@@ -84,6 +84,6 @@ Add `ELEPHANTQ_DASHBOARD_WRITE_ENABLED=true` only in trusted environments if you
 
 - **Jobs not appearing?** Confirm `ELEPHANTQ_JOBS_MODULES` matches the module path your worker loads.
 - **Tables missing?** Re-run `elephantq setup` before starting the worker.
-- **Need quick development loop?** `ELEPHANTQ_DATABASE_URL` can point to SQLite-backed Postgres containers; `elephantq dev` spins up worker + scheduler + dashboard for you.
+- **Need quick development loop?** Point `ELEPHANTQ_DATABASE_URL` at a local Postgres container and reuse the same commands above.
 
 For deeper detail, see the [scheduling](scheduling.md), [features](features.md), and [production](production.md) guides.

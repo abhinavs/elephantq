@@ -2,7 +2,7 @@
 
 **PostgreSQL-native background jobs for modern Python apps.**
 
-ElephantQ keeps things simple: async `@job` functions, a Postgres table for work, an optional dashboard, and builders when you want more than a simple `enqueue`. Everything is opt-in via feature flags so the core stays lean while advanced features remain in the same install.
+ElephantQ delivers async `@job` functions, fluent builders, and operational safety while keeping the surface lean. Advanced capabilities such as the dashboard, metrics, and scheduling live in the same package but stay idle unless you opt them in via feature flags.
 
 ## Why ElephantQ
 
@@ -50,7 +50,6 @@ await elephantq.enqueue(send_welcome, to="team@apiclabs.com")
 - **Workers** run with `elephantq start`. They require `ELEPHANTQ_JOBS_MODULES` so the functions you register are importable. The CLI prints queue stats, worker heartbeats, and error hints.
 - **Scheduler** runs with `ELEPHANTQ_SCHEDULING_ENABLED=true elephantq scheduler`. It keeps recurring work separate so workers stay focused on real-time jobs.
 - **Dashboard** is launched via `ELEPHANTQ_DASHBOARD_ENABLED=true elephantq dashboard`. Add `ELEPHANTQ_DASHBOARD_WRITE_ENABLED=true` only in trusted environments (retry/delete actions are gated behind that flag).
-- **Dev mode** (`elephantq dev`) spins up worker + scheduler + dashboard together. It boots with the same config and respects the feature flags you already set.
 
 ## Feature overview
 
