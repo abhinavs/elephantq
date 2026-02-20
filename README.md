@@ -1,266 +1,119 @@
 # ElephantQ
 
-**PostgreSQL-first background jobs for Python.**
+**PostgreSQL-native background jobs for modern Python apps.**
 
-ElephantQ is a modern, async-first job queue that uses PostgreSQL as the only backend. No Redis, no broker services, no operational sprawl. You get reliable queues, retries, scheduling, and a dashboard in a single package.
+ElephantQ keeps things simple: async `@job` functions, a Postgres table for work, an optional dashboard, and builders when you want more than a simple `enqueue`. Everything is opt-in via feature flags so the core stays lean while advanced features remain in the same install.
 
 ## Why ElephantQ
 
-- One backend: PostgreSQL only. No Redis or broker to deploy or maintain.
-- Async-native API: use `async def` jobs and `await` enqueue.
-- Explicit worker model: predictable production behavior, easy to scale.
-- Built-in features in the same package (opt-in flags).
-- Strong DX: clean CLI, clear job discovery, minimal boilerplate.
-- Scales well: uses Postgres `LISTEN/NOTIFY` for fast wakeups and row locking for safe concurrency.
+- **One stack:** Jobs live in PostgreSQL, no Redis or message broker to manage.
+- **Async-first:** Define `async def` jobs, `await` `enqueue`, and keep the stack compatible with FastAPI, Starlette, or Django ASGI.
+- **Explicit worker & scheduler processes:** Workers focus on processing; the scheduler handles recurring/cron work; the dashboard sits behind its own flag.
+- **Feature flags, not forks:** Dashboard, metrics, dependencies, dead-letter, signing, and webhooks all share the same codebase but stay dormant unless you flip a flag.
+- **Developer-friendly surface:** Clean CLI output, `ELEPHANTQ_JOBS_MODULES` discovery, fluent builders, and a helpful `run_tests.py` keep the experience predictable.
 
-## Quick Start
-
-**Prerequisites:** PostgreSQL
+## Quick Start (30 seconds)
 
 ```bash
 # 1. Install
 pip install elephantq
 
-# 2. Set your database URL
-export ELEPHANTQ_DATABASE_URL="postgresql://localhost/your_db"
+# 2. Point to Postgres
+export ELEPHANTQ_DATABASE_URL="postgresql://user:pass@localhost/mydb"
+export ELEPHANTQ_JOBS_MODULES="app.jobs"
 
-# 3. Initialize database (creates tables)
+# 3. Create tables
 elephantq setup
+
+# 4. Start a worker (runs jobs forever)
+elephantq start --concurrency 4 --queues=default,emails
 ```
 
-## Architecture at a Glance
-
-- Your app enqueues jobs directly into PostgreSQL; no broker, no separate result store.
-- Workers poll with `LISTEN/NOTIFY` plus `FOR UPDATE SKIP LOCKED`; horizontal workers never fight over rows.
-- Feature flags gate dashboard, metrics, dead-letter, scheduling, signing, timeouts, dependencies, and more.
-
-## Design Choices
-
-- **PostgreSQL-only stack** keeps reliability predictable and operations simple while leveraging existing transactions.
-- **Explicit scheduler command (`elephantq scheduler`)** runs only when you need recurring/cron jobs. For development, `elephantq dev` bundles worker + scheduler + dashboard.
-- **Feature flag gating** keeps `elephantq.enqueue`, `elephantq.start`, and the global API lean even though dashboard, metrics, signing, and webhooks live in the same repository.
-- **Built-in observability**: CLI reports job counts, the dashboard paints job/queue metrics, and optional metrics/Prometheus data live under `elephantq.features.metrics`.
-
-## Simple Jobs
-
-### Minimal App (FastAPI)
-
-```python
-import elephantq
-from fastapi import FastAPI
-
-app = FastAPI()
-
-elephantq.configure(database_url="postgresql://localhost/myapp")
-
-@elephantq.job()
-async def process_upload(file_path: str):
-    print(f"Processing {file_path}")
-
-@app.post("/upload")
-async def upload_file(file_path: str):
-    job_id = await elephantq.enqueue(process_upload, file_path=file_path)
-    return {"job_id": job_id}
-```
-
-### Run Workers
-
-ElephantQ workers always run as a **separate process**.
-
-```bash
-# Terminal 1: Your app
-uvicorn app:app
-
-# Terminal 2: Workers (needs discovery)
-export ELEPHANTQ_JOBS_MODULES="app"
-elephantq start --concurrency 4
-```
-
-`ELEPHANTQ_JOBS_MODULES` drives the discovery snippet shown above. Run the scheduler daemon when you need recurring/crontab-style jobs—just like Celery keeps Beat and workers separate, ElephantQ keeps recurring work in a dedicated process so workers stay focused on execution. citeturn0search2
-
-```bash
-ELEPHANTQ_SCHEDULING_ENABLED=true elephantq scheduler
-```
-
-The dashboard lives behind `ELEPHANTQ_DASHBOARD_ENABLED=true elephantq dashboard`. Add `ELEPHANTQ_DASHBOARD_WRITE_ENABLED=true` if you need retry/delete/cancel buttons.
-
-## Dashboard Preview
-
-![ElephantQ Dashboard](docs/assets/elephantq_dashboard.png)
-
-## ElephantQ vs Alternatives
-
-| Aspect          | Celery                     | RQ                  | ElephantQ                                         |
-| --------------- | -------------------------- | ------------------- | ------------------------------------------------- |
-| Backend         | Redis/RabbitMQ required    | Redis required      | ✅ PostgreSQL only                                |
-| Scheduling      | Separate `beat` process    | External scheduler  | ✅ Built-in scheduling                            |
-| Concurrency     | Worker pools + ack tuning  | Controlled by Redis | Queue routing + unique jobs + dependency/timeouts |
-| Observability   | Flower/exporter dashboards | rq-dashboard        | Built-in dashboard + metrics                      |
-| Getting started | More setup                 | Moderate setup      | ✅ Minutes to first job                           |
-
-## Examples (Practical)
-
-### Reliable Retries (Backoff)
+### Define a job
 
 ```python
 import elephantq
 
-@elephantq.job(retries=5, retry_delay=1, retry_backoff=True, retry_max_delay=30)
-async def resilient_task(user_id: int):
-    ...
+@elephantq.job(queue="emails", retries=5)
+async def send_welcome(to: str):
+    print("Sending welcome to", to)
 ```
 
-### Queue Routing
+Then enqueue it from any async context:
 
 ```python
-import elephantq
-
-@elephantq.job(queue="emails")
-async def send_email(to: str):
-    ...
-
-@elephantq.job(queue="media")
-async def transcode_video(video_id: str):
-    ...
+await elephantq.enqueue(send_welcome, to="team@apiclabs.com")
 ```
 
-```bash
-# Process only specific queues
-elephantq start --queues emails,media
-```
+## Workers, Scheduler, Dashboard
 
-### Delayed Jobs (One-Off Scheduling)
+- **Workers** run with `elephantq start`. They require `ELEPHANTQ_JOBS_MODULES` so the functions you register are importable. The CLI prints queue stats, worker heartbeats, and error hints.
+- **Scheduler** runs with `ELEPHANTQ_SCHEDULING_ENABLED=true elephantq scheduler`. It keeps recurring work separate so workers stay focused on real-time jobs.
+- **Dashboard** is launched via `ELEPHANTQ_DASHBOARD_ENABLED=true elephantq dashboard`. Add `ELEPHANTQ_DASHBOARD_WRITE_ENABLED=true` only in trusted environments (retry/delete actions are gated behind that flag).
+- **Dev mode** (`elephantq dev`) spins up worker + scheduler + dashboard together. It boots with the same config and respects the feature flags you already set.
+
+## Feature overview
+
+| Feature | Why it matters | How to enable |
+| --- | --- | --- |
+| Fluent scheduling builders | Compose delayed, cron, or batch jobs with readable code | `elephantq.features.scheduling.schedule_job(...)`, `elephantq.features.recurring.every(...)`; requires `ELEPHANTQ_SCHEDULING_ENABLED=true` |
+| Retries & backoff | Jobs retry with jitter/backoff before hitting dead-letter | Use `@elephantq.job(retries=5, retry_backoff=True)` |
+| Dashboard | Real-time view of queues, workers, and job timeline | `ELEPHANTQ_DASHBOARD_ENABLED=true` + optional `ELEPHANTQ_DASHBOARD_WRITE_ENABLED=true` |
+| Metrics/logging | Structured metrics and logs for production visibility | `ELEPHANTQ_METRICS_ENABLED=true`, `ELEPHANTQ_LOGGING_ENABLED=true` |
+| Dependencies/timeouts | Declare job ordering and per-job timeout policies | `elephantq.features.scheduling.schedule_job(...).depends_on(...).with_timeout(...)` with the appropriate feature flags |
+| Dead-letter queue & webhooks | Inspect and respond to failed jobs | `ELEPHANTQ_DEAD_LETTER_QUEUE_ENABLED=true`; webhooks need `ELEPHANTQ_WEBHOOKS_ENABLED=true` |
+| Connection safety | Keeps worker concurrency in sync with Postgres pool size | tune `ELEPHANTQ_DB_POOL_MAX/MIN_SIZE` + `ELEPHANTQ_DB_POOL_SAFETY_MARGIN` |
+
+## Fluent scheduling in code
 
 ```python
-import elephantq
+from elephantq.features import scheduling
 
-@elephantq.job()
-async def remind_user(user_id: int):
-    ...
-
-# Run in 10 minutes
-await elephantq.schedule(remind_user, run_in=600, user_id=42)
+builder = scheduling.schedule_job(process_upload)
+await (
+    builder.with_queue("processing")
+    .with_priority(10)
+    .with_tags("batch:file")
+    .depends_on(existing_job_id)
+    .with_timeout(60)
+    .in_minutes(5)
+    .enqueue(file_path="/tmp/report.zip")
+)
 ```
 
-### Recurring Jobs (Cron)
+Builders record metadata via `elephantq.features.scheduling.get_job_metadata()` so dashboards, logs, or metrics clients can surface the full intent.
+
+Recurring jobs use a similar fluent API:
 
 ```python
-import elephantq
-
-after_midnight = "0 2 * * *"
-
-@elephantq.job()
-async def nightly_report():
-    ...
-
-await elephantq.features.recurring.cron(after_midnight).schedule(nightly_report)
+await scheduling.every(1).days().at("09:00").high_priority().schedule(report_job)
 ```
 
-Make sure `ELEPHANTQ_SCHEDULING_ENABLED=true` is set and the scheduler process is running (`elephantq scheduler`) when using recurring jobs.
+The scheduler reloads persisted definitions (`elephantq_recurring_jobs` table) on restart and respects `ELEPHANTQ_SCHEDULING_ENABLED=true`.
 
-## Advanced Fluent Scheduling API
+## Observability & operations
 
-When your workflow grows beyond a single `await elephantq.enqueue(...)`, the fluent builders under `elephantq.features.recurring` and `elephantq.features.scheduling` keep everything declarative but still explicit in code:
+- Structured logs and metrics hook into the same event loop. Enable `ELEPHANTQ_METRICS_ENABLED` for Prometheus counters and `ELEPHANTQ_LOGGING_ENABLED` for Serilog-like payloads.
+- Dead-letter queue (`ELEPHANTQ_DEAD_LETTER_QUEUE_ENABLED=true`) keeps failed jobs for inspection; you can resurrect, delete, or export them via the CLI or dashboard.
+- Connection pooling respects `ELEPHANTQ_DEFAULT_CONCURRENCY` and warns when the worker tries to exceed `ELEPHANTQ_DB_POOL_MAX_SIZE`. The new `ELEPHANTQ_DB_POOL_SAFETY_MARGIN` reserves room for the scheduler/listener connections.
+- Use `elephantq.features.webhooks.register_endpoint(...)` to notify other systems about job events, and `elephantq.features.logging.setup(...)` for per-job context logging.
 
-- `elephantq.features.recurring.every(5).minutes().high_priority().schedule(report_job)` composes a `TimeIntervalBuilder` that resolves a cron expression for the scheduler handshake.
-- `elephantq.features.scheduling.schedule_job(task)` returns a `JobScheduleBuilder`. Call `.with_queue("slow")`, `.with_priority(10)`, `.with_dependencies("job_a")`, `.with_timeout(60)` and `.enqueue(...)` to stash a fully configured job row in Postgres within a single transaction.
-- Use `elephantq.features.scheduling.create_batch().add(job_func, arg=1).enqueue_all(batch_priority=10)` to enqueue multiple builders together; each builder automatically tags the rows with the batch name so you can track related jobs with `elephantq.get_queue_stats()` or the dashboard.
+## Resources
 
-These builders reuse the same `@elephantq.job()` registry, so feature flags (`ELEPHANTQ_SCHEDULING_ENABLED`, `ELEPHANTQ_DEPENDENCIES_ENABLED`, etc.) still gate behaviour and keep your code debugging story linear.
+- 🧭 [Getting Started](docs/getting-started.md) — a guided setup with troubleshooting tips.
+- 📜 [Feature reference](docs/features.md) — metrics, logging, webhooks, dead-letter, and more.
+- ⏱️ [Scheduling guide](docs/scheduling.md) — fluent builders, batches, and repeated schedules.
+- 🏗️ `deployment/` — sample systemd, supervisor, Docker, and Kubernetes templates.
+- 🧪 `tests/` and `examples/` — runnable snapshots of common workflows.
 
-### Instance-Based API (Multi-tenant or Separate DBs)
+## Extras
 
-```python
-from elephantq import ElephantQ
-
-billing = ElephantQ(database_url="postgresql://localhost/billing")
-
-@billing.job()
-async def invoice_customer(customer_id: int):
-    ...
-
-await billing.enqueue(invoice_customer, customer_id=123)
-```
-
-## Examples Directory
-
-Runnable examples live in `examples/`:
-
-- `examples/basic_app.py` – minimal FastAPI enqueue flow
-- `examples/recurring_jobs.py` – recurring scheduler patterns
-- `examples/queue_routing.py` – multi-queue routing and worker config
-- `examples/file_processing.py` – background file processing pattern
-- `examples/webhook_delivery.py` – webhook delivery smoke example
-
-## Queue Design Tips
-
-- Use separate queues for different workloads (e.g., `emails`, `media`, `billing`).
-- Keep job payloads small; store large blobs elsewhere and pass IDs.
-- Use retries with backoff for flaky external APIs.
-- Start with 1–4 workers locally; scale by adding worker processes.
-
-## Optional Features (Same Package)
-
-Advanced features live under `elephantq.features` and are **opt-in** via flags. Core job APIs (`job`, `enqueue`, `schedule`, workers) remain in the main package. The dashboard and monitoring features also require their optional dependencies (see extras below).
+Optional dependencies unlock extra tools:
 
 ```bash
-pip install elephantq[dashboard]
-pip install elephantq[monitoring]
-pip install elephantq[all]
+pip install elephantq[dashboard]    # dashboard UI
+pip install elephantq[monitoring]   # metrics + webhooks dependencies
+pip install elephantq[all]          # everything
 ```
 
-Enable feature flags:
-
-```bash
-export ELEPHANTQ_DASHBOARD_ENABLED=true           # enable dashboard UI
-export ELEPHANTQ_DASHBOARD_WRITE_ENABLED=true     # allow retry/delete actions
-export ELEPHANTQ_SCHEDULING_ENABLED=true          # recurring + delayed jobs
-export ELEPHANTQ_DEAD_LETTER_QUEUE_ENABLED=true   # dead letter queue
-export ELEPHANTQ_METRICS_ENABLED=true             # metrics endpoints
-export ELEPHANTQ_LOGGING_ENABLED=true             # structured logging
-export ELEPHANTQ_WEBHOOKS_ENABLED=true            # webhooks on job events
-export ELEPHANTQ_DEPENDENCIES_ENABLED=true        # job dependencies
-export ELEPHANTQ_TIMEOUTS_ENABLED=true            # job timeouts
-export ELEPHANTQ_SIGNING_ENABLED=true             # optional helpers (signing, secrets utils)
-```
-
-Example usage:
-
-```python
-import elephantq
-
-metrics = await elephantq.features.metrics.get_system_metrics()
-stats = await elephantq.features.dead_letter.get_stats()
-```
-
-## Troubleshooting
-
-### "Job not registered"
-
-If the worker says a job is not registered, it means the worker did not import your module.
-
-✅ Fix:
-
-```bash
-export ELEPHANTQ_JOBS_MODULES="your_app_module"
-elephantq start
-```
-
-## CLI
-
-```bash
-elephantq setup
-elephantq start --concurrency 4 --queues default,urgent
-elephantq scheduler
-elephantq dashboard --port 6161  # read-only by default
-elephantq metrics --hours 24
-elephantq dead-letter list
-```
-
-## Documentation
-
-- `docs/getting-started.md`
-- `docs/cli.md`
-- `docs/scheduling.md`
-- `docs/features.md`
-- `docs/production.md`
+The CLI stays helpful: `elephantq start`, `scheduler`, `dashboard`, `workers`, `metrics`, and a dedicated `run_tests.py` for automated validation.

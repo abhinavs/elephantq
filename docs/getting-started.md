@@ -1,83 +1,89 @@
-# Getting Started (60 seconds)
+# Getting Started (about 60 seconds)
 
-ElephantQ is a PostgreSQL‑backed async job queue. Workers run as **separate processes**.
+This guide walks through the minimal sequence to enqueue, run, and observe a job with ElephantQ. It assumes you already have PostgreSQL running.
 
-## 1) Install
+## 1. Install
 
 ```bash
 pip install elephantq
 ```
 
-Optional extras:
+Optional extras add the dashboard and monitoring dependencies:
 
 ```bash
 pip install elephantq[dashboard]
 pip install elephantq[monitoring]
-pip install elephantq[all]
 ```
 
-## 2) Configure
+## 2. Configure the environment
 
 ```bash
-export ELEPHANTQ_DATABASE_URL="postgresql://localhost/your_db"
-export ELEPHANTQ_JOBS_MODULES="my_app.tasks"
+export ELEPHANTQ_DATABASE_URL="postgresql://postgres@localhost/elephantq_dev"
+export ELEPHANTQ_JOBS_MODULES="my_app.jobs"
 ```
 
-## 3) Define Jobs
+The worker imports the modules listed in `ELEPHANTQ_JOBS_MODULES`, so ensure it resolves to the files where you decorated your jobs.
+
+## 3. Define a job
 
 ```python
-# my_app/tasks.py
+# my_app/jobs.py
 import elephantq
 
-@elephantq.job()
-async def my_first_job(user_id: int):
-    print(f"Hello {user_id}")
+@elephantq.job(queue="default", retries=3)
+async def welcome_email(user_id: int):
+    print("Sending welcome to", user_id)
 ```
 
-## 4) Migrate
+The decorator registers the job with ElephantQ and keeps it available even if the worker restarts.
+
+## 4. Prepare the database
 
 ```bash
 elephantq setup
 ```
 
-## 5) Run Worker
+This creates all required tables (`elephantq_jobs`, tracking tables for heartbeats, recurring jobs, etc.) and can be re-run safely before every deployment.
+
+## 5. Start workers
 
 ```bash
-elephantq start --concurrency 4
+elephantq start --concurrency 4 --queues=default
 ```
 
-## 6) Enqueue
+Workers run in a separate terminal or process. You can run multiple workers against the same Postgres host. They poll with `LISTEN/NOTIFY` and `FOR UPDATE SKIP LOCKED` to avoid clobbering each other.
+
+## 6. Enqueue a job
 
 ```python
 import elephantq
-from my_app.tasks import my_first_job
+from my_app.jobs import welcome_email
 
-await elephantq.enqueue(my_first_job, user_id=123)
+await elephantq.enqueue(welcome_email, user_id=42)
 ```
 
----
+Use `elephantq.get_queue_stats()` to inspect queue depth or the dashboard when enabled.
 
-## Troubleshooting
+## 7. Scheduler & dashboard (optional)
 
-**Job not registered?**  
-Ensure the worker can import your module:
+Recurring jobs or cron-like schedules require:
 
 ```bash
-export ELEPHANTQ_JOBS_MODULES="my_app.tasks"
-elephantq start
+ELEPHANTQ_SCHEDULING_ENABLED=true elephantq scheduler
 ```
 
-**Missing tables?**  
-Run migrations:
+The dashboard lives behind:
 
 ```bash
-elephantq setup
+ELEPHANTQ_DASHBOARD_ENABLED=true elephantq dashboard
 ```
 
-### Docker Quickstart (PostgreSQL)
+Add `ELEPHANTQ_DASHBOARD_WRITE_ENABLED=true` only in trusted environments if you need retry/delete buttons.
 
-```bash
-docker run --name elephantq-postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:16
-export ELEPHANTQ_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/postgres"
-elephantq setup
-```
+## 8. Troubleshooting tips
+
+- **Jobs not appearing?** Confirm `ELEPHANTQ_JOBS_MODULES` matches the module path your worker loads.
+- **Tables missing?** Re-run `elephantq setup` before starting the worker.
+- **Need quick development loop?** `ELEPHANTQ_DATABASE_URL` can point to SQLite-backed Postgres containers; `elephantq dev` spins up worker + scheduler + dashboard for you.
+
+For deeper detail, see the [scheduling](scheduling.md), [features](features.md), and [production](production.md) guides.
