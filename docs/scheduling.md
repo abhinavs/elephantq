@@ -53,7 +53,7 @@ elephantq.features.recurring.every(10).minutes().schedule(daily_report)
 
 ## Fluent scheduling builders
 
-When your workflow needs richer expressions, use the builders under `elephantq.features.recurring` and `elephantq.features.scheduling`. They still rely on the same `@elephantq.job()` registry, but group scheduling metadata into reusable helpers.
+When your workflow needs richer expressions, use the builders under `elephantq.features.recurring` or `elephantq.features.scheduling`. They still rely on the same `@elephantq.job()` registry, but collect scheduling metadata for km-of-the-day jobs.
 
 ### Fluent recurring builder
 
@@ -61,9 +61,9 @@ When your workflow needs richer expressions, use the builders under `elephantq.f
 await elephantq.features.recurring.every(1).days().at("09:00").high_priority().schedule(daily_report)
 ```
 
-Behind the scenes the fluent builder collects cron/interval parameters, priority, queue overrides, and dependency tags, then calls `EnhancedRecurringManager.schedule_job()` to insert the row that drives the scheduler loop. All of those knobs respect the `ELEPHANTQ_SCHEDULING_ENABLED` flag.
+Behind the scenes the recurring builder builds cron/interval expressions and forwards them to `EnhancedRecurringManager.schedule_job()`. The same `ELEPHANTQ_SCHEDULING_ENABLED` flag gates the feature.
 
-### Job scheduler builder
+### JobScheduleBuilder (advanced workers)
 
 ```python
 builder = elephantq.features.scheduling.schedule_job(cleanup_task)
@@ -71,12 +71,25 @@ await (
     builder.with_queue("maintenance")
     .with_priority(20)
     .with_timeout(120)
-    .with_dependency("snapshot_job")
+    .depends_on(latest_snapshot_job_id)
     .enqueue(connection=conn)
 )
 ```
 
-`JobScheduleBuilder` keeps a single configuration dict that eventually hits `JobScheduleBuilder._enqueue()`, so you can mutate the same builder before enqueuing in a transaction. It also wires retries, dependency checks, and timeout tracking into that transaction via `ElephantQ.core.queue`.
+`JobScheduleBuilder` exposes the following methods:
+
+| Method | Description |
+| --- | --- |
+| `.in_seconds()`, `.in_minutes()`, `.in_hours()`, `.in_days()` | Delay execution relative to now. |
+| `.at_time()` | Interpret an ISO datetime or `HH:MM` string. |
+| `.with_priority()` / `.in_queue()` | Override priority and queue for this run. |
+| `.with_retries()` / `.with_timeout()` | Set retries or timeout metadata (stored alongside the job row). |
+| `.with_tags()` | Add structured tags for dashboards or metadata. |
+| `.depends_on()` | Declare other job IDs that must finish first (requires dependencies feature). |
+| `.if_condition()` | Skip scheduling unless the provided predicate returns `True`. |
+| `.dry_run()` | Return the final configuration dict instead of enqueuing (useful for previews). |
+
+After calling `.enqueue()`, ElephantQ wires metadata, dependency tracking, and timeout propagation into the same transaction that writes the job row. `_scheduler_metadata` retains extra information for Observability APIs such as `elephantq.features.scheduling.get_job_metadata()`.
 
 ### Batch scheduling
 
@@ -87,7 +100,37 @@ batch.add(job_b).with_queue("reports")
 await batch.enqueue_all(batch_priority=10)
 ```
 
-`BatchScheduler` tags every builder with `batch:<name>` metadata and enqueues all jobs in sequence, so queue stats and dashboard traces show the logical grouping. It still uses PostgreSQL transactions for each enqueue call.
+`BatchScheduler` tags every builder with `batch:<name>` metadata, enqueues them in sequence, and keeps each enqueue in Postgres transaction scope so all batch tags appear in queue stats and the dashboard.
+
+### Unified `schedule()` helper
+
+For simple delays you can call `elephantq.features.scheduling.schedule(job_func, when)` with:
+
+- `when` as a `datetime` → schedules at the exact moment.
+- `when` as an `int`/`float` → schedules after that many seconds.
+- `when` as a `timedelta` → converts to seconds internally.
+
+This helper still respects the scheduling feature flag and returns the job ID produced by the builder.
+
+### Quick convenience helpers
+
+These wrappers sit on top of `schedule_job()`:
+
+- `schedule_high_priority()` → immediate `priority=1`, `queue="urgent"`.
+- `schedule_background()` → immediate background job (`priority=100`, queue `background`).
+- `schedule_urgent()` → another alias for urgent jobs.
+
+Use them when you only need to change priority/queue without touching scheduled times.
+
+### `@scheduled()` decorator
+
+```python
+@scheduled("delay", minutes=30, queue="maintenance")
+async def cleanup_task():
+    ...
+```
+
+The decorator stamps configuration metadata on the function via `func._schedule_config`. You can consume that metadata when wiring custom schedulers or just keep it for documentation.
 
 ## Scheduler process
 
