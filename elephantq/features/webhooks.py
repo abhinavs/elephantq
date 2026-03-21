@@ -11,7 +11,7 @@ import logging
 import time
 import uuid
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -483,7 +483,7 @@ class WebhookDispatcher:
                 )  # Max 5 minutes
                 delivery.next_retry_at = datetime.now(timezone.utc).replace(
                     microsecond=0
-                ) + asyncio.timedelta(seconds=delay_seconds)
+                ) + timedelta(seconds=delay_seconds)
                 delivery.status = "pending"
                 logger.warning(
                     f"Webhook delivery failed, will retry: {delivery.id} -> {endpoint.url}: {e}"
@@ -637,31 +637,31 @@ class WebhookManager:
         async with pool.acquire() as conn:
             stats = await conn.fetchrow(
                 """
-                SELECT 
+                SELECT
                     COUNT(*) as total_deliveries,
                     SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) as successful_deliveries,
                     SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_deliveries,
                     SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_deliveries,
                     AVG(attempts) as avg_attempts
                 FROM elephantq_webhook_deliveries
-                WHERE created_at >= NOW() - INTERVAL '%s hours'
+                WHERE created_at >= NOW() - ($1 || ' hours')::INTERVAL
             """,
-                hours,
+                str(hours),
             )
 
             # Get delivery trends
             trends = await conn.fetch(
                 """
-                SELECT 
+                SELECT
                     DATE_TRUNC('hour', created_at) as hour,
                     COUNT(*) as total,
                     SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) as successful
                 FROM elephantq_webhook_deliveries
-                WHERE created_at >= NOW() - INTERVAL '%s hours'
+                WHERE created_at >= NOW() - ($1 || ' hours')::INTERVAL
                 GROUP BY hour
                 ORDER BY hour
             """,
-                hours,
+                str(hours),
             )
 
             return {

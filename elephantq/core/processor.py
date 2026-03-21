@@ -163,9 +163,6 @@ async def _execute_job_safely(
     Returns:
         tuple: (success: bool, error_message: Optional[str])
     """
-    job_record["id"]
-    job_record["max_attempts"]
-
     # Parse job arguments with corruption handling
     try:
         args_data = json.loads(job_record["args"])

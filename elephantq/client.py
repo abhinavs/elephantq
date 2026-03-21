@@ -20,6 +20,14 @@ from .settings import ElephantQSettings
 logger = logging.getLogger(__name__)
 
 
+def _rows_affected(result: str) -> int:
+    """Extract the number of affected rows from an asyncpg status string like 'UPDATE 3'."""
+    try:
+        return int(result.split()[-1])
+    except (ValueError, IndexError):
+        return 0
+
+
 class ElephantQ:
     """
     ElephantQ Application
@@ -568,7 +576,7 @@ class ElephantQ:
             )
 
             # Check if any rows were affected
-            return result.split()[-1] == "1" if result else False
+            return _rows_affected(result) == 1
 
     async def retry_job(self, job_id: str):
         """
@@ -595,7 +603,7 @@ class ElephantQ:
             )
 
             # Check if any rows were affected
-            return result.split()[-1] == "1" if result else False
+            return _rows_affected(result) == 1
 
     async def delete_job(self, job_id: str):
         """
@@ -618,7 +626,7 @@ class ElephantQ:
             )
 
             # Check if any rows were affected
-            return result.split()[-1] == "1" if result else False
+            return _rows_affected(result) == 1
 
     async def list_jobs(
         self, queue: str = None, status: str = None, limit: int = 100, offset: int = 0

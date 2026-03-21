@@ -18,9 +18,16 @@ import asyncpg
 from pydantic import ValidationError
 
 from elephantq.core.registry import JobRegistry
-from elephantq.db.connection import get_pool
 from elephantq.db.context import get_context_pool
 from elephantq.utils.hashing import compute_args_hash
+
+
+def _rows_affected(result: str) -> int:
+    """Extract the number of affected rows from an asyncpg status string like 'UPDATE 3'."""
+    try:
+        return int(result.split()[-1])
+    except (ValueError, IndexError):
+        return 0
 
 
 def _validate_job_arguments(job_name: str, job_meta: dict, kwargs: dict) -> None:
@@ -83,34 +90,6 @@ def _normalize_scheduled_time(
         return scheduled_at + offset_delta
 
 
-async def _handle_unique_job_check(
-    conn, job_name: str, args_hash: str
-) -> Optional[str]:
-    """
-    Check for existing unique job and return its ID if found.
-
-    Args:
-        conn: Database connection
-        job_name: Name of the job function
-        args_hash: Hash of job arguments
-
-    Returns:
-        Existing job ID if found, None otherwise
-    """
-    existing_job = await conn.fetchrow(
-        """
-        SELECT id FROM elephantq_jobs
-        WHERE job_name = $1 AND args_hash = $2 AND status = 'queued' AND unique_job = TRUE
-    """,
-        job_name,
-        args_hash,
-    )
-
-    if existing_job:
-        return str(existing_job["id"])
-    return None
-
-
 async def _create_job_record(
     conn,
     job_id: str,
@@ -122,33 +101,61 @@ async def _create_job_record(
     final_queue: str,
     final_unique: bool,
     scheduled_at: Optional[datetime],
-) -> None:
+) -> Optional[str]:
     """
     Create a new job record in the database.
 
-    Args:
-        conn: Database connection
-        job_id: Generated job ID
-        job_name: Name of the job function
-        job_meta: Job metadata from registry
-        args_json: JSON-serialized arguments
-        args_hash: Hash of arguments for uniqueness
-        final_priority: Final priority value
-        final_queue: Final queue name
-        final_unique: Whether job is unique
-        scheduled_at: When to execute the job
+    For unique jobs, uses INSERT...ON CONFLICT to atomically prevent duplicates.
+
+    Returns:
+        The job_id if inserted, or the existing job's ID on conflict (unique jobs).
+        Returns the passed job_id for non-unique jobs.
     """
+    if final_unique:
+        # Atomic upsert: relies on partial unique index idx_elephantq_jobs_unique_queued
+        row = await conn.fetchrow(
+            """
+            INSERT INTO elephantq_jobs (id, job_name, args, args_hash, max_attempts, priority, queue, unique_job, scheduled_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            ON CONFLICT (job_name, args_hash) WHERE status = 'queued' AND unique_job = TRUE
+            DO NOTHING
+            RETURNING id
+            """,
+            uuid.UUID(job_id),
+            job_name,
+            args_json,
+            args_hash,
+            job_meta["retries"] + 1,
+            final_priority,
+            final_queue,
+            final_unique,
+            scheduled_at,
+        )
+        if row is None:
+            # Conflict — fetch the existing job's ID
+            existing = await conn.fetchrow(
+                """
+                SELECT id FROM elephantq_jobs
+                WHERE job_name = $1 AND args_hash = $2 AND status = 'queued' AND unique_job = TRUE
+                """,
+                job_name,
+                args_hash,
+            )
+            return str(existing["id"]) if existing else job_id
+        # Inserted successfully — notify workers
+        await conn.execute("SELECT pg_notify($1, $2)", "elephantq_new_job", final_queue)
+        return str(row["id"])
+
     await conn.execute(
         """
         INSERT INTO elephantq_jobs (id, job_name, args, args_hash, max_attempts, priority, queue, unique_job, scheduled_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-    """,
+        """,
         uuid.UUID(job_id),
         job_name,
         args_json,
         args_hash,
-        job_meta["retries"]
-        + 1,  # max_attempts = retries + 1 (original attempt + retries)
+        job_meta["retries"] + 1,
         final_priority,
         final_queue,
         final_unique,
@@ -156,7 +163,8 @@ async def _create_job_record(
     )
 
     # Notify workers about the new job for instant processing
-    await conn.execute(f"NOTIFY elephantq_new_job, '{final_queue}'")
+    await conn.execute("SELECT pg_notify($1, $2)", "elephantq_new_job", final_queue)
+    return job_id
 
 
 async def enqueue_job(
@@ -211,17 +219,10 @@ async def enqueue_job(
     args_hash = compute_args_hash(kwargs) if final_unique else None
 
     async def _enqueue_with_connection(conn: asyncpg.Connection) -> str:
-        # Handle unique job checking
-        if final_unique:
-            existing_job_id = await _handle_unique_job_check(conn, job_name, args_hash)
-            if existing_job_id:
-                return existing_job_id
-
-        # Create and insert job record
         job_id = str(uuid.uuid4())
         args_json = json.dumps(kwargs, default=str)
 
-        await _create_job_record(
+        return await _create_job_record(
             conn,
             job_id,
             job_name,
@@ -233,7 +234,6 @@ async def enqueue_job(
             final_unique,
             scheduled_at,
         )
-        return job_id
 
     if connection is not None:
         return await _enqueue_with_connection(connection)
@@ -368,8 +368,7 @@ async def cancel_job(job_id: str) -> bool:
             uuid.UUID(job_id),
         )
 
-        # Check if any rows were affected
-        return result.split()[-1] == "1"
+        return _rows_affected(result) == 1
 
 
 async def retry_job(job_id: str) -> bool:
@@ -395,7 +394,7 @@ async def retry_job(job_id: str) -> bool:
             uuid.UUID(job_id),
         )
 
-        return result.split()[-1] == "1"
+        return _rows_affected(result) == 1
 
 
 async def delete_job(job_id: str) -> bool:
@@ -418,7 +417,7 @@ async def delete_job(job_id: str) -> bool:
             uuid.UUID(job_id),
         )
 
-        return result.split()[-1] == "1"
+        return _rows_affected(result) == 1
 
 
 async def list_jobs(
@@ -439,7 +438,7 @@ async def list_jobs(
     Returns:
         List of job dictionaries
     """
-    pool = await get_pool()
+    pool = await get_context_pool()
 
     # Build query with optional filters
     conditions = []
@@ -588,9 +587,11 @@ async def schedule(
         if isinstance(when, datetime):
             scheduled_time = when
         elif isinstance(when, (int, float)):
-            scheduled_time = datetime.now() + timedelta(seconds=when)
+            scheduled_time = datetime.now(timezone.utc).replace(
+                tzinfo=None
+            ) + timedelta(seconds=when)
         elif isinstance(when, timedelta):
-            scheduled_time = datetime.now() + when
+            scheduled_time = datetime.now(timezone.utc).replace(tzinfo=None) + when
         else:
             raise ValueError(
                 f"Invalid 'when' parameter: {type(when)}. Must be datetime, timedelta, or int/float"
@@ -607,9 +608,13 @@ async def schedule(
             scheduled_time = run_at
         else:
             if isinstance(run_in, (int, float)):
-                scheduled_time = datetime.now() + timedelta(seconds=run_in)
+                scheduled_time = datetime.now(timezone.utc).replace(
+                    tzinfo=None
+                ) + timedelta(seconds=run_in)
             elif isinstance(run_in, timedelta):
-                scheduled_time = datetime.now() + run_in
+                scheduled_time = (
+                    datetime.now(timezone.utc).replace(tzinfo=None) + run_in
+                )
             else:
                 raise ValueError(
                     f"Invalid 'run_in' parameter: {type(run_in)}. Must be int/float (seconds) or timedelta"

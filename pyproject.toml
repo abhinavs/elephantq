@@ -9,6 +9,7 @@ description = "ElephantQ - PostgreSQL-only async job queue - built for developer
 authors = [{ name = "Abhinav Saxena", email = "abhinav@apiclabs.com" }]
 readme = "README.md"
 license = "MIT"
+requires-python = ">=3.10"
 classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
@@ -19,6 +20,7 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "Topic :: Software Development :: Libraries :: Python Modules",
   "Topic :: System :: Distributed Computing",
+  "License :: OSI Approved :: MIT License",
 ]
 keywords = [
   "async",
@@ -28,7 +30,6 @@ keywords = [
   "task",
   "redis-alternative",
   "developer-experience",
-  "zero-dependencies",
   "background-jobs",
 ]
 dependencies = [

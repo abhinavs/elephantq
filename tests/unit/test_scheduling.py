@@ -31,12 +31,22 @@ def enable_scheduling_features(monkeypatch):
 class DummyPool:
     """Simple pool stub that satisfies async context manager usage."""
 
+    class DummyTx:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            return False
+
     class DummyConn:
         async def __aenter__(self):
             return self
 
         async def __aexit__(self, exc_type, exc, tb):
             return False
+
+        def transaction(self):
+            return DummyPool.DummyTx()
 
     def acquire(self):
         return DummyPool.DummyConn()
@@ -53,7 +63,7 @@ async def test_job_schedule_builder_records_metadata(monkeypatch):
     stored_dependencies = []
     stored_timeouts = []
 
-    async def fake_store_job_dependencies(job_id, dependencies, timeout):
+    async def fake_store_job_dependencies(job_id, dependencies, timeout, conn=None):
         stored_dependencies.append((job_id, dependencies, timeout))
         return True
 

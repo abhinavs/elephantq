@@ -24,16 +24,20 @@ Instance-based usage for advanced scenarios:
     await app.run_worker()
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from importlib.metadata import PackageNotFoundError, version
 from typing import Optional, Union
 
 from .client import ElephantQ
 from .settings import configure as settings_configure
 
-__version__ = "0.1.1"
+try:
+    __version__ = version("elephantq")
+except PackageNotFoundError:
+    __version__ = "0.0.0"
 
 # Global ElephantQ instance for convenience API
-_global_app: ElephantQ = None
+_global_app: Optional[ElephantQ] = None
 
 # Global job registry to survive instance recreation
 _global_job_registry = []
@@ -125,16 +129,14 @@ def configure(**kwargs):
     if settings_kwargs:
         settings_configure(**settings_kwargs)
 
-    # Close old global app if it exists and is initialized
+    # Warn if reconfiguring with an already-initialized app
     if _global_app is not None and _global_app.is_initialized:
-        import asyncio
+        import logging
 
-        try:
-            loop = asyncio.get_event_loop()
-            if not loop.is_closed():
-                loop.create_task(_global_app.close())
-        except RuntimeError:
-            pass
+        logging.getLogger(__name__).warning(
+            "Reconfiguring ElephantQ while a previous instance is initialized. "
+            "The old connection pool will be released when garbage collected."
+        )
 
     _global_app = ElephantQ(**settings_kwargs)
 
@@ -184,9 +186,11 @@ async def schedule(
 
     if run_in is not None:
         if isinstance(run_in, (int, float)):
-            run_at = datetime.now() + timedelta(seconds=run_in)
+            run_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(
+                seconds=run_in
+            )
         elif isinstance(run_in, timedelta):
-            run_at = datetime.now() + run_in
+            run_at = datetime.now(timezone.utc).replace(tzinfo=None) + run_in
         else:
             raise ValueError("run_in must be int, float (seconds), or timedelta")
 

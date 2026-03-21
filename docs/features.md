@@ -33,12 +33,12 @@ Use the logger inside job handlers to keep traceability aligned with ElephantQ m
 ## Dead-letter queue
 
 - **Flag:** `ELEPHANTQ_DEAD_LETTER_QUEUE_ENABLED=true`
-- **Extra:** `pip install elephantq[monitoring]`
+- **Extra:** none — included in the base install.
 - **What it does:** Failed jobs beyond their retry budget land in `elephantq_dead_letter_jobs`. You can inspect, retry, delete, or export them.
 
 ```bash
 elephantq dead-letter list
-elephantq dead-letter resurrect --job-ids <id>
+elephantq dead-letter resurrect <job-id>
 elephantq dead-letter export --output failed.json
 ```
 
@@ -47,7 +47,7 @@ Webhooks and custom metrics can react to dead-letter activity to keep your opera
 ## Webhooks
 
 - **Flag:** `ELEPHANTQ_WEBHOOKS_ENABLED=true`
-- **Extra:** `pip install elephantq[monitoring]` (adds `httpx`)
+- **Extra:** none — included in the base install. Set `ELEPHANTQ_WEBHOOKS_ENABLED=true` to activate.
 - **What it does:** Register webhook endpoints that receive job lifecycle events such as `job.succeeded`, `job.failed`, or `job.dead_letter`.
 
 ```python

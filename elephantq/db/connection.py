@@ -2,6 +2,7 @@
 Database connection management with context support
 """
 
+import asyncio
 import contextvars
 from contextlib import asynccontextmanager
 from typing import AsyncContextManager, Optional
@@ -12,6 +13,7 @@ from elephantq.settings import get_settings
 
 # Global pool for backward compatibility
 _pool: Optional[asyncpg.Pool] = None
+_pool_lock: asyncio.Lock = asyncio.Lock()
 
 # Context variable for thread-local pool managemen
 _context_pool: contextvars.ContextVar[Optional[asyncpg.Pool]] = contextvars.ContextVar(
@@ -46,8 +48,10 @@ async def get_pool() -> asyncpg.Pool:
     # Fall back to global pool for backward compatibility
     global _pool
     if _pool is None:
-        database_url = _get_database_url()
-        _pool = await asyncpg.create_pool(database_url, init=_init_connection)
+        async with _pool_lock:
+            if _pool is None:
+                database_url = _get_database_url()
+                _pool = await asyncpg.create_pool(database_url, init=_init_connection)
     return _pool
 
 

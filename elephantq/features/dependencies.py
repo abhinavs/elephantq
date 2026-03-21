@@ -25,7 +25,10 @@ class DependencyStatus(Enum):
 
 
 async def store_job_dependencies(
-    job_id: str, dependencies: List[str], dependency_timeout: Optional[int] = None
+    job_id: str,
+    dependencies: List[str],
+    dependency_timeout: Optional[int] = None,
+    conn=None,
 ) -> bool:
     """
     Store job dependencies in the database
@@ -34,6 +37,7 @@ async def store_job_dependencies(
         job_id: ID of the job that has dependencies
         dependencies: List of job IDs this job depends on
         dependency_timeout: Timeout in seconds for waiting for dependencies
+        conn: Optional database connection to join an existing transaction
 
     Returns:
         True if stored successfully
@@ -41,6 +45,11 @@ async def store_job_dependencies(
     require_feature("dependencies_enabled", "Job dependencies")
     if not dependencies:
         return True
+
+    if conn is not None:
+        return await _store_dependencies_with_conn(
+            conn, job_id, dependencies, dependency_timeout
+        )
 
     pool = await get_context_pool()
     async with pool.acquire() as conn:
@@ -83,6 +92,50 @@ async def store_job_dependencies(
                     dep_uuid,
                     timeout_at,
                 )
+
+    return True
+
+
+async def _store_dependencies_with_conn(
+    conn, job_id: str, dependencies: List[str], dependency_timeout: Optional[int] = None
+) -> bool:
+    """Store dependencies using an existing connection (joins caller's transaction)."""
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS elephantq_job_dependencies (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            job_id UUID NOT NULL REFERENCES elephantq_jobs(id) ON DELETE CASCADE,
+            depends_on_job_id UUID NOT NULL,
+            dependency_status TEXT DEFAULT 'pending' CHECK (dependency_status IN ('pending', 'waiting', 'ready', 'failed', 'timeout')),
+            created_at TIMESTAMP DEFAULT NOW(),
+            updated_at TIMESTAMP DEFAULT NOW(),
+            timeout_at TIMESTAMP,
+            UNIQUE(job_id, depends_on_job_id)
+        )
+    """
+    )
+
+    for dep_job_id in dependencies:
+        try:
+            dep_uuid = uuid.UUID(dep_job_id)
+        except ValueError:
+            continue
+
+        timeout_at = None
+        if dependency_timeout:
+            timeout_at = datetime.now() + timedelta(seconds=dependency_timeout)
+
+        await conn.execute(
+            """
+            INSERT INTO elephantq_job_dependencies
+            (job_id, depends_on_job_id, timeout_at)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (job_id, depends_on_job_id) DO NOTHING
+        """,
+            uuid.UUID(job_id),
+            dep_uuid,
+            timeout_at,
+        )
 
     return True
 

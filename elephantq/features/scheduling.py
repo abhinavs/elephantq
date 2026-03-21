@@ -3,7 +3,8 @@ Advanced scheduling with fluent interface for ElephantQ.
 """
 
 import uuid
-from datetime import datetime, timedelta
+from collections import OrderedDict
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from elephantq import enqueue
@@ -28,22 +29,30 @@ class JobScheduleBuilder:
 
     def in_seconds(self, seconds: int) -> "JobScheduleBuilder":
         """Schedule job to run in X seconds"""
-        self._scheduled_at = datetime.now() + timedelta(seconds=seconds)
+        self._scheduled_at = datetime.now(timezone.utc).replace(
+            tzinfo=None
+        ) + timedelta(seconds=seconds)
         return self
 
     def in_minutes(self, minutes: int) -> "JobScheduleBuilder":
         """Schedule job to run in X minutes"""
-        self._scheduled_at = datetime.now() + timedelta(minutes=minutes)
+        self._scheduled_at = datetime.now(timezone.utc).replace(
+            tzinfo=None
+        ) + timedelta(minutes=minutes)
         return self
 
     def in_hours(self, hours: int) -> "JobScheduleBuilder":
         """Schedule job to run in X hours"""
-        self._scheduled_at = datetime.now() + timedelta(hours=hours)
+        self._scheduled_at = datetime.now(timezone.utc).replace(
+            tzinfo=None
+        ) + timedelta(hours=hours)
         return self
 
     def in_days(self, days: int) -> "JobScheduleBuilder":
         """Schedule job to run in X days"""
-        self._scheduled_at = datetime.now() + timedelta(days=days)
+        self._scheduled_at = datetime.now(timezone.utc).replace(
+            tzinfo=None
+        ) + timedelta(days=days)
         return self
 
     def at_time(self, time_str: str) -> "JobScheduleBuilder":
@@ -60,11 +69,13 @@ class JobScheduleBuilder:
             try:
                 # Try parsing as HH:MM for today
                 time_part = datetime.strptime(time_str, "%H:%M").time()
-                today = datetime.now().date()
+                today = datetime.now(timezone.utc).replace(tzinfo=None).date()
                 self._scheduled_at = datetime.combine(today, time_part)
 
                 # If the time has already passed today, schedule for tomorrow
-                if self._scheduled_at <= datetime.now():
+                if self._scheduled_at <= datetime.now(timezone.utc).replace(
+                    tzinfo=None
+                ):
                     self._scheduled_at += timedelta(days=1)
             except ValueError:
                 raise ValueError(
@@ -113,9 +124,13 @@ class JobScheduleBuilder:
         self._dry_run = True
         return self
 
-    async def enqueue(self, **kwargs) -> Union[str, Dict[str, Any]]:
+    async def enqueue(self, connection=None, **kwargs) -> Union[str, Dict[str, Any]]:
         """
         Enqueue the job with configured options
+
+        Args:
+            connection: Optional database connection to join an existing transaction
+            **kwargs: Arguments to pass to the job
 
         Returns:
             Job ID if scheduled, or configuration dict if dry run
@@ -155,23 +170,50 @@ class JobScheduleBuilder:
         # Add job arguments
         enqueue_kwargs.update(kwargs)
 
-        job_id = await enqueue(self.job_func, **enqueue_kwargs)
+        has_metadata = bool(self._dependencies or self._timeout)
 
-        # Store dependencies in database if any
-        if self._dependencies:
-            from .dependencies import store_job_dependencies
-
-            await store_job_dependencies(job_id, self._dependencies, self._timeout)
-
-        # Store timeout configuration if specified
-        if self._timeout:
+        if has_metadata:
+            # Use a single transaction for job row + metadata to prevent
+            # race conditions where a worker picks up the job before deps
+            # or timeout are stored.
             from elephantq.db.context import get_context_pool
 
-            from .timeout_processor import store_job_timeout
-
             pool = await get_context_pool()
-            async with pool.acquire() as conn:
-                await store_job_timeout(job_id, self._timeout, conn)
+
+            if connection is not None:
+                # Join the caller's transaction
+                job_id = await enqueue(
+                    self.job_func, **enqueue_kwargs, connection=connection
+                )
+                if self._dependencies:
+                    from .dependencies import store_job_dependencies
+
+                    await store_job_dependencies(
+                        job_id, self._dependencies, self._timeout, conn=connection
+                    )
+                if self._timeout:
+                    from .timeout_processor import store_job_timeout
+
+                    await store_job_timeout(job_id, self._timeout, connection)
+            else:
+                async with pool.acquire() as conn:
+                    async with conn.transaction():
+                        job_id = await enqueue(
+                            self.job_func, **enqueue_kwargs, connection=conn
+                        )
+                        if self._dependencies:
+                            from .dependencies import store_job_dependencies
+
+                            await store_job_dependencies(
+                                job_id, self._dependencies, self._timeout, conn=conn
+                            )
+                        if self._timeout:
+                            from .timeout_processor import store_job_timeout
+
+                            await store_job_timeout(job_id, self._timeout, conn)
+        else:
+            # Simple path: no deps or timeout, no overhead
+            job_id = await enqueue(self.job_func, **enqueue_kwargs)
 
         # Store additional metadata (tags, timeout, etc.)
         if any([self._tags, self._timeout, self._retries is not None]):
@@ -202,8 +244,21 @@ class JobScheduleBuilder:
         }
 
 
-# Global metadata storage for scheduler features
-_scheduler_metadata: Dict[str, Dict[str, Any]] = {}
+class _BoundedDict(OrderedDict):
+    """OrderedDict that evicts the oldest entry when capacity is exceeded."""
+
+    def __init__(self, max_size: int = 10_000, *args, **kwargs):
+        self.max_size = max_size
+        super().__init__(*args, **kwargs)
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        while len(self) > self.max_size:
+            self.popitem(last=False)
+
+
+# Global metadata storage for scheduler features (bounded to prevent memory leaks)
+_scheduler_metadata: _BoundedDict = _BoundedDict(max_size=10_000)
 
 
 class BatchScheduler:
@@ -221,10 +276,9 @@ class BatchScheduler:
         self.enqueue_kwargs.append(kwargs)
         return builder
 
-    def add(self, job_func: Callable[..., Any], **kwargs) -> "BatchScheduler":
+    def add(self, job_func: Callable[..., Any], **kwargs) -> JobScheduleBuilder:
         """Add a job to the batch (fluent interface)"""
-        self.add_job(job_func, **kwargs)
-        return self
+        return self.add_job(job_func, **kwargs)
 
     async def enqueue_all(self, batch_priority: Optional[int] = None) -> List[str]:
         """Enqueue all jobs in the batch"""
