@@ -505,7 +505,9 @@ class WebhookDispatcher:
                         WHERE status = 'pending'
                         AND next_retry_at IS NOT NULL
                         AND next_retry_at <= NOW()
+                        ORDER BY next_retry_at
                         LIMIT 100
+                        FOR UPDATE SKIP LOCKED
                     """
                     )
 

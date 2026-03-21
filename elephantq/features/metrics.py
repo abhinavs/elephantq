@@ -28,7 +28,7 @@ class JobMetrics:
     duration_ms: float
     memory_usage_mb: Optional[float] = None
     cpu_usage_percent: Optional[float] = None
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass
@@ -163,10 +163,10 @@ class MetricsAnalyzer:
                 """
                 SELECT status, COUNT(*) as count
                 FROM elephantq_jobs 
-                WHERE created_at >= NOW() - INTERVAL '%s hours'
+                WHERE created_at >= NOW() - ($1 || ' hours')::INTERVAL
                 GROUP BY status
             """,
-                timeframe_hours,
+                str(timeframe_hours),
             )
 
             jobs_per_status = {row["status"]: row["count"] for row in status_counts}
@@ -181,9 +181,9 @@ class MetricsAnalyzer:
                     PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (updated_at - created_at)) * 1000) as p99_time_ms
                 FROM elephantq_jobs 
                 WHERE status IN ('done', 'failed') 
-                AND created_at >= NOW() - INTERVAL '%s hours'
+                AND created_at >= NOW() - ($1 || ' hours')::INTERVAL
             """,
-                timeframe_hours,
+                str(timeframe_hours),
             )
 
             # Calculate success rate
@@ -204,11 +204,11 @@ class MetricsAnalyzer:
                        EXTRACT(EPOCH FROM (updated_at - created_at)) * 1000 as duration_ms
                 FROM elephantq_jobs 
                 WHERE status IN ('done', 'failed')
-                AND created_at >= NOW() - INTERVAL '%s hours'
+                AND created_at >= NOW() - ($1 || ' hours')::INTERVAL
                 ORDER BY duration_ms DESC 
                 LIMIT 10
             """,
-                timeframe_hours,
+                str(timeframe_hours),
             )
 
             # Get top failed jobs
@@ -218,12 +218,12 @@ class MetricsAnalyzer:
                        array_agg(DISTINCT last_error) as error_messages
                 FROM elephantq_jobs 
                 WHERE status = 'failed'
-                AND created_at >= NOW() - INTERVAL '%s hours'
+                AND created_at >= NOW() - ($1 || ' hours')::INTERVAL
                 GROUP BY job_name, queue
                 ORDER BY failure_count DESC 
                 LIMIT 10
             """,
-                timeframe_hours,
+                str(timeframe_hours),
             )
 
             # Calculate system throughput
@@ -263,7 +263,7 @@ class MetricsAnalyzer:
                     THEN EXTRACT(EPOCH FROM (updated_at - created_at)) * 1000 
                     ELSE NULL END) as avg_processing_time_ms
             FROM elephantq_jobs 
-            WHERE created_at >= NOW() - INTERVAL '%s hours'
+            WHERE created_at >= NOW() - ($1 || ' hours')::INTERVAL
             GROUP BY queue
         """,
             timeframe_hours,
@@ -330,11 +330,11 @@ class MetricsAnalyzer:
                     COUNT(*) as job_count,
                     SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) as success_count
                 FROM elephantq_jobs 
-                WHERE created_at >= NOW() - INTERVAL '%s hours'
+                WHERE created_at >= NOW() - ($1 || ' hours')::INTERVAL
                 GROUP BY hour
                 ORDER BY hour
             """,
-                timeframe_hours,
+                str(timeframe_hours),
             )
 
             # Get error pattern analysis
@@ -347,12 +347,12 @@ class MetricsAnalyzer:
                 FROM elephantq_jobs 
                 WHERE status = 'failed' 
                 AND last_error IS NOT NULL
-                AND created_at >= NOW() - INTERVAL '%s hours'
+                AND created_at >= NOW() - ($1 || ' hours')::INTERVAL
                 GROUP BY last_error
                 ORDER BY occurrence_count DESC
                 LIMIT 20
             """,
-                timeframe_hours,
+                str(timeframe_hours),
             )
 
         return {

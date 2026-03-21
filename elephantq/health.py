@@ -349,8 +349,9 @@ async def check_system_resources() -> Tuple[HealthStatus, str]:
         if disk.percent > settings.disk_usage_threshold:
             return HealthStatus.DEGRADED, f"High disk usage: {disk.percent:.1f}%"
 
-        # Check CPU usage (average over 1 second)
-        cpu_percent = psutil.cpu_percent(interval=1)
+        # Check CPU usage — use interval=None for non-blocking snapshot
+        # (compares against last call rather than sleeping for 1 second)
+        cpu_percent = psutil.cpu_percent(interval=None)
         if cpu_percent > settings.cpu_usage_threshold:
             return HealthStatus.DEGRADED, f"High CPU usage: {cpu_percent:.1f}%"
 

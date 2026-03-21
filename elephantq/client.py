@@ -84,8 +84,11 @@ class ElephantQ:
         # Instance components (initialized lazily)
         self._pool: Optional[asyncpg.Pool] = None
         self._job_registry = JobRegistry()
+        from .errors import DatabaseConnectionError
+
         logger.debug(
-            f"Created ElephantQ instance with database: {self._settings.database_url}"
+            "Created ElephantQ instance with database: %s",
+            DatabaseConnectionError._mask_database_url(self._settings.database_url),
         )
 
     @property
@@ -282,37 +285,42 @@ class ElephantQ:
         finally:
             logger.info("ElephantQ worker stopped")
 
-    async def _run_worker_once(self, queues: Optional[List[str]] = None) -> bool:
+    async def _run_worker_once(
+        self,
+        queues: Optional[List[str]] = None,
+        max_jobs: Optional[int] = None,
+    ) -> bool:
         """
-        Process all available jobs once and exit.
+        Process available jobs once and exit.
 
-        Continues processing until no more jobs are available,
-        allowing for retries and full queue draining.
+        Continues processing until no more jobs are available or max_jobs is reached.
+
+        Args:
+            queues: Optional list of queues to process
+            max_jobs: Maximum number of jobs to process. None means no limit.
 
         Returns:
             True if any jobs were processed, False otherwise
         """
         from .core.processor import process_jobs_with_registry
 
-        jobs_processed = False
+        jobs_processed = 0
 
-        # Keep processing until no more jobs are available
-        while True:
+        while max_jobs is None or jobs_processed < max_jobs:
             async with self._pool.acquire() as conn:
                 processed = await process_jobs_with_registry(
                     conn=conn,
                     job_registry=self._job_registry,
                     queue=queues,
-                    heartbeat=None,  # No heartbeat for run_once
+                    heartbeat=None,
                 )
 
             if processed:
-                jobs_processed = True
+                jobs_processed += 1
             else:
-                # No more jobs available, exit
                 break
 
-        return jobs_processed
+        return jobs_processed > 0
 
     async def _run_worker_continuous(
         self, concurrency: int, queues: Optional[List[str]] = None

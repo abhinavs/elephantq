@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import logging.handlers
+import re
 import sys
 import time
 import traceback
@@ -15,9 +16,11 @@ from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from elephantq.db.connection import get_pool
+
+_VALID_TABLE_NAME = re.compile(r"^[a-z_][a-z0-9_]*$")
 
 # Context variables for request tracking
 job_context: ContextVar[Optional["JobContext"]] = ContextVar(
@@ -154,10 +157,13 @@ class DatabaseLogHandler(logging.Handler):
 
     def __init__(self, table_name: str = "elephantq_logs", batch_size: int = 100):
         super().__init__()
+        if not _VALID_TABLE_NAME.match(table_name):
+            raise ValueError(f"Invalid table name: {table_name!r}")
         self.table_name = table_name
         self.batch_size = batch_size
         self.log_buffer: List[Dict[str, Any]] = []
         self._lock = asyncio.Lock()
+        self._pending_tasks: Set[asyncio.Task] = set()
         self._background_task = None
 
     async def setup_database(self):
@@ -198,8 +204,10 @@ class DatabaseLogHandler(logging.Handler):
             # Convert to structured format
             log_entry = self._format_log_entry(record)
 
-            # Add to buffer (thread-safe)
-            asyncio.create_task(self._add_to_buffer(log_entry))
+            # Track the task so it can be awaited on close
+            task = asyncio.create_task(self._add_to_buffer(log_entry))
+            self._pending_tasks.add(task)
+            task.add_done_callback(self._pending_tasks.discard)
 
         except Exception:
             self.handleError(record)
@@ -269,7 +277,8 @@ class DatabaseLogHandler(logging.Handler):
 
         except Exception as e:
             # Fallback to console logging if database fails
-            print(f"Failed to write logs to database: {e}", file=sys.stderr)
+            # Use stderr directly to avoid recursion if this handler is on the root logger
+            sys.stderr.write(f"ElephantQ: Failed to write logs to database: {e}\n")
 
     def _format_log_entry(self, record: logging.LogRecord) -> Dict[str, Any]:
         """Format log record for database storage"""
@@ -349,7 +358,10 @@ class DatabaseLogHandler(logging.Handler):
         return entry
 
     async def close(self):
-        """Close handler and flush remaining logs"""
+        """Close handler, await pending tasks, and flush remaining logs"""
+        if self._pending_tasks:
+            await asyncio.gather(*self._pending_tasks, return_exceptions=True)
+            self._pending_tasks.clear()
         async with self._lock:
             await self._flush_buffer()
 
@@ -529,40 +541,42 @@ class LogAnalyzer:
     """Log analysis and reporting tools"""
 
     def __init__(self, table_name: str = "elephantq_logs"):
+        if not _VALID_TABLE_NAME.match(table_name):
+            raise ValueError(f"Invalid table name: {table_name!r}")
         self.table_name = table_name
 
     async def get_error_summary(self, hours: int = 24) -> Dict[str, Any]:
         """Get error summary for the specified time period"""
         pool = await get_pool()
         async with pool.acquire() as conn:
-            # Get error counts by job type
             error_counts = await conn.fetch(
                 f"""
-                SELECT 
+                SELECT
                     job_name,
                     COUNT(*) as error_count,
                     array_agg(DISTINCT message) as error_messages
                 FROM {self.table_name}
                 WHERE level IN ('ERROR', 'CRITICAL')
-                AND timestamp >= NOW() - INTERVAL '{hours} hours'
+                AND timestamp >= NOW() - ($1 || ' hours')::INTERVAL
                 AND job_name IS NOT NULL
                 GROUP BY job_name
                 ORDER BY error_count DESC
-            """
+            """,
+                str(hours),
             )
 
-            # Get error trends
             error_trends = await conn.fetch(
                 f"""
-                SELECT 
+                SELECT
                     DATE_TRUNC('hour', timestamp) as hour,
                     COUNT(*) as error_count
                 FROM {self.table_name}
                 WHERE level IN ('ERROR', 'CRITICAL')
-                AND timestamp >= NOW() - INTERVAL '{hours} hours'
+                AND timestamp >= NOW() - ($1 || ' hours')::INTERVAL
                 GROUP BY hour
                 ORDER BY hour
-            """
+            """,
+                str(hours),
             )
 
             return {
@@ -577,25 +591,26 @@ class LogAnalyzer:
         """Get performance logs with duration metrics"""
         pool = await get_pool()
         async with pool.acquire() as conn:
-            where_clause = "WHERE performance_data IS NOT NULL"
-            params = []
+            conditions = [
+                "performance_data IS NOT NULL",
+                "timestamp >= NOW() - ($1 || ' hours')::INTERVAL",
+            ]
+            params: list = [str(hours)]
+            param_idx = 2
 
             if job_name:
-                where_clause += " AND job_name = $1"
+                conditions.append(f"job_name = ${param_idx}")
                 params.append(job_name)
+                param_idx += 1
 
-            where_clause += f" AND timestamp >= NOW() - INTERVAL '{hours} hours'"
+            where_clause = " AND ".join(conditions)
 
             performance_logs = await conn.fetch(
                 f"""
-                SELECT 
-                    timestamp,
-                    job_id,
-                    job_name,
-                    queue,
-                    performance_data
+                SELECT
+                    timestamp, job_id, job_name, queue, performance_data
                 FROM {self.table_name}
-                {where_clause}
+                WHERE {where_clause}
                 ORDER BY timestamp DESC
             """,
                 *params,
@@ -613,28 +628,25 @@ class LogAnalyzer:
         """Search logs with filters"""
         pool = await get_pool()
         async with pool.acquire() as conn:
-            where_conditions = ["timestamp >= NOW() - INTERVAL '%s hours'"]
-            params = [hours]
+            conditions = ["timestamp >= NOW() - ($1 || ' hours')::INTERVAL"]
+            params: list = [str(hours)]
+            param_idx = 2
 
-            # Text search
-            where_conditions.append("message ILIKE $%s")
+            conditions.append(f"message ILIKE ${param_idx}")
             params.append(f"%{query}%")
+            param_idx += 1
 
-            # Job ID filter
             if job_id:
-                where_conditions.append("job_id = $%s")
+                conditions.append(f"job_id = ${param_idx}")
                 params.append(job_id)
+                param_idx += 1
 
-            # Level filter
             if level:
-                where_conditions.append("level = $%s")
+                conditions.append(f"level = ${param_idx}")
                 params.append(level.upper())
+                param_idx += 1
 
-            # Update parameter placeholders
-            for i, condition in enumerate(where_conditions[1:], 2):
-                where_conditions[i] = condition.replace("%s", str(i))
-
-            where_clause = " AND ".join(where_conditions)
+            where_clause = " AND ".join(conditions)
 
             logs = await conn.fetch(
                 f"""

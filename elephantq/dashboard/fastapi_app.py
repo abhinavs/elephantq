@@ -52,14 +52,46 @@ def create_dashboard_app() -> "FastAPI":
         version="1.0.0",
     )
 
-    # Add CORS middleware
+    # CORS: restrict origins to configured list or localhost default
+    import os
+
+    allowed_origins_env = os.environ.get("ELEPHANTQ_DASHBOARD_ALLOWED_ORIGINS", "")
+    if allowed_origins_env:
+        allowed_origins = [
+            o.strip() for o in allowed_origins_env.split(",") if o.strip()
+        ]
+    else:
+        allowed_origins = ["http://localhost:6161", "http://127.0.0.1:6161"]
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
+        allow_origins=allowed_origins,
+        allow_credentials=len(allowed_origins) > 0 and "*" not in allowed_origins,
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Optional API key authentication
+    dashboard_api_key = os.environ.get("ELEPHANTQ_DASHBOARD_API_KEY", "")
+    if dashboard_api_key:
+        from starlette.middleware.base import BaseHTTPMiddleware
+        from starlette.responses import JSONResponse
+
+        class APIKeyMiddleware(BaseHTTPMiddleware):
+            async def dispatch(self, request, call_next):
+                # Allow the root page without auth for the HTML dashboard
+                if request.url.path == "/":
+                    return await call_next(request)
+                key = request.headers.get("X-API-Key") or request.query_params.get(
+                    "api_key"
+                )
+                if key != dashboard_api_key:
+                    return JSONResponse(
+                        {"detail": "Invalid or missing API key"}, status_code=401
+                    )
+                return await call_next(request)
+
+        app.add_middleware(APIKeyMiddleware)
 
     @app.get("/", response_class=HTMLResponse)
     async def dashboard_home():

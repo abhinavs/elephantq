@@ -129,13 +129,11 @@ def configure(**kwargs):
     if settings_kwargs:
         settings_configure(**settings_kwargs)
 
-    # Warn if reconfiguring with an already-initialized app
+    # Prevent reconfiguration after the pool has been initialized to avoid leaking connections
     if _global_app is not None and _global_app.is_initialized:
-        import logging
-
-        logging.getLogger(__name__).warning(
-            "Reconfiguring ElephantQ while a previous instance is initialized. "
-            "The old connection pool will be released when garbage collected."
+        raise RuntimeError(
+            "Cannot reconfigure ElephantQ after the connection pool has been initialized. "
+            "Call configure() before any enqueue/worker operations, or close the app first."
         )
 
     _global_app = ElephantQ(**settings_kwargs)

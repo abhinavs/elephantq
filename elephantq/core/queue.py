@@ -9,7 +9,6 @@ for backward compatibility.
 """
 
 import json
-import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -62,7 +61,7 @@ def _normalize_scheduled_time(
     Returns:
         Normalized datetime or None
     """
-    if not scheduled_at:
+    if scheduled_at is None:
         return None
 
     # Handle timedelta values (add to current time)
@@ -79,15 +78,10 @@ def _normalize_scheduled_time(
         # Convert timezone-aware datetime to UTC
         return scheduled_at.astimezone(timezone.utc).replace(tzinfo=None)
     else:
-        # For timezone-naive datetime, assume it's in local time and convert to UTC
-        # Get the local timezone offset and apply it to get UTC
-        # Get timezone offset in seconds (accounts for DST)
-        is_dst = time.daylight and time.localtime().tm_isdst
-        offset_seconds = time.altzone if is_dst else time.timezone
-        # timezone/altzone gives seconds west of UTC (negative for east)
-        # To convert local time to UTC, we add this offset (which is negative for eastern timezones)
-        offset_delta = timedelta(seconds=offset_seconds)
-        return scheduled_at + offset_delta
+        # Naive datetimes are assumed to be UTC (matching DB timezone setting).
+        # All internal code already produces UTC-naive datetimes via
+        # datetime.now(timezone.utc).replace(tzinfo=None).
+        return scheduled_at
 
 
 async def _create_job_record(
