@@ -21,6 +21,30 @@ from elephantq.core.retry import compute_retry_delay_seconds
 logger = logging.getLogger(__name__)
 
 
+def _should_skip_update_lock() -> bool:
+    """
+    Check if row-level locking should be skipped.
+
+    Only honored in debug or testing mode to prevent accidental
+    duplicate job execution in production.
+    """
+    env_val = os.environ.get("ELEPHANTQ_SKIP_UPDATE_LOCK", "").lower()
+    if env_val not in {"1", "true", "yes", "on"}:
+        return False
+
+    from elephantq.settings import get_settings
+
+    settings = get_settings()
+    if settings.debug or settings.environment == "testing":
+        return True
+
+    logger.warning(
+        "ELEPHANTQ_SKIP_UPDATE_LOCK is set but ignored in production mode. "
+        "Set ELEPHANTQ_DEBUG=true or ELEPHANTQ_ENVIRONMENT=testing to enable."
+    )
+    return False
+
+
 async def _move_job_to_dead_letter(
     conn: asyncpg.Connection, job_id: uuid.UUID, max_attempts: int, error_message: str
 ) -> None:
@@ -66,14 +90,7 @@ async def _fetch_and_lock_job(
     Returns:
         Job record dict or None if no jobs available
     """
-    # Tests can disable row-level locking to avoid environments that don't support it well.
-    skip_update_lock = os.environ.get("ELEPHANTQ_SKIP_UPDATE_LOCK", "").lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
-    lock_clause = "" if skip_update_lock else "FOR UPDATE SKIP LOCKED"
+    lock_clause = "" if _should_skip_update_lock() else "FOR UPDATE SKIP LOCKED"
     async with conn.transaction():
         # Lock and fetch the next job (ordered by priority then scheduled time)
         if queue is None:
