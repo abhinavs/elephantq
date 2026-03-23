@@ -188,11 +188,9 @@ async def schedule(
 
     if run_in is not None:
         if isinstance(run_in, (int, float)):
-            run_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(
-                seconds=run_in
-            )
+            run_at = datetime.now(timezone.utc) + timedelta(seconds=run_in)
         elif isinstance(run_in, timedelta):
-            run_at = datetime.now(timezone.utc).replace(tzinfo=None) + run_in
+            run_at = datetime.now(timezone.utc) + run_in
         else:
             raise ValueError("run_in must be int, float (seconds), or timedelta")
 

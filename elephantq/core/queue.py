@@ -46,18 +46,24 @@ def _normalize_scheduled_time(
     scheduled_at: Optional[Union[datetime, int, float, timedelta]],
 ) -> Optional[datetime]:
     """
-    Normalize scheduled_at to be timezone-naive in UTC.
+    Normalize scheduled_at to a timezone-naive UTC datetime for database storage.
+
+    Users can pass datetimes in any timezone:
+    - Timezone-aware datetimes are converted to UTC automatically.
+    - Naive datetimes (no tzinfo) are interpreted as local machine time
+      and converted to UTC.
+    - timedelta and numeric values are treated as offsets from now.
 
     Args:
-        scheduled_at: Optional datetime, timedelta, or seconds from now (int/float) to normalize
+        scheduled_at: datetime, timedelta, or seconds from now (int/float)
 
     Returns:
-        Normalized datetime or None
+        UTC-naive datetime suitable for database storage, or None
     """
     if scheduled_at is None:
         return None
 
-    # Handle timedelta values (add to current time)
+    # Handle timedelta values (add to current UTC time)
     if isinstance(scheduled_at, timedelta):
         return datetime.now(timezone.utc).replace(tzinfo=None) + scheduled_at
 
@@ -68,13 +74,14 @@ def _normalize_scheduled_time(
         )
 
     if scheduled_at.tzinfo is not None:
-        # Convert timezone-aware datetime to UTC
+        # Timezone-aware: convert to UTC, strip tzinfo for DB storage
         return scheduled_at.astimezone(timezone.utc).replace(tzinfo=None)
     else:
-        # Naive datetimes are assumed to be UTC (matching DB timezone setting).
-        # All internal code already produces UTC-naive datetimes via
-        # datetime.now(timezone.utc).replace(tzinfo=None).
-        return scheduled_at
+        # Naive datetime: treat as local time, convert to UTC.
+        # This is user-friendly — datetime.now() and datetime(2025, 3, 23, 14, 0)
+        # are interpreted in the user's local timezone.
+        local_dt = scheduled_at.astimezone()  # attach local tz
+        return local_dt.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 async def _create_job_record(

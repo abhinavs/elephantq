@@ -29,53 +29,46 @@ class JobScheduleBuilder:
 
     def in_seconds(self, seconds: int) -> "JobScheduleBuilder":
         """Schedule job to run in X seconds"""
-        self._scheduled_at = datetime.now(timezone.utc).replace(
-            tzinfo=None
-        ) + timedelta(seconds=seconds)
+        self._scheduled_at = datetime.now(timezone.utc) + timedelta(seconds=seconds)
         return self
 
     def in_minutes(self, minutes: int) -> "JobScheduleBuilder":
         """Schedule job to run in X minutes"""
-        self._scheduled_at = datetime.now(timezone.utc).replace(
-            tzinfo=None
-        ) + timedelta(minutes=minutes)
+        self._scheduled_at = datetime.now(timezone.utc) + timedelta(minutes=minutes)
         return self
 
     def in_hours(self, hours: int) -> "JobScheduleBuilder":
         """Schedule job to run in X hours"""
-        self._scheduled_at = datetime.now(timezone.utc).replace(
-            tzinfo=None
-        ) + timedelta(hours=hours)
+        self._scheduled_at = datetime.now(timezone.utc) + timedelta(hours=hours)
         return self
 
     def in_days(self, days: int) -> "JobScheduleBuilder":
         """Schedule job to run in X days"""
-        self._scheduled_at = datetime.now(timezone.utc).replace(
-            tzinfo=None
-        ) + timedelta(days=days)
+        self._scheduled_at = datetime.now(timezone.utc) + timedelta(days=days)
         return self
 
     def at_time(self, time_str: str) -> "JobScheduleBuilder":
         """
-        Schedule job at specific time
+        Schedule job at specific time.
 
         Args:
-            time_str: ISO format datetime string or HH:MM format for today
+            time_str: ISO format datetime string or HH:MM format for today.
+                      HH:MM is interpreted in the machine's local timezone.
+                      ISO strings with timezone info are converted to UTC.
+                      ISO strings without timezone info are treated as local time.
         """
         try:
             # Try parsing as ISO datetime first
             self._scheduled_at = datetime.fromisoformat(time_str.replace("Z", "+00:00"))
         except ValueError:
             try:
-                # Try parsing as HH:MM for today
+                # Try parsing as HH:MM for today in local time
                 time_part = datetime.strptime(time_str, "%H:%M").time()
-                today = datetime.now(timezone.utc).replace(tzinfo=None).date()
+                today = datetime.now().date()
                 self._scheduled_at = datetime.combine(today, time_part)
 
                 # If the time has already passed today, schedule for tomorrow
-                if self._scheduled_at <= datetime.now(timezone.utc).replace(
-                    tzinfo=None
-                ):
+                if self._scheduled_at <= datetime.now():
                     self._scheduled_at += timedelta(days=1)
             except ValueError:
                 raise ValueError(
