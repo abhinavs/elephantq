@@ -8,7 +8,7 @@ import logging
 import os
 import time
 import uuid
-from typing import List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import asyncpg
 
@@ -337,48 +337,42 @@ async def _update_job_status(
                     )
 
 
-async def process_jobs(
+async def _process_job_common(
     conn: asyncpg.Connection,
+    job_lookup: Callable[[str], Optional[dict]],
     queue: Optional[Union[str, List[str]]] = "default",
     heartbeat: Optional["WorkerHeartbeat"] = None,
 ) -> bool:
     """
-    Process a single job from the queue(s).
+    Shared job processing logic for both global and instance-based APIs.
 
-    For compatibility with global API, this now checks the global app's registry
-    in addition to the legacy global registry.
-
-    This function has been refactored to execute jobs OUTSIDE of database transactions
-    to prevent long-running jobs from holding database locks and causing deadlocks.
+    Executes jobs OUTSIDE of database transactions to prevent long-running jobs
+    from holding database locks and causing deadlocks.
 
     Args:
         conn: Database connection
-        queue: Queue specification:
-               - None: Process from any queue (no filtering)
-               - str: Process from single specific queue
-               - List[str]: Process from multiple specific queues efficiently
+        job_lookup: Callable that takes a job_name and returns job metadata or None
+        queue: Queue specification (None, str, or list of str)
+        heartbeat: Optional worker heartbeat tracker
 
     Returns:
         bool: True if a job was processed, False if no jobs available
     """
-    # Step 1: Fetch and lock a job in a minimal transaction
     job_record = await _fetch_and_lock_job(conn, queue, heartbeat)
     if not job_record:
         return False
 
-    # Step 2: Extract job details
     job_id = job_record["id"]
     job_name = job_record["job_name"]
-    attempts = job_record["attempts"]
     max_attempts = job_record["max_attempts"]
+    attempts = job_record["attempts"]
 
-    # Basic logging
     start_time = time.time()
     logger.info(
         f"Processing job {job_id} ({job_name}) - attempt {attempts + 1}/{max_attempts}"
     )
 
-    job_meta = get_job(job_name)
+    job_meta = job_lookup(job_name)
     if not job_meta:
         await conn.execute(
             """
@@ -395,24 +389,39 @@ async def process_jobs(
         logger.error(f"Job {job_name} not registered - moved to dead letter queue")
         return True
 
-    # Step 3: Execute the job OUTSIDE of any transaction to avoid holding locks.
     try:
         job_success, job_error = await _execute_job_safely(job_record, job_meta)
     except ValueError as corruption_error:
-        # Handle corruption errors - move to dead letter immediately
         logger.error(f"Job {job_id} has corrupted data: {corruption_error}")
         await _move_job_to_dead_letter(
             conn, job_id, max_attempts, str(corruption_error)
         )
         return True
 
-    # Step 4: Update job status based on execution result
     duration_ms = round((time.time() - start_time) * 1000, 2)
     await _update_job_status(
         conn, job_record, job_meta, job_success, job_error, duration_ms
     )
 
     return True
+
+
+async def process_jobs(
+    conn: asyncpg.Connection,
+    queue: Optional[Union[str, List[str]]] = "default",
+    heartbeat: Optional["WorkerHeartbeat"] = None,
+) -> bool:
+    """
+    Process a single job from the queue(s) using the global registry.
+
+    Args:
+        conn: Database connection
+        queue: Queue specification (None, str, or list of str)
+
+    Returns:
+        bool: True if a job was processed, False if no jobs available
+    """
+    return await _process_job_common(conn, get_job, queue, heartbeat)
 
 
 async def process_jobs_with_registry(
@@ -424,72 +433,13 @@ async def process_jobs_with_registry(
     """
     Instance-based job processing with explicit JobRegistry.
 
-    Process a single job from the queue(s) using a specific job registry instance.
-    This enables instance-based ElephantQ applications with isolated job registries.
-
     Args:
         conn: Database connection
         job_registry: JobRegistry instance to use for job lookup
-        queue: Queue specification:
-               - None: Process from any queue (no filtering)
-               - str: Process from single specific queue
-               - List[str]: Process from multiple specific queues efficiently
+        queue: Queue specification (None, str, or list of str)
         heartbeat: Optional worker heartbeat tracker
 
     Returns:
         bool: True if a job was processed, False if no jobs available
     """
-    # Step 1: Fetch and lock a job in a minimal transaction
-    job_record = await _fetch_and_lock_job(conn, queue, heartbeat)
-    if not job_record:
-        return False
-
-    # Step 2: Extract job details
-    job_id = job_record["id"]
-    job_name = job_record["job_name"]
-    attempts = job_record["attempts"]
-    max_attempts = job_record["max_attempts"]
-
-    # Basic logging
-    start_time = time.time()
-    logger.info(
-        f"Processing job {job_id} ({job_name}) - attempt {attempts + 1}/{max_attempts}"
-    )
-
-    # Use instance-based job registry instead of global
-    job_meta = job_registry.get_job(job_name)
-    if not job_meta:
-        await conn.execute(
-            """
-            UPDATE elephantq_jobs
-            SET status = 'dead_letter',
-                attempts = max_attempts,
-                last_error = $1,
-                updated_at = NOW()
-            WHERE id = $2
-        """,
-            f"Job {job_name} not registered in this ElephantQ instance.",
-            job_id,
-        )
-        logger.error(
-            f"Job {job_name} not registered in instance registry - moved to dead letter queue"
-        )
-        return True
-
-    # Step 3: Execute the job OUTSIDE of any transaction to avoid holding locks.
-    try:
-        job_success, job_error = await _execute_job_safely(job_record, job_meta)
-    except ValueError as corruption_error:
-        # Handle corruption separately - move directly to dead letter
-        await _move_job_to_dead_letter(
-            conn, job_id, max_attempts, str(corruption_error)
-        )
-        return True
-
-    # Step 4: Update job status based on execution result
-    duration_ms = round((time.time() - start_time) * 1000, 2)
-    await _update_job_status(
-        conn, job_record, job_meta, job_success, job_error, duration_ms
-    )
-
-    return True
+    return await _process_job_common(conn, job_registry.get_job, queue, heartbeat)
