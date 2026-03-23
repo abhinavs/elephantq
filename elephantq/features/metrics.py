@@ -70,6 +70,7 @@ class MetricsCollector:
     def __init__(self, retention_hours: int = 24):
         self.retention_hours = retention_hours
         self.job_metrics: deque = deque(maxlen=10000)  # In-memory buffer
+        self._job_metrics_index: Dict[str, JobMetrics] = {}  # O(1) lookup by job_id
         self.queue_throughput: Dict[str, deque] = defaultdict(
             lambda: deque(maxlen=1000)
         )
@@ -81,6 +82,11 @@ class MetricsCollector:
     async def record_job_start(self, job_id: str, job_name: str, queue: str):
         """Record job start event"""
         async with self._lock:
+            # Evict oldest entry from index if deque is at capacity and will drop
+            if len(self.job_metrics) == self.job_metrics.maxlen:
+                evicted = self.job_metrics[0]
+                self._job_metrics_index.pop(evicted.job_id, None)
+
             metric = JobMetrics(
                 job_id=job_id,
                 job_name=job_name,
@@ -89,6 +95,7 @@ class MetricsCollector:
                 duration_ms=0.0,
             )
             self.job_metrics.append(metric)
+            self._job_metrics_index[job_id] = metric
 
     async def record_job_completion(
         self,
@@ -100,18 +107,15 @@ class MetricsCollector:
     ):
         """Record job completion event"""
         async with self._lock:
-            # Find and update the job metric
-            for metric in reversed(self.job_metrics):
-                if metric.job_id == job_id:
-                    metric.status = status
-                    metric.duration_ms = duration_ms
-                    metric.memory_usage_mb = memory_usage_mb
-                    metric.cpu_usage_percent = cpu_usage_percent
+            metric = self._job_metrics_index.get(job_id)
+            if metric:
+                metric.status = status
+                metric.duration_ms = duration_ms
+                metric.memory_usage_mb = memory_usage_mb
+                metric.cpu_usage_percent = cpu_usage_percent
 
-                    # Record processing time and throughput
-                    self.processing_times[metric.queue].append(duration_ms)
-                    self.queue_throughput[metric.queue].append(time.time())
-                    break
+                self.processing_times[metric.queue].append(duration_ms)
+                self.queue_throughput[metric.queue].append(time.time())
 
     async def get_recent_metrics(self, minutes: int = 60) -> List[JobMetrics]:
         """Get metrics from the last N minutes"""
