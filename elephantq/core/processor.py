@@ -75,9 +75,6 @@ async def _fetch_and_lock_job(
     }
     lock_clause = "" if skip_update_lock else "FOR UPDATE SKIP LOCKED"
     async with conn.transaction():
-        # Ensure timezone is UTC for consistent scheduled job handling
-        await conn.execute("SET timezone = 'UTC'")
-
         # Lock and fetch the next job (ordered by priority then scheduled time)
         if queue is None:
             # Process from ANY queue (no filtering)

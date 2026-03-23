@@ -14,6 +14,7 @@ import asyncpg
 import asyncpg.exceptions
 
 from .core.registry import JobRegistry
+from .db.connection import _init_connection
 from .db.helpers import rows_affected as _rows_affected
 from .errors import ElephantQError
 from .settings import ElephantQSettings
@@ -121,6 +122,7 @@ class ElephantQ:
                 self._settings.database_url,
                 min_size=self._settings.db_pool_min_size,
                 max_size=self._settings.db_pool_max_size,
+                init=_init_connection,
             )
             logger.debug(
                 f"Created database pool (min: {self._settings.db_pool_min_size}, max: {self._settings.db_pool_max_size})"
