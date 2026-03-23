@@ -462,7 +462,10 @@ class WebhookDispatcher:
                     endpoint.url, data=payload_json, headers=headers
                 ) as response:
                     delivery.response_status = response.status
-                    delivery.response_body = await response.text()
+                    # Cap response body at 4KB to prevent OOM from large responses
+                    delivery.response_body = (await response.content.read(4096)).decode(
+                        "utf-8", errors="replace"
+                    )
 
                     if 200 <= response.status < 300:
                         # Success
