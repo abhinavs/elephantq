@@ -325,6 +325,14 @@ class EnhancedRecurringManager:
         except TypeError as exc:
             raise ValueError("job_kwargs must be JSON-serializable") from exc
 
+        if schedule_type == "cron":
+            _require_croniter()
+            if not croniter.is_valid(schedule_value):
+                raise ValueError(
+                    f"Invalid cron expression: {schedule_value!r}. "
+                    "Expected a standard 5-field cron expression (e.g. '*/5 * * * *')."
+                )
+
         # Create job record
         job_record = {
             "id": job_id,
