@@ -28,6 +28,8 @@ def _require_cryptography():
 
 _LEGACY_SALT = b"elephantq_security_salt_v1"
 _SALT_LENGTH = 16
+_PBKDF2_ITERATIONS = 310000
+_LEGACY_PBKDF2_ITERATIONS = 100000
 
 
 class SecretManager:
@@ -62,16 +64,20 @@ class SecretManager:
 
         self._secret_key = secret_key
         # Pre-compute the legacy Fernet for backward-compatible decryption
-        self._legacy_fernet = Fernet(self._derive_key(secret_key, _LEGACY_SALT))
+        self._legacy_fernet = Fernet(
+            self._derive_key(secret_key, _LEGACY_SALT, _LEGACY_PBKDF2_ITERATIONS)
+        )
 
     @staticmethod
-    def _derive_key(password: str, salt: bytes) -> bytes:
+    def _derive_key(
+        password: str, salt: bytes, iterations: int = _PBKDF2_ITERATIONS
+    ) -> bytes:
         """Derive encryption key from password using PBKDF2"""
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
             salt=salt,
-            iterations=100000,
+            iterations=iterations,
         )
         return base64.urlsafe_b64encode(kdf.derive(password.encode("utf-8")))
 
@@ -105,14 +111,16 @@ class SecretManager:
 
         # Try new format: first 16 bytes are the salt
         if len(raw) > _SALT_LENGTH:
-            try:
-                salt = raw[:_SALT_LENGTH]
-                token = raw[_SALT_LENGTH:]
-                key = self._derive_key(self._secret_key, salt)
-                fernet = Fernet(key)
-                return fernet.decrypt(token).decode("utf-8")
-            except Exception:
-                pass  # Fall through to legacy
+            salt = raw[:_SALT_LENGTH]
+            token = raw[_SALT_LENGTH:]
+            # Try current iteration count first
+            for iters in (_PBKDF2_ITERATIONS, _LEGACY_PBKDF2_ITERATIONS):
+                try:
+                    key = self._derive_key(self._secret_key, salt, iters)
+                    fernet = Fernet(key)
+                    return fernet.decrypt(token).decode("utf-8")
+                except Exception:
+                    continue
 
         # Legacy format: entire payload is a Fernet token with hardcoded salt
         try:
