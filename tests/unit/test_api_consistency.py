@@ -4,6 +4,8 @@ Tests for API consistency between global and instance APIs.
 
 import inspect
 
+import pytest
+
 
 def test_list_jobs_default_limit_consistent():
     """
@@ -24,3 +26,20 @@ def test_list_jobs_default_limit_consistent():
         f"list_jobs default limit inconsistent: "
         f"global={global_default}, instance={instance_default}"
     )
+
+
+def test_no_enterprise_aliases_in_features():
+    """EnterpriseFeatures and enterprise aliases must not exist."""
+    from elephantq.features import features as features_mod
+
+    assert not hasattr(features_mod, "EnterpriseFeatures"), (
+        "EnterpriseFeatures alias should be removed"
+    )
+    assert not hasattr(features_mod, "enterprise"), (
+        "enterprise alias should be removed"
+    )
+
+    import elephantq.features as feat_pkg
+
+    assert "EnterpriseFeatures" not in feat_pkg.__all__
+    assert "enterprise" not in feat_pkg.__all__

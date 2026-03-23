@@ -11,13 +11,11 @@ from . import (
     timeout_processor,
     webhooks,
 )
-from .features import ElephantQFeatures, EnterpriseFeatures, enterprise, features
+from .features import ElephantQFeatures, features
 
 __all__ = [
     "ElephantQFeatures",
     "features",
-    "EnterpriseFeatures",
-    "enterprise",
     "recurring",
     "scheduling",
     "dependencies",
