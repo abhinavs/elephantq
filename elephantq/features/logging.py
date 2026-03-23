@@ -214,23 +214,35 @@ class DatabaseLogHandler(logging.Handler):
 
     async def _add_to_buffer(self, log_entry: Dict[str, Any]):
         """Add log entry to buffer and flush if needed"""
+        flush_batch = None
         async with self._lock:
             self.log_buffer.append(log_entry)
 
             if len(self.log_buffer) >= self.batch_size:
-                await self._flush_buffer()
+                flush_batch = list(self.log_buffer)
+                self.log_buffer.clear()
+
+        if flush_batch:
+            await self._flush_batch(flush_batch)
 
     async def _flush_buffer(self):
-        """Flush log buffer to database"""
+        """Flush log buffer to database (called under lock during close)."""
         if not self.log_buffer:
+            return
+        batch = list(self.log_buffer)
+        self.log_buffer.clear()
+        await self._flush_batch(batch)
+
+    async def _flush_batch(self, batch):
+        """Write a batch of log entries to the database (called outside lock)."""
+        if not batch:
             return
 
         try:
             pool = await get_pool()
             async with pool.acquire() as conn:
-                # Prepare batch insert
                 values = []
-                for entry in self.log_buffer:
+                for entry in batch:
                     values.append(
                         (
                             entry["timestamp"],
@@ -265,7 +277,7 @@ class DatabaseLogHandler(logging.Handler):
                 await conn.executemany(
                     f"""
                     INSERT INTO {self.table_name} (
-                        timestamp, level, message, logger_name, module, function, 
+                        timestamp, level, message, logger_name, module, function,
                         line_number, request_id, job_id, job_name, queue,
                         extra_data, exception_data, performance_data
                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
@@ -273,11 +285,8 @@ class DatabaseLogHandler(logging.Handler):
                     values,
                 )
 
-                self.log_buffer.clear()
-
         except Exception as e:
             # Fallback to console logging if database fails
-            # Use stderr directly to avoid recursion if this handler is on the root logger
             sys.stderr.write(f"ElephantQ: Failed to write logs to database: {e}\n")
 
     def _format_log_entry(self, record: logging.LogRecord) -> Dict[str, Any]:
