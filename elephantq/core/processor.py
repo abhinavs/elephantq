@@ -3,6 +3,7 @@ Job processing engine with proper transaction handling
 Core functionality only
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -188,10 +189,22 @@ async def _execute_job_safely(
     else:
         validated_args = args_data
 
-    # Execute the job function (outside transaction)
+    # Determine timeout: per-job overrides global setting
+    from elephantq.settings import get_settings
+
+    timeout = job_meta.get("timeout")
+    if timeout is None:
+        timeout = get_settings().job_timeout
+
+    # Execute the job function (outside transaction) with optional timeout
     try:
-        await job_meta["func"](**validated_args)
+        if timeout:
+            await asyncio.wait_for(job_meta["func"](**validated_args), timeout=timeout)
+        else:
+            await job_meta["func"](**validated_args)
         return True, None
+    except asyncio.TimeoutError:
+        return False, f"Job timed out after {timeout}s"
     except Exception as e:
         # All job execution errors are treated as retryable failures.
         # Corruption is only detected at the data layer (JSON parse,

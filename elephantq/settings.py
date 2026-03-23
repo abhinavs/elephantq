@@ -146,7 +146,9 @@ class ElephantQSettings(BaseSettings):
     )
 
     job_timeout: Optional[float] = Field(
-        default=None, ge=1.0, description="Default job execution timeout in seconds"
+        default=300.0,
+        ge=1.0,
+        description="Default job execution timeout in seconds (None or 0 to disable)",
     )
 
     # Worker Processing Intervals

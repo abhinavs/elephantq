@@ -72,7 +72,7 @@ class TestPydanticConfiguration:
         assert settings.default_max_retries == 3
         assert settings.default_priority == 100
         assert settings.worker_heartbeat_interval == 5.0
-        assert settings.job_timeout is None
+        assert settings.job_timeout == 300.0
         assert settings.db_pool_min_size == 5
         assert settings.db_pool_max_size == 20
         assert settings.db_pool_safety_margin == 2
