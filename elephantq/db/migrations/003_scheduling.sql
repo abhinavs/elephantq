@@ -11,12 +11,12 @@ CREATE TABLE IF NOT EXISTS elephantq_recurring_jobs (
   max_attempts INT NOT NULL DEFAULT 3,
   job_kwargs JSONB NOT NULL DEFAULT '{}'::jsonb,
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused')),
-  created_at TIMESTAMP DEFAULT NOW(),
-  last_run TIMESTAMP,
-  next_run TIMESTAMP,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  last_run TIMESTAMP WITH TIME ZONE,
+  next_run TIMESTAMP WITH TIME ZONE,
   run_count INT NOT NULL DEFAULT 0,
   last_job_id UUID,
-  updated_at TIMESTAMP DEFAULT NOW()
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_elephantq_recurring_jobs_status
@@ -30,8 +30,8 @@ CREATE TABLE IF NOT EXISTS elephantq_job_dependencies (
   job_id UUID NOT NULL REFERENCES elephantq_jobs(id) ON DELETE CASCADE,
   depends_on_job_id UUID NOT NULL,
   dependency_status VARCHAR(20) DEFAULT 'pending',
-  timeout_at TIMESTAMP,
-  created_at TIMESTAMP DEFAULT NOW(),
+  timeout_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(job_id, depends_on_job_id)
 );
 
@@ -44,13 +44,13 @@ CREATE INDEX IF NOT EXISTS idx_elephantq_job_deps_depends_on
 CREATE TABLE IF NOT EXISTS elephantq_job_timeouts (
   job_id UUID PRIMARY KEY REFERENCES elephantq_jobs(id) ON DELETE CASCADE,
   timeout_seconds INTEGER NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Global configuration store (used by timeout processor and other features)
 CREATE TABLE IF NOT EXISTS elephantq_config (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
-  updated_at TIMESTAMP DEFAULT NOW()
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

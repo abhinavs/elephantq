@@ -296,7 +296,7 @@ class EnhancedRecurringManager:
                 job_record["next_run"] = self._calculate_next_run(
                     job_record["schedule_type"],
                     job_record["schedule_value"],
-                    datetime.now(timezone.utc).replace(tzinfo=None),
+                    datetime.now(timezone.utc),
                 )
                 await self._persist_next_run(job_record["id"], job_record["next_run"])
 
@@ -344,7 +344,7 @@ class EnhancedRecurringManager:
             "queue": queue,
             "max_attempts": max_attempts,
             "job_kwargs": job_kwargs,
-            "created_at": datetime.now(timezone.utc).replace(tzinfo=None),
+            "created_at": datetime.now(timezone.utc),
             "last_run": None,
             "next_run": None,
             "run_count": 0,
@@ -353,14 +353,12 @@ class EnhancedRecurringManager:
 
         # Calculate next run time
         if schedule_type == "interval":
-            job_record["next_run"] = datetime.now(timezone.utc).replace(
-                tzinfo=None
-            ) + timedelta(seconds=schedule_value)
+            job_record["next_run"] = datetime.now(timezone.utc) + timedelta(
+                seconds=schedule_value
+            )
         elif schedule_type == "cron":
             _require_croniter()
-            cron = croniter(
-                schedule_value, datetime.now(timezone.utc).replace(tzinfo=None)
-            )
+            cron = croniter(schedule_value, datetime.now(timezone.utc))
             job_record["next_run"] = cron.get_next(datetime)
 
         await self._persist_job(job_record)
@@ -568,7 +566,7 @@ class EnhancedRecurringScheduler:
 
     async def _process_due_jobs(self):
         """Process jobs that are due to run"""
-        current_time = datetime.now(timezone.utc).replace(tzinfo=None)
+        current_time = datetime.now(timezone.utc)
 
         for job_id, job in _enhanced_manager.jobs.items():
             if job["status"] != "active":

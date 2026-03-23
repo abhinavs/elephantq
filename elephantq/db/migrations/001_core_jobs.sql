@@ -13,11 +13,11 @@ CREATE TABLE IF NOT EXISTS elephantq_jobs (
   queue TEXT DEFAULT 'default',
   priority INT DEFAULT 100,
   unique_job BOOLEAN DEFAULT FALSE,
-  scheduled_at TIMESTAMP,
-  expires_at TIMESTAMP,
+  scheduled_at TIMESTAMP WITH TIME ZONE,
+  expires_at TIMESTAMP WITH TIME ZONE,
   last_error TEXT,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Partial index for the worker's queued-job fetch (status + priority)

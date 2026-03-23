@@ -9,8 +9,8 @@ CREATE TABLE IF NOT EXISTS elephantq_workers (
   concurrency INTEGER NOT NULL DEFAULT 1,
   status TEXT NOT NULL DEFAULT 'active'
     CHECK (status IN ('active', 'stopping', 'stopped')),
-  last_heartbeat TIMESTAMP NOT NULL DEFAULT NOW(),
-  started_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  last_heartbeat TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  started_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
   version TEXT,
   metadata JSONB DEFAULT '{}'
 );

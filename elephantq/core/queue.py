@@ -46,7 +46,7 @@ def _normalize_scheduled_time(
     scheduled_at: Optional[Union[datetime, int, float, timedelta]],
 ) -> Optional[datetime]:
     """
-    Normalize scheduled_at to a timezone-naive UTC datetime for database storage.
+    Normalize scheduled_at to a timezone-aware UTC datetime for database storage.
 
     Users can pass datetimes in any timezone:
     - Timezone-aware datetimes are converted to UTC automatically.
@@ -58,30 +58,28 @@ def _normalize_scheduled_time(
         scheduled_at: datetime, timedelta, or seconds from now (int/float)
 
     Returns:
-        UTC-naive datetime suitable for database storage, or None
+        Timezone-aware UTC datetime suitable for TIMESTAMPTZ storage, or None
     """
     if scheduled_at is None:
         return None
 
     # Handle timedelta values (add to current UTC time)
     if isinstance(scheduled_at, timedelta):
-        return datetime.now(timezone.utc).replace(tzinfo=None) + scheduled_at
+        return datetime.now(timezone.utc) + scheduled_at
 
     # Handle numeric values (seconds from now)
     if isinstance(scheduled_at, (int, float)):
-        return datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(
-            seconds=scheduled_at
-        )
+        return datetime.now(timezone.utc) + timedelta(seconds=scheduled_at)
 
     if scheduled_at.tzinfo is not None:
-        # Timezone-aware: convert to UTC, strip tzinfo for DB storage
-        return scheduled_at.astimezone(timezone.utc).replace(tzinfo=None)
+        # Timezone-aware: convert to UTC
+        return scheduled_at.astimezone(timezone.utc)
     else:
         # Naive datetime: treat as local time, convert to UTC.
         # This is user-friendly — datetime.now() and datetime(2025, 3, 23, 14, 0)
         # are interpreted in the user's local timezone.
         local_dt = scheduled_at.astimezone()  # attach local tz
-        return local_dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return local_dt.astimezone(timezone.utc)
 
 
 async def _create_job_record(
@@ -581,11 +579,9 @@ async def schedule(
         if isinstance(when, datetime):
             scheduled_time = when
         elif isinstance(when, (int, float)):
-            scheduled_time = datetime.now(timezone.utc).replace(
-                tzinfo=None
-            ) + timedelta(seconds=when)
+            scheduled_time = datetime.now(timezone.utc) + timedelta(seconds=when)
         elif isinstance(when, timedelta):
-            scheduled_time = datetime.now(timezone.utc).replace(tzinfo=None) + when
+            scheduled_time = datetime.now(timezone.utc) + when
         else:
             raise ValueError(
                 f"Invalid 'when' parameter: {type(when)}. Must be datetime, timedelta, or int/float"
@@ -602,13 +598,9 @@ async def schedule(
             scheduled_time = run_at
         else:
             if isinstance(run_in, (int, float)):
-                scheduled_time = datetime.now(timezone.utc).replace(
-                    tzinfo=None
-                ) + timedelta(seconds=run_in)
+                scheduled_time = datetime.now(timezone.utc) + timedelta(seconds=run_in)
             elif isinstance(run_in, timedelta):
-                scheduled_time = (
-                    datetime.now(timezone.utc).replace(tzinfo=None) + run_in
-                )
+                scheduled_time = datetime.now(timezone.utc) + run_in
             else:
                 raise ValueError(
                     f"Invalid 'run_in' parameter: {type(run_in)}. Must be int/float (seconds) or timedelta"

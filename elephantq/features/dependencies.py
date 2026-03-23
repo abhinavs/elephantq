@@ -101,7 +101,7 @@ async def _store_dependencies_with_conn(
 
         timeout_at = None
         if dependency_timeout:
-            timeout_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(
+            timeout_at = datetime.now(timezone.utc) + timedelta(
                 seconds=dependency_timeout
             )
 
@@ -156,7 +156,7 @@ async def check_job_dependencies(job_id: str) -> DependencyStatus:
 
         # Classify each dependency into a status bucket
         job_uuid = uuid.UUID(job_id)
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(timezone.utc)
         status_buckets: Dict[str, List] = {
             "timeout": [],
             "failed": [],

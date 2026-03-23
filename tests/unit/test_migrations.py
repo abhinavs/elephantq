@@ -14,20 +14,21 @@ MIGRATIONS_DIR = Path(__file__).parent.parent.parent / "elephantq" / "db" / "mig
 class TestMigrationStructure:
     """Verify migrations exist and are discoverable."""
 
-    def test_four_migrations_exist(self):
+    def test_five_migrations_exist(self):
         files = sorted(f.name for f in MIGRATIONS_DIR.glob("*.sql"))
         assert files == [
             "001_core_jobs.sql",
             "002_workers.sql",
             "003_scheduling.sql",
             "004_features.sql",
+            "005_normalize_timestamps.sql",
         ]
 
     def test_all_migrations_discovered(self):
         runner = MigrationRunner()
         migrations = runner.discover_migrations()
         versions = [v for v, _, _ in migrations]
-        assert versions == ["001", "002", "003", "004"]
+        assert versions == ["001", "002", "003", "004", "005"]
 
 
 class TestCoreJobsMigration:

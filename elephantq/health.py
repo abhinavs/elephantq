@@ -137,7 +137,7 @@ class HealthMonitor:
             status, message, duration = await self.run_check(check)
 
             # Update check state
-            check.last_check = datetime.now(timezone.utc).replace(tzinfo=None)
+            check.last_check = datetime.now(timezone.utc)
             check.last_status = status
             check.last_message = message
             check.last_duration = duration
@@ -175,7 +175,7 @@ class HealthMonitor:
         return {
             "status": overall_status.value,
             "message": message,
-            "timestamp": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "checks": check_results,
         }
 
