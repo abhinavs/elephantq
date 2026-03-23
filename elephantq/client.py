@@ -14,18 +14,11 @@ import asyncpg
 import asyncpg.exceptions
 
 from .core.registry import JobRegistry
+from .db.helpers import rows_affected as _rows_affected
 from .errors import ElephantQError
 from .settings import ElephantQSettings
 
 logger = logging.getLogger(__name__)
-
-
-def _rows_affected(result: str) -> int:
-    """Extract the number of affected rows from an asyncpg status string like 'UPDATE 3'."""
-    try:
-        return int(result.split()[-1])
-    except (ValueError, IndexError):
-        return 0
 
 
 class ElephantQ:

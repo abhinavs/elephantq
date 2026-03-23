@@ -18,15 +18,8 @@ from pydantic import ValidationError
 
 from elephantq.core.registry import JobRegistry
 from elephantq.db.context import get_context_pool
+from elephantq.db.helpers import rows_affected as _rows_affected
 from elephantq.utils.hashing import compute_args_hash
-
-
-def _rows_affected(result: str) -> int:
-    """Extract the number of affected rows from an asyncpg status string like 'UPDATE 3'."""
-    try:
-        return int(result.split()[-1])
-    except (ValueError, IndexError):
-        return 0
 
 
 def _validate_job_arguments(job_name: str, job_meta: dict, kwargs: dict) -> None:

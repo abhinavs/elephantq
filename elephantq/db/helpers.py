@@ -18,6 +18,14 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
+def rows_affected(result: str) -> int:
+    """Extract the number of affected rows from an asyncpg status string like 'UPDATE 3'."""
+    try:
+        return int(result.split()[-1])
+    except (ValueError, IndexError):
+        return 0
+
+
 @asynccontextmanager
 async def get_connection(pool: Optional[asyncpg.Pool] = None):
     """

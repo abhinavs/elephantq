@@ -14,18 +14,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from elephantq.core.registry import get_job
 from elephantq.db.context import get_context_pool
+from elephantq.db.helpers import rows_affected as _rows_affected
 
 logger = logging.getLogger(__name__)
 
 _VALID_TABLE_NAME = re.compile(r"^[a-z_][a-z0-9_]*$")
-
-
-def _rows_affected(result: str) -> int:
-    """Extract the number of affected rows from an asyncpg status string."""
-    try:
-        return _rows_affected(result)
-    except (ValueError, IndexError):
-        return 0
 
 
 class DeadLetterReason(str, Enum):
