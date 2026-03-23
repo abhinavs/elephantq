@@ -4,6 +4,7 @@ recursive-include elephantq/db/migrations *.sql
 # Include license and readme
 include LICENSE
 include README.md
+include CHANGELOG.md
 
 # Exclude test files, examples, and deployment configs
 exclude tests/
