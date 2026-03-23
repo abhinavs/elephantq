@@ -324,7 +324,7 @@ class WebhookDispatcher:
     def __init__(self, registry: WebhookRegistry, max_concurrent_deliveries: int = 10):
         self.registry = registry
         self.max_concurrent_deliveries = max_concurrent_deliveries
-        self.delivery_queue: asyncio.Queue = asyncio.Queue()
+        self.delivery_queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
         self.delivery_semaphore = asyncio.Semaphore(max_concurrent_deliveries)
         self._delivery_workers: List[asyncio.Task] = []
         self._running = False
