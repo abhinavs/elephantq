@@ -64,20 +64,28 @@ The feature keeps delivery retries, headers, and metadata inside ElephantQ, so y
 
 - **Flags:** `ELEPHANTQ_DEPENDENCIES_ENABLED=true`, `ELEPHANTQ_TIMEOUTS_ENABLED=true`
 - **Extra:** no extras (depends on Postgres features).
-- **What it does:** Enforces job ordering, timeout-based cancellations, and scheduler-aware timeouts.
+
+### Timeouts
+
+Timeouts allow you to cancel jobs that run longer than expected:
 
 ```python
 from elephantq.features.scheduling import schedule_job
 
 builder = schedule_job(generate_report)
 await (
-    builder.depends_on(seed_job_id)
-    .with_timeout(60)
+    builder.with_timeout(60)
     .enqueue(run_type="daily")
 )
 ```
 
-Dependencies store their own table (`elephantq_job_dependencies`), so the scheduler or worker can skip the job until its prerequisites finish. Timeouts go into `elephantq_job_timeouts`, and the timeout processor wakes any stuck jobs.
+Timeouts go into `elephantq_job_timeouts`, and the timeout processor wakes any stuck jobs.
+
+### Dependencies (experimental)
+
+> **Warning:** `depends_on()` stores dependency metadata in the database, but the worker does **not** yet enforce execution order. Jobs will execute regardless of dependency status. This feature is experimental and should not be relied upon for ordering guarantees.
+
+Dependencies store their own table (`elephantq_job_dependencies`). Enforcement in the worker path is planned for a future release.
 
 ## Feature flags & extras
 

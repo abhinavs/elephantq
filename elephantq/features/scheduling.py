@@ -105,7 +105,21 @@ class JobScheduleBuilder:
         return self
 
     def depends_on(self, *job_ids: str) -> "JobScheduleBuilder":
-        """Set job dependencies (jobs that must complete first)"""
+        """Set job dependencies (jobs that must complete first).
+
+        .. warning::
+            Dependency metadata is stored but the worker does not yet enforce
+            execution order. Jobs will execute regardless of dependency status.
+            This feature is experimental.
+        """
+        import warnings
+
+        warnings.warn(
+            "depends_on() stores dependency metadata but the worker does not "
+            "yet enforce execution order. Jobs will run regardless of dependency "
+            "status. This feature is experimental.",
+            stacklevel=2,
+        )
         self._dependencies.extend(job_ids)
         return self
 

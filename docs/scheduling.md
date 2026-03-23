@@ -72,7 +72,6 @@ await (
     builder.with_queue("maintenance")
     .with_priority(20)
     .with_timeout(120)
-    .depends_on(latest_snapshot_job_id)
     .enqueue(connection=conn)  # all metadata joins this transaction
 )
 ```
@@ -86,7 +85,7 @@ await (
 | `.with_priority()` / `.in_queue()` | Override priority and queue for this run. |
 | `.with_retries()` / `.with_timeout()` | Set retries or timeout metadata (stored alongside the job row). |
 | `.with_tags()` | Add structured tags for dashboards or metadata. |
-| `.depends_on()` | Declare other job IDs that must finish first (requires dependencies feature). |
+| `.depends_on()` | **Experimental.** Stores dependency metadata but the worker does not yet enforce execution order. |
 | `.if_condition()` | Skip scheduling unless the provided predicate returns `True`. |
 | `.dry_run()` | Return the final configuration dict instead of enqueuing (useful for previews). |
 
