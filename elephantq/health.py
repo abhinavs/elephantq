@@ -6,7 +6,7 @@ Provides health monitoring capabilities for ElephantQ workers and components.
 import asyncio
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, Optional, Tuple
 
@@ -137,7 +137,7 @@ class HealthMonitor:
             status, message, duration = await self.run_check(check)
 
             # Update check state
-            check.last_check = datetime.now()
+            check.last_check = datetime.now(timezone.utc).replace(tzinfo=None)
             check.last_status = status
             check.last_message = message
             check.last_duration = duration
@@ -175,7 +175,7 @@ class HealthMonitor:
         return {
             "status": overall_status.value,
             "message": message,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
             "checks": check_results,
         }
 
