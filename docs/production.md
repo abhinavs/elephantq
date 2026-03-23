@@ -18,6 +18,7 @@ This is a pragmatic checklist for running ElephantQ in production. It focuses on
 - Use multiple workers per queue for throughput.
 - Set `ELEPHANTQ_JOBS_MODULES` so workers can import job code.
 - Tune concurrency per workload.
+- ElephantQ is designed for single-process asyncio. Each worker process runs its own event loop. Do not share `ElephantQ` instances across threads.
 
 ## 3. Queue Design
 
