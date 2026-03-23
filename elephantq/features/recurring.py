@@ -586,15 +586,6 @@ class EnhancedRecurringScheduler:
                 **job["job_kwargs"],
             )
 
-            # Update job statistics
-            _enhanced_manager.jobs[job_id].update(
-                {
-                    "last_run": current_time,
-                    "run_count": job["run_count"] + 1,
-                    "last_job_id": actual_job_id,
-                }
-            )
-
             # Calculate next run time
             next_run = _enhanced_manager._calculate_next_run(
                 job["schedule_type"], job["schedule_value"], current_time
@@ -602,13 +593,25 @@ class EnhancedRecurringScheduler:
             if next_run is None:
                 return
 
-            _enhanced_manager.jobs[job_id]["next_run"] = next_run
+            new_run_count = job["run_count"] + 1
+
+            # Persist to database FIRST — if this fails, in-memory state stays unchanged
             await _enhanced_manager._record_run(
                 job_id=job_id,
                 last_run=current_time,
                 next_run=next_run,
-                run_count=_enhanced_manager.jobs[job_id]["run_count"],
+                run_count=new_run_count,
                 last_job_id=actual_job_id,
+            )
+
+            # Update in-memory state only after DB write succeeds
+            _enhanced_manager.jobs[job_id].update(
+                {
+                    "last_run": current_time,
+                    "run_count": new_run_count,
+                    "last_job_id": actual_job_id,
+                    "next_run": next_run,
+                }
             )
 
             logger.info(
