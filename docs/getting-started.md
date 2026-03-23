@@ -88,6 +88,8 @@ Add `ELEPHANTQ_DASHBOARD_WRITE_ENABLED=true` only in trusted environments if you
 
 ElephantQ provides **at-least-once delivery**. Jobs may execute more than once if a worker crashes after running the job but before updating its status. Design your job functions to be idempotent — for example, use database upserts or deduplication keys for side effects like emails or payments.
 
+Every job has a default **300-second timeout**. If your job needs more time, override it with `@elephantq.job(timeout=600)` or disable it with `timeout=None`. See [retries.md](retries.md) for details.
+
 ## 9. Troubleshooting tips
 
 - **Jobs not appearing?** Confirm `ELEPHANTQ_JOBS_MODULES` matches the module path your worker loads.
