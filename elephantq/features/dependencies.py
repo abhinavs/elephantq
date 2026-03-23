@@ -62,7 +62,10 @@ async def store_job_dependencies(
                 try:
                     dep_uuid = uuid.UUID(dep_job_id)
                 except ValueError:
-                    continue
+                    raise ValueError(
+                        f"Invalid dependency job ID: {dep_job_id!r}. "
+                        "Expected a valid UUID string."
+                    )
 
                 timeout_at = None
                 if dependency_timeout:
