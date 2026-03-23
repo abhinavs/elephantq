@@ -415,7 +415,7 @@ async def delete_job(job_id: str) -> bool:
 async def list_jobs(
     queue: Optional[str] = None,
     status: Optional[str] = None,
-    limit: int = 50,
+    limit: int = 100,
     offset: int = 0,
 ) -> List[Dict[str, Any]]:
     """
