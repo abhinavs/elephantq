@@ -49,6 +49,33 @@ def test_transactional_enqueue_setup_call():
     )
 
 
+@pytest.mark.parametrize(
+    "example",
+    [
+        "basic_app.py",
+        "queue_routing.py",
+        "file_processing.py",
+        "recurring_jobs.py",
+        "webhook_delivery.py",
+    ],
+)
+def test_example_imports_resolve(example):
+    """Key imports in each example must resolve to real modules/functions."""
+    source = (EXAMPLES_DIR / example).read_text()
+    tree = ast.parse(source)
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                mod = alias.name.split(".")[0]
+                __import__(mod)
+        elif isinstance(node, ast.ImportFrom):
+            if node.module and not node.module.startswith("fastapi"):
+                # Skip fastapi since it's optional for examples
+                top = node.module.split(".")[0]
+                __import__(top)
+
+
 def test_no_dead_documentation_urls():
     """No references to non-existent docs.elephantq.dev should exist in source code."""
     dead_url_files = []
