@@ -22,9 +22,22 @@ async def create_test_database():
         # Database already exists, that's fine
         pass
 
-    # Create a temporary pool for migrations
+    # Drop and re-run migrations to ensure clean schema
     temp_pool = await asyncpg.create_pool(db_url)
     async with temp_pool.acquire() as conn:
+        # Drop migration tracking so all migrations re-apply cleanly
+        await conn.execute("DROP TABLE IF EXISTS elephantq_migrations CASCADE")
+        # Drop all elephantq tables to start fresh
+        await conn.execute("DROP TABLE IF EXISTS elephantq_job_dependencies CASCADE")
+        await conn.execute("DROP TABLE IF EXISTS elephantq_job_timeouts CASCADE")
+        await conn.execute("DROP TABLE IF EXISTS elephantq_config CASCADE")
+        await conn.execute("DROP TABLE IF EXISTS elephantq_webhook_deliveries CASCADE")
+        await conn.execute("DROP TABLE IF EXISTS elephantq_webhook_endpoints CASCADE")
+        await conn.execute("DROP TABLE IF EXISTS elephantq_dead_letter_jobs CASCADE")
+        await conn.execute("DROP TABLE IF EXISTS elephantq_logs CASCADE")
+        await conn.execute("DROP TABLE IF EXISTS elephantq_recurring_jobs CASCADE")
+        await conn.execute("DROP TABLE IF EXISTS elephantq_jobs CASCADE")
+        await conn.execute("DROP TABLE IF EXISTS elephantq_workers CASCADE")
         await run_migrations(conn)
     await temp_pool.close()
 
