@@ -57,7 +57,7 @@ async def store_job_dependencies(
     pool = await get_context_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
-            # Table created by migration 004_composite_index_and_dependencies.sql
+            # Table created by 001_initial_schema.sql migration
             for dep_job_id in dependencies:
                 try:
                     dep_uuid = uuid.UUID(dep_job_id)
@@ -92,7 +92,7 @@ async def _store_dependencies_with_conn(
     conn, job_id: str, dependencies: List[str], dependency_timeout: Optional[int] = None
 ) -> bool:
     """Store dependencies using an existing connection (joins caller's transaction)."""
-    # Table created by migration 004_composite_index_and_dependencies.sql
+    # Table created by 001_initial_schema.sql migration
     for dep_job_id in dependencies:
         try:
             dep_uuid = uuid.UUID(dep_job_id)

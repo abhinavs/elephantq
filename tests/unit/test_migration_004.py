@@ -1,5 +1,5 @@
 """
-Tests that migration 004 exists and is discoverable by the migration runner.
+Tests that the initial schema migration contains all required tables and indexes.
 """
 
 from pathlib import Path
@@ -8,29 +8,39 @@ import pytest
 
 from elephantq.db.migrations import MigrationRunner
 
+MIGRATIONS_DIR = Path(__file__).parent.parent.parent / "elephantq" / "db" / "migrations"
 
-class TestMigration004:
-    """Verify migration 004 exists and is discoverable."""
 
-    def test_migration_004_exists(self):
-        migrations_dir = Path(__file__).parent.parent.parent / "elephantq" / "db" / "migrations"
-        migration_file = migrations_dir / "004_composite_index_and_dependencies.sql"
-        assert migration_file.exists(), "Migration 004 file does not exist"
+class TestInitialSchema:
+    """Verify the single initial migration has everything needed."""
 
-    def test_migration_004_discovered(self):
+    def test_single_migration_exists(self):
+        files = list(MIGRATIONS_DIR.glob("*.sql"))
+        assert len(files) == 1, f"Expected 1 migration file, found {len(files)}: {files}"
+        assert files[0].name == "001_initial_schema.sql"
+
+    def test_migration_discovered(self):
         runner = MigrationRunner()
         migrations = runner.discover_migrations()
         versions = [v for v, _, _ in migrations]
-        assert "004" in versions, "Migration 004 not discovered by runner"
+        assert "001" in versions
 
-    def test_migration_004_contains_composite_index(self):
-        migrations_dir = Path(__file__).parent.parent.parent / "elephantq" / "db" / "migrations"
-        content = (migrations_dir / "004_composite_index_and_dependencies.sql").read_text()
-        assert "idx_elephantq_jobs_queue_status_priority" in content
-        assert "queue, status, priority" in content
-
-    def test_migration_004_contains_dependencies_table(self):
-        migrations_dir = Path(__file__).parent.parent.parent / "elephantq" / "db" / "migrations"
-        content = (migrations_dir / "004_composite_index_and_dependencies.sql").read_text()
+    def test_schema_contains_all_tables(self):
+        content = (MIGRATIONS_DIR / "001_initial_schema.sql").read_text()
+        assert "elephantq_jobs" in content
+        assert "elephantq_workers" in content
+        assert "elephantq_recurring_jobs" in content
         assert "elephantq_job_dependencies" in content
-        assert "depends_on_job_id" in content
+
+    def test_schema_contains_composite_index(self):
+        content = (MIGRATIONS_DIR / "001_initial_schema.sql").read_text()
+        assert "idx_elephantq_jobs_queue_status_priority" in content
+
+    def test_schema_has_on_delete_set_null(self):
+        content = (MIGRATIONS_DIR / "001_initial_schema.sql").read_text()
+        assert "ON DELETE SET NULL" in content
+
+    def test_schema_has_dependency_indexes(self):
+        content = (MIGRATIONS_DIR / "001_initial_schema.sql").read_text()
+        assert "idx_elephantq_job_deps_job_id" in content
+        assert "idx_elephantq_job_deps_depends_on" in content
