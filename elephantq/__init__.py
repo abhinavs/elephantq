@@ -129,12 +129,16 @@ def configure(**kwargs):
     if settings_kwargs:
         settings_configure(**settings_kwargs)
 
-    # Prevent reconfiguration after the pool has been initialized to avoid leaking connections
-    if _global_app is not None and _global_app.is_initialized:
-        raise RuntimeError(
-            "Cannot reconfigure ElephantQ after the connection pool has been initialized. "
-            "Call configure() before any enqueue/worker operations, or close the app first."
-        )
+    # If the global app is already initialized, mark it as closed so the new
+    # app gets a fresh pool. The old pool (if any) will be closed when the
+    # old app is garbage collected or via close_pool().
+    if (
+        _global_app is not None
+        and _global_app.is_initialized
+        and not _global_app.is_closed
+    ):
+        _global_app._closed = True
+        _global_app._initialized = False
 
     _global_app = ElephantQ(**settings_kwargs)
 

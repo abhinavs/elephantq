@@ -12,7 +12,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -406,7 +406,7 @@ if __name__ == "__main__":
             @elephantq.job()
             async def timed_job(expected_time: str, log_file: str):
                 """Job that logs when it actually executed"""
-                actual_time = datetime.now()
+                actual_time = datetime.now(timezone.utc).replace(tzinfo=None)
                 with open(log_file, "a") as f:
                     f.write(f"{expected_time},{actual_time.isoformat()}\n")
                 return f"executed_at_{actual_time}"
@@ -416,8 +416,8 @@ if __name__ == "__main__":
                 async with pool.acquire() as conn:
                     await conn.execute("DELETE FROM elephantq_jobs")
 
-            # Schedule jobs at different times
-            now = datetime.now()
+            # Schedule jobs at different times (use UTC to match DB timezone)
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
             scheduled_times = [
                 now + timedelta(seconds=1),
                 now + timedelta(seconds=2),
@@ -435,17 +435,20 @@ if __name__ == "__main__":
                     )
                     job_ids.append(job_id)
 
-                # Process jobs with timing checks
+                # Process jobs with timing checks — wait for scheduled times
+                from elephantq.core.processor import process_jobs
+
                 start_time = time.time()
-                async with pool.acquire() as conn:
-                    processed_jobs = 0
-                    while (
-                        processed_jobs < 3 and time.time() - start_time < 10
-                    ):  # 10-second timeout
-                        processed = await elephantq.run_worker(run_once=True)
-                        if processed:
-                            processed_jobs += 1
-                        await asyncio.sleep(0.1)
+                processed_jobs = 0
+                while (
+                    processed_jobs < 3 and time.time() - start_time < 10
+                ):  # 10-second timeout
+                    async with pool.acquire() as conn:
+                        processed = await process_jobs(conn, None)
+                    if processed:
+                        processed_jobs += 1
+                    else:
+                        await asyncio.sleep(0.2)
 
                 # Analyze timing accuracy
                 assert os.path.exists(timing_file), "No timing log found"

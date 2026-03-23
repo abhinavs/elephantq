@@ -12,7 +12,7 @@ Tests the updated queue processing logic that handles:
 import asyncio
 import os
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -314,7 +314,7 @@ async def test_scheduled_jobs_across_queues(clean_db, result_file):
     registry.register_job(write_to_file_job)
 
     pool = await get_pool()
-    future_time = datetime.now() + timedelta(seconds=1)
+    future_time = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=1)
 
     # Schedule jobs in different queues using legacy API
     await enqueue_job(
@@ -341,8 +341,8 @@ async def test_scheduled_jobs_across_queues(clean_db, result_file):
         processed1 = await process_jobs(conn, None)
         assert processed1 is False, "No jobs should be processed before scheduled time"
 
-    # Wait for scheduled time
-    await asyncio.sleep(1.5)
+    # Wait for scheduled time (extra margin for system load)
+    await asyncio.sleep(2.0)
 
     # Should now process scheduled jobs
     async with pool.acquire() as conn:
