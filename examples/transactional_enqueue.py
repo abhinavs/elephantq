@@ -43,7 +43,8 @@ class CreateUserRequest(BaseModel):
 @app.on_event("startup")
 async def startup():
     app.state.pool = await asyncpg.create_pool(DATABASE_URL)
-    await elephantq.setup(database_url=DATABASE_URL)
+    elephantq.configure(database_url=DATABASE_URL)
+    await elephantq.setup()
 
     # Create a simple users table for the demo
     async with app.state.pool.acquire() as conn:
