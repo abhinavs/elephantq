@@ -351,60 +351,50 @@ class EnhancedRecurringManager:
 
         return job_id
 
-    def remove_job(self, job_id: str) -> bool:
+    async def remove_job(self, job_id: str) -> bool:
         """Remove a recurring job"""
         if job_id in self.jobs:
             del self.jobs[job_id]
-            self._schedule_update(self._delete_job(job_id))
+            await self._schedule_update(self._delete_job(job_id))
             return True
         return False
 
-    def pause_job(self, job_id: str) -> bool:
+    async def pause_job(self, job_id: str) -> bool:
         """Pause a recurring job"""
         if job_id in self.jobs:
             self.jobs[job_id]["status"] = "paused"
-            self._schedule_update(self._set_status(job_id, "paused"))
+            await self._schedule_update(self._set_status(job_id, "paused"))
             return True
         return False
 
-    def resume_job(self, job_id: str) -> bool:
+    async def resume_job(self, job_id: str) -> bool:
         """Resume a paused recurring job"""
         if job_id in self.jobs:
             self.jobs[job_id]["status"] = "active"
-            self._schedule_update(self._set_status(job_id, "active"))
+            await self._schedule_update(self._set_status(job_id, "active"))
             return True
         return False
 
-    def list_jobs(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def list_jobs(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
         """List recurring jobs, optionally filtered by status"""
-        self._ensure_loaded()
+        await self._ensure_loaded()
         jobs = list(self.jobs.values())
         if status:
             jobs = [job for job in jobs if job["status"] == status]
         return jobs
 
-    def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
+    async def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
         """Get details of a specific recurring job"""
-        self._ensure_loaded()
+        await self._ensure_loaded()
         return self.jobs.get(job_id)
 
-    def _ensure_loaded(self) -> None:
+    async def _ensure_loaded(self) -> None:
         if self._loaded:
             return
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            asyncio.run(self.load_jobs())
-            return
-        loop.create_task(self.load_jobs())
+        await self.load_jobs()
 
-    def _schedule_update(self, coro: "asyncio.Future") -> None:
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            asyncio.run(coro)
-            return
-        loop.create_task(coro)
+    async def _schedule_update(self, coro) -> None:
+        await coro
 
     async def _persist_job(self, job_record: Dict[str, Any]) -> None:
         pool = await get_context_pool()
@@ -763,29 +753,29 @@ def get_recurring_scheduler() -> EnhancedRecurringScheduler:
     return _enhanced_scheduler
 
 
-def list_recurring_jobs(status: Optional[str] = None) -> List[Dict[str, Any]]:
+async def list_recurring_jobs(status: Optional[str] = None) -> List[Dict[str, Any]]:
     """List all recurring jobs"""
-    return _enhanced_manager.list_jobs(status=status)
+    return await _enhanced_manager.list_jobs(status=status)
 
 
-def get_recurring_job(job_id: str) -> Optional[Dict[str, Any]]:
+async def get_recurring_job(job_id: str) -> Optional[Dict[str, Any]]:
     """Get details of a specific recurring job"""
-    return _enhanced_manager.get_job(job_id)
+    return await _enhanced_manager.get_job(job_id)
 
 
 async def remove_recurring_job(job_id: str) -> bool:
     """Remove a recurring job"""
-    return _enhanced_manager.remove_job(job_id)
+    return await _enhanced_manager.remove_job(job_id)
 
 
 async def pause_recurring_job(job_id: str) -> bool:
     """Pause a recurring job"""
-    return _enhanced_manager.pause_job(job_id)
+    return await _enhanced_manager.pause_job(job_id)
 
 
 async def resume_recurring_job(job_id: str) -> bool:
     """Resume a paused recurring job"""
-    return _enhanced_manager.resume_job(job_id)
+    return await _enhanced_manager.resume_job(job_id)
 
 
 def get_scheduler_status() -> Dict[str, Any]:
