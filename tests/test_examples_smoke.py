@@ -1,7 +1,8 @@
 """
-Smoke tests for all example files.
+Smoke tests for all example files and codebase hygiene checks.
 
 Ensures every example is syntactically valid Python and uses importable APIs.
+Also checks for dead documentation URLs.
 """
 
 import ast
@@ -10,6 +11,7 @@ from pathlib import Path
 import pytest
 
 EXAMPLES_DIR = Path(__file__).parent.parent / "examples"
+PROJECT_ROOT = Path(__file__).parent.parent
 
 
 @pytest.mark.parametrize(
@@ -44,4 +46,19 @@ def test_transactional_enqueue_setup_call():
     assert "setup(database_url=" not in source, (
         "transactional_enqueue.py passes database_url to elephantq.setup(), "
         "but setup() takes no arguments"
+    )
+
+
+def test_no_dead_documentation_urls():
+    """No references to non-existent docs.elephantq.dev should exist in source code."""
+    dead_url_files = []
+    elephantq_dir = PROJECT_ROOT / "elephantq"
+
+    for py_file in elephantq_dir.rglob("*.py"):
+        content = py_file.read_text()
+        if "docs.elephantq.dev" in content:
+            dead_url_files.append(str(py_file.relative_to(PROJECT_ROOT)))
+
+    assert dead_url_files == [], (
+        f"Found references to non-existent docs.elephantq.dev in: {dead_url_files}"
     )
