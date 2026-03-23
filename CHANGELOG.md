@@ -5,6 +5,45 @@ All notable changes to ElephantQ will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-03-24
+
+### Breaking Changes
+- Default `job_timeout` changed from `None` (no timeout) to `300` seconds. Jobs exceeding 5 minutes are now treated as failures. Override per-job with `@elephantq.job(timeout=None)` or globally with `ELEPHANTQ_JOB_TIMEOUT=0`.
+- All timestamp columns normalized to `TIMESTAMP WITH TIME ZONE` in the base migration files.
+- Removed `EnterpriseFeatures` and `enterprise` aliases from `elephantq.features`.
+
+### Fixed
+- Fixed fragile error classification that silently dead-lettered retryable jobs when error messages contained "argument" or "parameter"
+- Fixed broken `examples/recurring_jobs.py` (used non-existent API)
+- Fixed broken `examples/transactional_enqueue.py` (passed unsupported arg to `setup()`)
+- Fixed LISTEN connection leak in worker loop (connection acquired outside try block)
+- Fixed `ELEPHANTQ_SKIP_UPDATE_LOCK` env var now only honored in debug/testing mode
+- Replaced 11 dead `docs.elephantq.dev` URLs with GitHub doc links
+
+### Added
+- Default 300-second job execution timeout with per-job override via `@elephantq.job(timeout=N)`
+- `py.typed` marker for PEP 561 type checker support
+- `init` callback on instance connection pool for UTC timezone initialization
+- End-to-end crash recovery tests
+- Concurrent dequeue race condition tests
+- Timeout enforcement tests
+- Connection pool exhaustion tests
+- Missing job handler tests
+- Example import smoke tests in CI
+- Coverage reporting in CI
+- mypy configuration and CI integration
+- Dead URL regression guard in CI
+
+### Changed
+- `list_jobs` default limit harmonized to 100 across all API entry points
+- Simplified `features/features.py` imports (35 aliased imports replaced with deferred module imports)
+- Per-query `SET timezone = 'UTC'` removed from processor (now handled by pool init callback)
+
+### Documentation
+- Added job timeout documentation to retries.md and getting-started.md
+- Rewrote stuck-job-recovery.md to document automatic heartbeat-based recovery
+- Added `__all__` exports to `features/recurring.py`
+
 ## [Unreleased]
 
 ### Fixed

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "elephantq"
-version = "0.1.1"
+version = "0.2.0"
 description = "ElephantQ - PostgreSQL-only async job queue - built for developer happiness."
 authors = [{ name = "Abhinav Saxena", email = "abhinav@apiclabs.com" }]
 readme = "README.md"

@@ -281,7 +281,10 @@ async def test_database_pool_isolation_between_instances(clean_db, multiple_inst
 
     # All operations should succeed and return timestamps after the initial time
     for timestamp in results:
-        assert timestamp > initial_time.replace(tzinfo=None)
+        # Compare timezone-aware datetimes (TIMESTAMPTZ returns aware values)
+        ts = timestamp if timestamp.tzinfo else timestamp.replace(tzinfo=timezone.utc)
+        it = initial_time if initial_time.tzinfo else initial_time.replace(tzinfo=timezone.utc)
+        assert ts > it
 
     # Clean up
     await worker.stop_heartbeat()
