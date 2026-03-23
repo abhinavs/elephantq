@@ -15,14 +15,26 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-import aiohttp
 import asyncpg
+
+try:
+    import aiohttp
+except ImportError:
+    aiohttp = None  # type: ignore[assignment]
 
 from elephantq.db.connection import get_pool
 
 from .signing import SecureWebhookSecret
 
 logger = logging.getLogger(__name__)
+
+
+def _require_aiohttp():
+    if aiohttp is None:
+        raise ImportError(
+            "aiohttp is required for webhooks. "
+            "Install it with: pip install elephantq[webhooks]"
+        )
 
 
 class WebhookEvent(str, Enum):
@@ -411,6 +423,7 @@ class WebhookDispatcher:
 
     async def _process_delivery(self, delivery: WebhookDelivery):
         """Process a single webhook delivery"""
+        _require_aiohttp()
         endpoint = await self.registry.get_endpoint(delivery.endpoint_id)
         if not endpoint or not endpoint.active:
             logger.warning(f"Endpoint {delivery.endpoint_id} not found or inactive")

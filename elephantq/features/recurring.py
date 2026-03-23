@@ -13,7 +13,19 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 logger = logging.getLogger(__name__)
 
-from croniter import croniter  # noqa: E402
+try:
+    from croniter import croniter  # noqa: E402
+except ImportError:
+    croniter = None  # type: ignore[assignment,misc]
+
+
+def _require_croniter():
+    if croniter is None:
+        raise ImportError(
+            "croniter is required for recurring jobs. "
+            "Install it with: pip install elephantq[scheduling]"
+        )
+
 
 from elephantq import enqueue  # noqa: E402
 from elephantq.core.registry import get_job as get_registered_job  # noqa: E402
@@ -337,6 +349,7 @@ class EnhancedRecurringManager:
                 tzinfo=None
             ) + timedelta(seconds=schedule_value)
         elif schedule_type == "cron":
+            _require_croniter()
             cron = croniter(
                 schedule_value, datetime.now(timezone.utc).replace(tzinfo=None)
             )
@@ -492,6 +505,7 @@ class EnhancedRecurringManager:
         if schedule_type == "interval":
             return current_time + timedelta(seconds=int(schedule_value))
         if schedule_type == "cron":
+            _require_croniter()
             cron = croniter(schedule_value, current_time)
             return cron.get_next(datetime)
         return None

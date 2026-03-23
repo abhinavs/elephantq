@@ -35,14 +35,20 @@ keywords = [
 dependencies = [
   "asyncpg>=0.30.0,<0.32.0",
   "pydantic>=2.7.1,<3.0.0",
-  "pydantic-settings>=2.0.0,<3.0.0", # For configuration management
-  "croniter>=1.4.0",                 # Recurring jobs
-  "aiohttp>=3.8.0",                  # Webhooks
-  "structlog>=22.0.0",               # Structured logging
-  "cryptography>=3.4.0",             # Secure secrets
+  "pydantic-settings>=2.0.0,<3.0.0",
 ]
 
 [project.optional-dependencies]
+scheduling = [
+  "croniter>=1.4.0",
+]
+webhooks = [
+  "aiohttp>=3.8.0",
+  "cryptography>=3.4.0",
+]
+logging = [
+  "structlog>=22.0.0",
+]
 dev = [
   "pytest>=7.4.0",
   "pytest-asyncio>=0.21.0",
@@ -51,6 +57,10 @@ dev = [
   "flake8==7.1.0",
   "isort>=5.12.0",
   "pre-commit>=3.4.0",
+  "croniter>=1.4.0",
+  "aiohttp>=3.8.0",
+  "structlog>=22.0.0",
+  "cryptography>=3.4.0",
 ]
 dashboard = [
   "fastapi>=0.100.0",
@@ -60,8 +70,8 @@ monitoring = [
   "prometheus-client>=0.15.0",
   "psutil>=5.9.0",
 ]
-all = [
-  "elephantq[dashboard,monitoring]",
+full = [
+  "elephantq[scheduling,webhooks,logging,dashboard,monitoring]",
 ]
 
 [project.scripts]

@@ -8,9 +8,23 @@ import os
 import secrets
 from typing import Optional, Union
 
-from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+try:
+    from cryptography.fernet import Fernet
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+except ImportError:
+    Fernet = None  # type: ignore[assignment,misc]
+    hashes = None  # type: ignore[assignment]
+    PBKDF2HMAC = None  # type: ignore[assignment,misc]
+
+
+def _require_cryptography():
+    if Fernet is None:
+        raise ImportError(
+            "cryptography is required for signing/encryption. "
+            "Install it with: pip install elephantq[webhooks]"
+        )
+
 
 _LEGACY_SALT = b"elephantq_security_salt_v1"
 _SALT_LENGTH = 16
@@ -25,6 +39,7 @@ class SecretManager:
     """
 
     def __init__(self):
+        _require_cryptography()
         self._secret_key: str = ""
         self._legacy_fernet: Optional[Fernet] = None
         self._initialize_encryption()
