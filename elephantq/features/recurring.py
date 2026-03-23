@@ -730,19 +730,19 @@ def cron(expression: str) -> FluentRecurringScheduler:
 
 
 # Priority convenience functions
-async def high_priority() -> FluentRecurringScheduler:
+def high_priority() -> FluentRecurringScheduler:
     """Create high priority job (convenience method)"""
     scheduler = FluentRecurringScheduler("interval", 0)  # Will be overridden
     return scheduler.high_priority()
 
 
-async def background() -> FluentRecurringScheduler:
+def background() -> FluentRecurringScheduler:
     """Create background priority job (convenience method)"""
     scheduler = FluentRecurringScheduler("interval", 0)  # Will be overridden
     return scheduler.background()
 
 
-async def urgent() -> FluentRecurringScheduler:
+def urgent() -> FluentRecurringScheduler:
     """Create urgent priority job (convenience method)"""
     scheduler = FluentRecurringScheduler("interval", 0)  # Will be overridden
     return scheduler.urgent()
