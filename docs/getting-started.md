@@ -80,7 +80,11 @@ ELEPHANTQ_DASHBOARD_ENABLED=true elephantq dashboard
 
 Add `ELEPHANTQ_DASHBOARD_WRITE_ENABLED=true` only in trusted environments if you need retry/delete buttons.
 
-## 8. Troubleshooting tips
+## 8. Delivery semantics and idempotency
+
+ElephantQ provides **at-least-once delivery**. Jobs may execute more than once if a worker crashes after running the job but before updating its status. Design your job functions to be idempotent — for example, use database upserts or deduplication keys for side effects like emails or payments.
+
+## 9. Troubleshooting tips
 
 - **Jobs not appearing?** Confirm `ELEPHANTQ_JOBS_MODULES` matches the module path your worker loads.
 - **Tables missing?** Re-run `elephantq setup` before starting the worker.

@@ -36,9 +36,15 @@ async with pool.acquire() as conn:
         await app.enqueue(send_invoice, connection=conn, order_id=order_id)
 ```
 
-## What it does NOT guarantee
+## Delivery semantics
 
-- **Exactly-once delivery.** If the job fires but your application logic fails after commit (e.g. the email service is down), ElephantQ will retry the job according to your retry configuration. Design jobs to be idempotent.
+ElephantQ provides **at-least-once delivery**. A job may execute more than once if a worker crashes after executing the job function but before updating the job's status in the database. Stale worker recovery will reset the job back to `queued`, causing it to run again.
+
+**Design your job functions to be idempotent.** Use database-level deduplication keys, upserts, or check-before-act patterns for side effects like sending emails or charging payments.
+
+## What transactional enqueue does NOT guarantee
+
+- **Single execution.** The transactional guarantee applies to enqueue (the job enters the queue if and only if the transaction commits). It does not prevent re-execution after worker crashes. See the delivery semantics section above.
 - **Rollback after commit.** Once committed, the job is in the queue. You can cancel it with `elephantq.cancel_job(job_id)`, but there is a window where a fast worker might pick it up first.
 
 ## When to use it

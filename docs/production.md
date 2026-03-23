@@ -25,11 +25,12 @@ This is a pragmatic checklist for running ElephantQ in production. It focuses on
 - Run dedicated worker groups per queue.
 - Keep job payloads small; pass IDs instead of large blobs.
 
-## 4. Retries & Timeouts
+## 4. Retries, Timeouts & Idempotency
 
 - Set retries per job, especially for external APIs.
 - Use backoff for flaky integrations.
 - Enable timeouts for long‑running tasks.
+- **Design all jobs to be idempotent.** ElephantQ provides at-least-once delivery — a job may execute more than once if a worker crashes after execution but before status update.
 
 Recommended flags:
 
