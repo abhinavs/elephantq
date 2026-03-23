@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from elephantq.db.migration_runner import MigrationRunner
+from elephantq.db.migrations import MigrationRunner
 
 
 class TestMigration004:

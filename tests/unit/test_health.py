@@ -3,6 +3,7 @@ Test suite for health.py module - comprehensive coverage for production health m
 """
 
 import asyncio
+import inspect
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -806,3 +807,24 @@ class TestSetupDefaultHealthChecks:
         res_check = _health_monitor.checks["system_resources"]
         assert res_check.critical is False
         assert res_check.timeout == 3.0
+
+
+class TestHealthUTC:
+    """Verify health.py does not use naive datetime.now()."""
+
+    def test_no_naive_datetime_now(self):
+        """health.py should not use datetime.now() without timezone."""
+        import elephantq.health as mod
+
+        source = inspect.getsource(mod)
+        lines = source.split("\n")
+        violations = []
+        for i, line in enumerate(lines, 1):
+            stripped = line.strip()
+            if "datetime.now()" in stripped and "timezone" not in stripped:
+                violations.append(f"Line {i}: {stripped}")
+
+        assert not violations, (
+            f"health.py uses datetime.now() without timezone:\n"
+            + "\n".join(violations)
+        )

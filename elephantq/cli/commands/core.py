@@ -281,8 +281,7 @@ async def handle_setup_command(args):
         else:
             print_status("Using global API configuration", "info")
             # Use global API migrations
-            from elephantq.db.migration_runner import get_migration_status
-            from elephantq.db.migrations import run_migrations
+            from elephantq.db.migrations import get_migration_status, run_migrations
 
             status = await get_migration_status()
             applied_count = await run_migrations()
@@ -332,7 +331,7 @@ async def handle_migrate_status_command(args):
         clear_current_context,
         set_current_context,
     )
-    from elephantq.db.migration_runner import get_migration_status
+    from elephantq.db.migrations import get_migration_status
 
     # Resolve ElephantQ instance from CLI arguments
     try:

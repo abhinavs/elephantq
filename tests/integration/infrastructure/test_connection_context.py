@@ -17,7 +17,7 @@ Example usage for better test isolation:
     # Tests could interfere with each other
 
     # New approach (isolated contexts)
-    async with DatabaseContext() as pool:
+    async with PoolContext() as pool:
         await enqueue(some_job)  # Uses isolated pool
         # Each test gets its own database context
 """
@@ -30,7 +30,7 @@ import pytest
 
 import elephantq.settings
 from elephantq.db.connection import (
-    DatabaseContext,
+    PoolContext,
     _context_pool,
     _pool,
     close_pool,
@@ -137,13 +137,13 @@ async def test_context_local_pools_take_precedence():
 
 @pytest.mark.asyncio
 async def test_database_context_class():
-    """Test that the DatabaseContext class works correctly"""
+    """Test that the PoolContext class works correctly"""
     await create_test_database()
 
     # Reset global state
     await close_pool()
 
-    async with DatabaseContext() as pool:
+    async with PoolContext() as pool:
         assert isinstance(pool, asyncpg.Pool)
 
         # Should be able to use the pool
@@ -165,12 +165,12 @@ async def test_database_context_class():
 
 @pytest.mark.asyncio
 async def test_database_context_with_custom_url():
-    """Test DatabaseContext with custom database URL"""
+    """Test PoolContext with custom database URL"""
     await create_test_database()
 
     custom_url = "postgresql://postgres@localhost/elephantq_test"
 
-    async with DatabaseContext(custom_url) as pool:
+    async with PoolContext(custom_url) as pool:
         # Should work with custom URL
         async with pool.acquire() as conn:
             result = await conn.fetchval("SELECT 4")
@@ -340,14 +340,14 @@ async def test_context_var_token_management():
 
 @pytest.mark.asyncio
 async def test_database_context_exception_handling():
-    """Test that DatabaseContext properly handles exceptions"""
+    """Test that PoolContext properly handles exceptions"""
     await create_test_database()
 
     # Reset global state
     await close_pool()
 
     try:
-        async with DatabaseContext():
+        async with PoolContext():
             # Simulate an exception
             raise ValueError("Test exception")
     except ValueError:

@@ -3,7 +3,7 @@ import subprocess
 import asyncpg
 import pytest
 
-from elephantq.db.migration_runner import MigrationRunner
+from elephantq.db.migrations import MigrationRunner
 
 MIGRATIONS_DB = "elephantq_migrations_test"
 

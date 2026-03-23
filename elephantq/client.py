@@ -755,7 +755,7 @@ class ElephantQ:
         await self._ensure_initialized()
 
         # Use the migration runner with our instance's connection pool
-        from .db.migration_runner import MigrationRunner
+        from .db.migrations import MigrationRunner
 
         migration_runner = MigrationRunner()
         async with self._pool.acquire() as conn:
@@ -774,7 +774,7 @@ class ElephantQ:
         await self._ensure_initialized()
 
         # Use the migration runner with our instance's connection pool
-        from .db.migration_runner import MigrationRunner
+        from .db.migrations import MigrationRunner
 
         migration_runner = MigrationRunner()
         async with self._pool.acquire() as conn:

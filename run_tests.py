@@ -229,24 +229,10 @@ def main():
                 "tests/integration/test_transactional_enqueue.py",
             ],
         ),
-        # UNIT TESTS
+        # UNIT TESTS — run entire directory to catch all test files
         (
-            "Unit Tests - Core Modules",
-            [
-                "tests/unit/test_health.py",
-                "tests/unit/test_errors.py",
-                "tests/unit/test_hashing.py",
-                "tests/unit/test_signal_handling.py",
-                "tests/unit/test_retry_backoff.py",
-            ],
-        ),
-        (
-            "Unit Tests - Other",
-            [
-                "tests/unit/test_configuration.py",
-                "tests/unit/test_global_api.py",
-                "tests/unit/test_feature_flags.py",
-            ],
+            "Unit Tests",
+            ["tests/unit/"],
         ),
     ]
 

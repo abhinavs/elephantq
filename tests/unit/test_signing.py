@@ -1,3 +1,9 @@
+"""
+Tests for the signing feature module covering import checks, encryption
+round-trips, legacy compatibility, random salt behaviour, and PBKDF2
+iteration requirements.
+"""
+
 import base64
 import os
 
@@ -19,6 +25,42 @@ def set_secret_key(monkeypatch):
     signing_mod._secret_manager = None
 
 
+# ---------------------------------------------------------------------------
+# Basic import and feature-flag tests
+# ---------------------------------------------------------------------------
+
+
+def test_signing_module_importable():
+    """The signing module should be importable regardless of feature flags."""
+    from elephantq.features import signing
+
+    assert signing is not None
+
+
+def test_secret_manager_requires_cryptography():
+    """SecretManager should require the cryptography package."""
+    from elephantq.features.signing import SecretManager, _require_cryptography
+
+    # cryptography is installed in dev, so this should work
+    _require_cryptography()
+    manager = SecretManager()
+    assert manager is not None
+
+
+def test_signing_manager_enabled():
+    os.environ["ELEPHANTQ_SIGNING_ENABLED"] = "true"
+
+    import elephantq
+
+    manager = elephantq.features.signing
+    assert manager is not None
+
+
+# ---------------------------------------------------------------------------
+# Encrypt / decrypt round-trips
+# ---------------------------------------------------------------------------
+
+
 class TestEncryptDecryptRoundtrip:
     """Verify that encrypt followed by decrypt returns the original plaintext."""
 
@@ -36,6 +78,11 @@ class TestEncryptDecryptRoundtrip:
         manager = SecretManager()
         plaintext = "secret-with-special-chars-!@#$%"
         assert manager.decrypt(manager.encrypt(plaintext)) == plaintext
+
+
+# ---------------------------------------------------------------------------
+# Legacy compatibility
+# ---------------------------------------------------------------------------
 
 
 class TestLegacyDecryptCompat:
@@ -70,6 +117,11 @@ class TestLegacyDecryptCompat:
         assert manager.decrypt(legacy_ciphertext) == plaintext
 
 
+# ---------------------------------------------------------------------------
+# Random salt produces unique ciphertexts
+# ---------------------------------------------------------------------------
+
+
 class TestRandomSaltProducesDifferentCiphertexts:
     """Verify that two encryptions of the same plaintext produce different ciphertexts."""
 
@@ -86,3 +138,31 @@ class TestRandomSaltProducesDifferentCiphertexts:
         # Both should still decrypt to the same value
         assert manager.decrypt(ct1) == plaintext
         assert manager.decrypt(ct2) == plaintext
+
+
+# ---------------------------------------------------------------------------
+# PBKDF2 iteration requirements (NIST 2023)
+# ---------------------------------------------------------------------------
+
+
+class TestPBKDF2Iterations:
+    def test_iterations_at_least_310k(self):
+        from elephantq.features.signing import _PBKDF2_ITERATIONS
+
+        assert _PBKDF2_ITERATIONS >= 310000, (
+            f"PBKDF2 iterations ({_PBKDF2_ITERATIONS}) below NIST 2023 recommendation (310,000)"
+        )
+
+    def test_legacy_iterations_preserved(self):
+        from elephantq.features.signing import _LEGACY_PBKDF2_ITERATIONS
+
+        assert _LEGACY_PBKDF2_ITERATIONS == 100000
+
+    def test_encrypt_decrypt_roundtrip_with_new_iterations(self):
+        from elephantq.features.signing import SecretManager
+
+        mgr = SecretManager()
+        plaintext = "sensitive-webhook-secret-value"
+        encrypted = mgr.encrypt(plaintext)
+        decrypted = mgr.decrypt(encrypted)
+        assert decrypted == plaintext

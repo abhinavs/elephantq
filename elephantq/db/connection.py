@@ -94,7 +94,7 @@ async def connection_context(
         await pool.close()
 
 
-class DatabaseContext:
+class PoolContext:
     """
     Database context manager for applications that need explicit control.
 
