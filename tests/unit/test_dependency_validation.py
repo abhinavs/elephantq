@@ -29,8 +29,9 @@ class TestDependencyValidation:
         ))
 
         with patch("elephantq.features.dependencies.get_context_pool", return_value=mock_pool):
-            with pytest.raises(ValueError, match="Invalid dependency job ID"):
-                await store_job_dependencies(
-                    "550e8400-e29b-41d4-a716-446655440000",
-                    ["not-a-uuid"],
-                )
+            with patch("elephantq.features.dependencies.require_feature"):
+                with pytest.raises(ValueError, match="Invalid dependency job ID"):
+                    await store_job_dependencies(
+                        "550e8400-e29b-41d4-a716-446655440000",
+                        ["not-a-uuid"],
+                    )
