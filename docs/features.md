@@ -17,7 +17,7 @@ print("Jobs processed in the last hour:", metrics["jobs_processed"])
 ## Structured logging
 
 - **Flag:** `ELEPHANTQ_LOGGING_ENABLED=true`
-- **Extra:** no add-ons needed (depends on `structlog`).
+- **Extra:** `pip install elephantq[logging]`
 - **What it does:** Captures per-job context (job id, queue, retries, errors) and emits structured events that you can route to your logging backend.
 
 ```python
@@ -47,7 +47,7 @@ Webhooks and custom metrics can react to dead-letter activity to keep your opera
 ## Webhooks
 
 - **Flag:** `ELEPHANTQ_WEBHOOKS_ENABLED=true`
-- **Extra:** none — included in the base install. Set `ELEPHANTQ_WEBHOOKS_ENABLED=true` to activate.
+- **Extra:** `pip install elephantq[webhooks]`
 - **What it does:** Register webhook endpoints that receive job lifecycle events such as `job.succeeded`, `job.failed`, or `job.dead_letter`.
 
 ```python

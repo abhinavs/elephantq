@@ -50,14 +50,14 @@ All default to `false`. Set to `true` to enable.
 
 | Variable | What it unlocks |
 | --- | --- |
-| `ELEPHANTQ_SCHEDULING_ENABLED` | `elephantq.features.scheduling` and `elephantq.features.recurring` |
-| `ELEPHANTQ_DEPENDENCIES_ENABLED` | Job dependency tracking and ordering |
+| `ELEPHANTQ_SCHEDULING_ENABLED` | `elephantq.features.scheduling` and `elephantq.features.recurring` (requires `pip install elephantq[scheduling]`) |
+| `ELEPHANTQ_DEPENDENCIES_ENABLED` | Job dependency tracking (experimental — not yet enforced by worker) |
 | `ELEPHANTQ_TIMEOUTS_ENABLED` | Per-job timeout enforcement |
 | `ELEPHANTQ_DEAD_LETTER_QUEUE_ENABLED` | Dead-letter queue for permanently failed jobs |
-| `ELEPHANTQ_METRICS_ENABLED` | Metrics collection and Prometheus-style counters |
-| `ELEPHANTQ_LOGGING_ENABLED` | Structured logging with `structlog` |
-| `ELEPHANTQ_WEBHOOKS_ENABLED` | HTTP webhook notifications for job lifecycle events |
-| `ELEPHANTQ_SIGNING_ENABLED` | Signing and secure secret helpers |
+| `ELEPHANTQ_METRICS_ENABLED` | Metrics collection and Prometheus-style counters (requires `pip install elephantq[monitoring]`) |
+| `ELEPHANTQ_LOGGING_ENABLED` | Structured logging (requires `pip install elephantq[logging]`) |
+| `ELEPHANTQ_WEBHOOKS_ENABLED` | HTTP webhook notifications (requires `pip install elephantq[webhooks]`) |
+| `ELEPHANTQ_SIGNING_ENABLED` | Signing and secure secret helpers (requires `pip install elephantq[webhooks]`) |
 | `ELEPHANTQ_DASHBOARD_ENABLED` | Web dashboard (requires `pip install elephantq[dashboard]`) |
 | `ELEPHANTQ_DASHBOARD_WRITE_ENABLED` | Write actions (retry/delete/cancel) in the dashboard |
 

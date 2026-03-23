@@ -8,11 +8,15 @@ This guide walks through the minimal sequence to enqueue, run, and observe a job
 pip install elephantq
 ```
 
-Optional extras add the dashboard and monitoring dependencies:
+Optional extras add feature-specific dependencies:
 
 ```bash
-pip install elephantq[dashboard]
-pip install elephantq[monitoring]
+pip install elephantq[scheduling]   # Recurring jobs (croniter)
+pip install elephantq[webhooks]     # Webhooks + signing (aiohttp, cryptography)
+pip install elephantq[logging]      # Structured logging (structlog)
+pip install elephantq[dashboard]    # Web dashboard (fastapi, uvicorn)
+pip install elephantq[monitoring]   # Metrics (prometheus-client, psutil)
+pip install elephantq[full]         # Everything
 ```
 
 ## 2. Configure the environment
