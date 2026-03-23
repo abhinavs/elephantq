@@ -3,6 +3,14 @@ Enhanced Recurring Jobs System for ElephantQ.
 Streamlined API with fluent interfaces and better integration.
 """
 
+__all__ = [
+    "every",
+    "cron",
+    "daily",
+    "FluentRecurringScheduler",
+    "Priority",
+]
+
 import asyncio
 import json
 import logging

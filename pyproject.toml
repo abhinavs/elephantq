@@ -45,10 +45,12 @@ logging = ["structlog>=22.0.0"]
 dev = [
   "pytest>=7.4.0",
   "pytest-asyncio>=0.21.0",
+  "pytest-cov>=4.0.0",
   "httpx>=0.24.0",
   "black>=23.0.0",
   "flake8==7.1.0",
   "isort>=5.12.0",
+  "mypy>=1.0.0",
   "pre-commit>=3.4.0",
   "croniter>=1.4.0",
   "aiohttp>=3.8.0",
@@ -72,6 +74,9 @@ elephantq = "elephantq.cli.main:main"
 [tool.setuptools.packages.find]
 include = ["elephantq*"]
 exclude = ["tests*", "jobs*", "deployment*", "legacy*"]
+
+[tool.setuptools.package-data]
+elephantq = ["py.typed"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -106,3 +111,9 @@ include_trailing_comma = true
 force_grid_wrap = 0
 use_parentheses = true
 ensure_newline_before_comments = true
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
