@@ -338,7 +338,7 @@ class ElephantQ:
         # Continuous processing with LISTEN/NOTIFY
         async def worker():
             # Each worker needs its own connection for LISTEN/NOTIFY
-            listen_conn = await self._pool.acquire()
+            listen_conn = None
             notification_event = asyncio.Event()
 
             def notification_callback(connection, pid, channel, payload):
@@ -346,6 +346,7 @@ class ElephantQ:
                 notification_event.set()
 
             try:
+                listen_conn = await self._pool.acquire()
                 # Set up LISTEN for job notifications
                 await listen_conn.add_listener(
                     "elephantq_new_job", notification_callback
@@ -446,17 +447,20 @@ class ElephantQ:
                         await asyncio.sleep(self._settings.error_retry_delay)
 
             finally:
-                try:
-                    await listen_conn.remove_listener(
-                        "elephantq_new_job", notification_callback
-                    )
-                except asyncpg.exceptions.InterfaceError as e:
-                    logger.debug(f"Failed to remove listener (pool closing): {e}")
+                if listen_conn is not None:
+                    try:
+                        await listen_conn.remove_listener(
+                            "elephantq_new_job", notification_callback
+                        )
+                    except asyncpg.exceptions.InterfaceError as e:
+                        logger.debug(f"Failed to remove listener (pool closing): {e}")
 
-                try:
-                    await self._pool.release(listen_conn)
-                except asyncpg.exceptions.InterfaceError as e:
-                    logger.debug(f"Failed to release connection (pool closing): {e}")
+                    try:
+                        await self._pool.release(listen_conn)
+                    except asyncpg.exceptions.InterfaceError as e:
+                        logger.debug(
+                            f"Failed to release connection (pool closing): {e}"
+                        )
 
         # Setup signal handlers for graceful shutdown
         shutdown_event = asyncio.Event()
