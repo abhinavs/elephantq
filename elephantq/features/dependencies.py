@@ -57,23 +57,7 @@ async def store_job_dependencies(
     pool = await get_context_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
-            # Create dependency table if it doesn't exist
-            await conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS elephantq_job_dependencies (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    job_id UUID NOT NULL REFERENCES elephantq_jobs(id) ON DELETE CASCADE,
-                    depends_on_job_id UUID NOT NULL,
-                    dependency_status TEXT DEFAULT 'pending' CHECK (dependency_status IN ('pending', 'waiting', 'ready', 'failed', 'timeout')),
-                    created_at TIMESTAMP DEFAULT NOW(),
-                    updated_at TIMESTAMP DEFAULT NOW(),
-                    timeout_at TIMESTAMP,
-                    UNIQUE(job_id, depends_on_job_id)
-                )
-            """
-            )
-
-            # Store each dependency
+            # Table created by migration 004_composite_index_and_dependencies.sql
             for dep_job_id in dependencies:
                 try:
                     dep_uuid = uuid.UUID(dep_job_id)
@@ -105,21 +89,7 @@ async def _store_dependencies_with_conn(
     conn, job_id: str, dependencies: List[str], dependency_timeout: Optional[int] = None
 ) -> bool:
     """Store dependencies using an existing connection (joins caller's transaction)."""
-    await conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS elephantq_job_dependencies (
-            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            job_id UUID NOT NULL REFERENCES elephantq_jobs(id) ON DELETE CASCADE,
-            depends_on_job_id UUID NOT NULL,
-            dependency_status TEXT DEFAULT 'pending' CHECK (dependency_status IN ('pending', 'waiting', 'ready', 'failed', 'timeout')),
-            created_at TIMESTAMP DEFAULT NOW(),
-            updated_at TIMESTAMP DEFAULT NOW(),
-            timeout_at TIMESTAMP,
-            UNIQUE(job_id, depends_on_job_id)
-        )
-    """
-    )
-
+    # Table created by migration 004_composite_index_and_dependencies.sql
     for dep_job_id in dependencies:
         try:
             dep_uuid = uuid.UUID(dep_job_id)
