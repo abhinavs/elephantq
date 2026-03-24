@@ -214,7 +214,7 @@ async def enqueue_job(
         job_id = str(uuid.uuid4())
         args_json = json.dumps(kwargs, default=str)
 
-        return await _create_job_record(
+        return await _create_job_record(  # type: ignore[return-value]
             conn,
             job_id,
             job_name,
@@ -433,8 +433,8 @@ async def list_jobs(
     pool = await get_context_pool()
 
     # Build query with optional filters
-    conditions = []
-    params = []
+    conditions: list[str] = []
+    params: list[Any] = []
     param_count = 0
 
     if queue:

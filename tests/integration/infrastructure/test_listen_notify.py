@@ -15,7 +15,11 @@ from typing import Any, Dict, List
 import pytest
 
 from elephantq import ElephantQ
-from tests.db_utils import clear_table, create_test_database, drop_test_database
+from tests.db_utils import (
+    TEST_DATABASE_URL,
+    clear_table,
+    create_test_database,
+)
 
 # Global state for capturing notifications and job processing
 captured_notifications: List[Dict[str, Any]] = []
@@ -27,7 +31,7 @@ async def test_db():
     """Set up test database for all tests"""
     await create_test_database()
     yield
-    await drop_test_database()
+    # Don't drop the database — other test modules in the same session need it
 
 
 @pytest.fixture
@@ -36,11 +40,7 @@ async def clean_app():
     captured_notifications.clear()
     processed_jobs.clear()
 
-    app = ElephantQ(
-        database_url=os.environ.get(
-            "ELEPHANTQ_DATABASE_URL", "postgresql://postgres@localhost/elephantq_test"
-        )
-    )
+    app = ElephantQ(database_url=TEST_DATABASE_URL)
 
     pool = await app.get_pool()
     await clear_table(pool)
@@ -77,7 +77,7 @@ async def test_listen_setup_verification(test_db, clean_app):
             """
             SELECT pg_listening_channels() AS channel
             """
-        )
+        )  # noqa: F841
 
         # At least one connection should be listening to elephantq_new_job
         # Note: This checks system-wide, which is the best we can do

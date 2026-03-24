@@ -89,8 +89,8 @@ class JSONFormatter(logging.Formatter):
             module=record.module,
             function=record.funcName,
             line_number=record.lineno,
-            thread_id=record.thread,
-            process_id=record.process,
+            thread_id=record.thread or 0,
+            process_id=record.process or 0,
             request_id=req_id,
             job_context=job_ctx.to_dict() if job_ctx else None,
         )
@@ -98,7 +98,7 @@ class JSONFormatter(logging.Formatter):
         # Add exception information
         if record.exc_info:
             exc_type, exc_value, exc_traceback = record.exc_info
-            exception_data = {
+            exception_data: Dict[str, Any] = {
                 "type": exc_type.__name__ if exc_type else None,
                 "message": str(exc_value) if exc_value else None,
                 "module": exc_type.__module__ if exc_type else None,
@@ -488,6 +488,7 @@ class LoggingConfig:
         root_logger.handlers.clear()
 
         # Setup formatters
+        formatter: logging.Formatter
         if log_format.lower() == "json":
             formatter = JSONFormatter()
         else:

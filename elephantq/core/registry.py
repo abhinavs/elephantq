@@ -81,8 +81,8 @@ class JobRegistry:
         self._registry[job_name] = job_config
 
         # Set job metadata on function for introspection
-        wrapper._elephantq_name = job_name
-        wrapper._elephantq_config = job_config
+        wrapper._elephantq_name = job_name  # type: ignore[attr-defined]
+        wrapper._elephantq_config = job_config  # type: ignore[attr-defined]
 
         return wrapper
 

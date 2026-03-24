@@ -306,7 +306,7 @@ class MetricsAnalyzer:
         try:
             import psutil
 
-            return psutil.virtual_memory().used / (1024 * 1024)
+            return psutil.virtual_memory().used / (1024 * 1024)  # type: ignore[no-any-return]
         except ImportError:
             return 0.0
 
@@ -315,7 +315,7 @@ class MetricsAnalyzer:
         try:
             import psutil
 
-            return psutil.cpu_percent(interval=1)
+            return psutil.cpu_percent(interval=1)  # type: ignore[no-any-return]
         except ImportError:
             return 0.0
 
@@ -420,7 +420,7 @@ class AlertManager:
             "throughput_min_per_minute": 10,
             "memory_usage_max_mb": 4096,
         }
-        self.alert_cooldown = {}  # Prevent alert spam
+        self.alert_cooldown: Dict[str, float] = {}  # Prevent alert spam
 
     async def check_alerts(self) -> List[Dict]:
         """Check for alert conditions and return active alerts"""

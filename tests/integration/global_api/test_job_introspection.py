@@ -21,7 +21,9 @@ async def process_test_jobs():
 # Set up test environment
 import os  # noqa: E402
 
-os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
+from tests.db_utils import TEST_DATABASE_URL  # noqa: E402
+
+os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
 
 
 # Some test jobs to work with

@@ -5,7 +5,7 @@ Database connection management with context support
 import asyncio
 import contextvars
 from contextlib import asynccontextmanager
-from typing import AsyncContextManager, Optional
+from typing import AsyncIterator, Optional
 
 import asyncpg
 
@@ -66,7 +66,7 @@ async def close_pool():
 @asynccontextmanager
 async def connection_context(
     database_url: Optional[str] = None,
-) -> AsyncContextManager[asyncpg.Pool]:
+) -> AsyncIterator[asyncpg.Pool]:
     """
     Context manager for database connections.
 
@@ -104,7 +104,7 @@ class PoolContext:
     def __init__(self, database_url: Optional[str] = None):
         self.database_url = database_url or _get_database_url()
         self.pool: Optional[asyncpg.Pool] = None
-        self._token = None
+        self._token: Optional[contextvars.Token[Optional[asyncpg.Pool]]] = None
 
     async def __aenter__(self) -> asyncpg.Pool:
         """Enter the context and create pool"""

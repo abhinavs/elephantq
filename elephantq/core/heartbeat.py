@@ -178,7 +178,7 @@ class WorkerHeartbeat:
     async def _get_worker_metadata(self) -> Dict[str, Any]:
         """Get current worker metadata (CPU, memory, etc.)"""
         try:
-            metadata = {
+            metadata: Dict[str, Any] = {
                 "python_version": platform.python_version(),
                 "platform": platform.platform(),
                 "load_avg": os.getloadavg() if hasattr(os, "getloadavg") else None,

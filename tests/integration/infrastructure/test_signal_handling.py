@@ -14,6 +14,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.db_utils import TEST_DATABASE_URL
+
 # Calculate project root for subprocess calls
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 
@@ -168,7 +170,7 @@ if __name__ == "__main__":
                 text=True,
                 env={
                     **os.environ,
-                    "ELEPHANTQ_DATABASE_URL": "postgresql://localhost/elephantq_test",
+                    "ELEPHANTQ_DATABASE_URL": TEST_DATABASE_URL,
                 },
             )
 
@@ -187,7 +189,7 @@ if __name__ == "__main__":
                     0,
                     -signal.SIGINT,
                     130,
-                ]  # 130 = SIGINT exit code
+                ], f"Exit code {process.returncode}, stdout={stdout!r}, stderr={stderr!r}"
 
                 # Check for graceful shutdown - either explicit messaging or clean exit
                 output = stdout + stderr
@@ -234,7 +236,7 @@ if __name__ == "__main__":
                 text=True,
                 env={
                     **os.environ,
-                    "ELEPHANTQ_DATABASE_URL": "postgresql://localhost/elephantq_test",
+                    "ELEPHANTQ_DATABASE_URL": TEST_DATABASE_URL,
                 },
             )
 
@@ -253,7 +255,7 @@ if __name__ == "__main__":
                     0,
                     -signal.SIGTERM,
                     143,
-                ]  # 143 = SIGTERM exit code
+                ], f"Exit code {process.returncode}, stdout={stdout!r}, stderr={stderr!r}"
 
                 # Check for graceful shutdown - either explicit messaging or clean exit
                 output = stdout + stderr
@@ -300,7 +302,7 @@ if __name__ == "__main__":
                 text=True,
                 env={
                     **os.environ,
-                    "ELEPHANTQ_DATABASE_URL": "postgresql://localhost/elephantq_test",
+                    "ELEPHANTQ_DATABASE_URL": TEST_DATABASE_URL,
                 },
             )
 
@@ -315,7 +317,11 @@ if __name__ == "__main__":
                 stdout, stderr = process.communicate(timeout=10)
 
                 # Process should exit cleanly
-                assert process.returncode in [0, -signal.SIGTERM, 143]
+                assert process.returncode in [
+                    0,
+                    -signal.SIGTERM,
+                    143,
+                ], f"Exit code {process.returncode}, stdout={stdout!r}, stderr={stderr!r}"
 
                 # Check for graceful shutdown messages in output
                 output = stdout + stderr
@@ -372,7 +378,7 @@ if __name__ == "__main__":
                 text=True,
                 env={
                     **os.environ,
-                    "ELEPHANTQ_DATABASE_URL": "postgresql://localhost/elephantq_test",
+                    "ELEPHANTQ_DATABASE_URL": TEST_DATABASE_URL,
                 },
             )
 
@@ -391,7 +397,7 @@ if __name__ == "__main__":
                     0,
                     -signal.SIGHUP,
                     129,
-                ]  # 129 = SIGHUP exit code
+                ], f"Exit code {process.returncode}, stdout={stdout!r}, stderr={stderr!r}"
 
                 # Check for graceful shutdown - either explicit messaging or clean exit
                 output = stdout + stderr
@@ -441,7 +447,7 @@ class TestCLISignalHandling:
             text=True,
             env={
                 **os.environ,
-                "ELEPHANTQ_DATABASE_URL": "postgresql://localhost/elephantq_test",
+                "ELEPHANTQ_DATABASE_URL": TEST_DATABASE_URL,
             },
         )
 
@@ -457,7 +463,11 @@ class TestCLISignalHandling:
                 stdout, stderr = process.communicate(timeout=10)
 
                 # Process should exit cleanly
-                assert process.returncode in [0, -signal.SIGTERM, 143]
+                assert process.returncode in [
+                    0,
+                    -signal.SIGTERM,
+                    143,
+                ], f"Exit code {process.returncode}, stdout={stdout!r}, stderr={stderr!r}"
 
                 # Check for graceful shutdown messages
                 output = stdout + stderr
@@ -499,7 +509,7 @@ class TestCLISignalHandling:
             text=True,
             env={
                 **os.environ,
-                "ELEPHANTQ_DATABASE_URL": "postgresql://localhost/elephantq_test",
+                "ELEPHANTQ_DATABASE_URL": TEST_DATABASE_URL,
             },
         )
 
@@ -515,7 +525,11 @@ class TestCLISignalHandling:
                 stdout, stderr = process.communicate(timeout=10)
 
                 # Process should exit cleanly
-                assert process.returncode in [0, -signal.SIGINT, 130]
+                assert process.returncode in [
+                    0,
+                    -signal.SIGINT,
+                    130,
+                ], f"Exit code {process.returncode}, stdout={stdout!r}, stderr={stderr!r}"
 
                 # Check for graceful shutdown messages
                 output = stdout + stderr

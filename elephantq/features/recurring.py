@@ -22,7 +22,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 logger = logging.getLogger(__name__)
 
 try:
-    from croniter import croniter  # noqa: E402
+    from croniter import croniter  # type: ignore[import-untyped]  # noqa: E402
 except ImportError:
     croniter = None  # type: ignore[assignment,misc]
 
@@ -306,7 +306,10 @@ class EnhancedRecurringManager:
                     job_record["schedule_value"],
                     datetime.now(timezone.utc),
                 )
-                await self._persist_next_run(job_record["id"], job_record["next_run"])
+                if job_record["next_run"] is not None:
+                    await self._persist_next_run(
+                        job_record["id"], job_record["next_run"]
+                    )
 
             self.jobs[job_record["id"]] = job_record
 
@@ -362,7 +365,7 @@ class EnhancedRecurringManager:
         # Calculate next run time
         if schedule_type == "interval":
             job_record["next_run"] = datetime.now(timezone.utc) + timedelta(
-                seconds=schedule_value
+                seconds=int(schedule_value)
             )
         elif schedule_type == "cron":
             _require_croniter()
@@ -521,7 +524,7 @@ class EnhancedRecurringManager:
         if schedule_type == "cron":
             _require_croniter()
             cron = croniter(schedule_value, current_time)
-            return cron.get_next(datetime)
+            return cron.get_next(datetime)  # type: ignore[no-any-return]
         return None
 
 
@@ -598,7 +601,7 @@ class EnhancedRecurringScheduler:
         if not next_run:
             return False
 
-        return current_time >= next_run
+        return current_time >= next_run  # type: ignore[no-any-return]
 
     async def _execute_job(
         self, job_id: str, job: Dict[str, Any], current_time: datetime

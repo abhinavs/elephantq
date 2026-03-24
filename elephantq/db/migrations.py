@@ -7,7 +7,7 @@ for safe schema evolution without data loss.
 
 import logging
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import asyncpg
 
@@ -25,7 +25,7 @@ class MigrationError(Exception):
 class MigrationRunner:
     """Manages database schema migrations for ElephantQ"""
 
-    def __init__(self, migrations_dir: Path = None):
+    def __init__(self, migrations_dir: Optional[Path] = None):
         if migrations_dir is None:
             migrations_dir = Path(__file__).parent / "migrations"
         self.migrations_dir = migrations_dir
@@ -59,7 +59,7 @@ class MigrationRunner:
         Returns:
             List of (version, name, file_path) tuples sorted by version
         """
-        migrations = []
+        migrations: List[Tuple[str, str, Path]] = []
 
         if not self.migrations_dir.exists():
             logger.warning(

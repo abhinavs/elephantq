@@ -113,7 +113,7 @@ async def fetchall_with_connection(
     async with get_connection(pool) as conn:
         if set_timezone:
             await conn.execute("SET timezone = 'UTC'")
-        return await conn.fetchall(query, *args)
+        return await conn.fetchall(query, *args)  # type: ignore[no-any-return]
 
 
 async def fetchval_with_connection(

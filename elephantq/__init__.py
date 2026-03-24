@@ -40,7 +40,7 @@ except PackageNotFoundError:
 _global_app: Optional[ElephantQ] = None
 
 # Global job registry to survive instance recreation
-_global_job_registry = []
+_global_job_registry: list[tuple] = []
 
 __all__ = [
     "ElephantQ",
@@ -200,7 +200,7 @@ async def schedule(
 async def run_worker(
     concurrency: int = 4,
     run_once: bool = False,
-    queues: list = None,
+    queues: Optional[list] = None,
 ):
     """Run a worker using the global ElephantQ instance."""
     app = _get_global_app()
@@ -241,7 +241,10 @@ async def delete_job(job_id: str):
 
 
 async def list_jobs(
-    queue: str = None, status: str = None, limit: int = 100, offset: int = 0
+    queue: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
 ):
     """List jobs with optional filtering."""
     app = _get_global_app()

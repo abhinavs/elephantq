@@ -1,5 +1,6 @@
 import os
 import subprocess
+from urllib.parse import urlparse, urlunparse
 
 import asyncpg
 from asyncpg.pool import Pool
@@ -7,17 +8,58 @@ from asyncpg.pool import Pool
 from elephantq.db.migrations import run_migrations
 
 TEST_DB_NAME = "elephantq_test"
+DEFAULT_TEST_URL = f"postgresql://postgres@localhost/{TEST_DB_NAME}"
+TEST_DATABASE_URL = os.environ.get("ELEPHANTQ_DATABASE_URL", DEFAULT_TEST_URL)
+
+
+def make_test_db_url(db_name: str) -> str:
+    """Build a database URL for the given DB name, inheriting credentials from CI env."""
+    base = os.environ.get("ELEPHANTQ_DATABASE_URL", "")
+    if base:
+        parsed = urlparse(base)
+        return urlunparse(parsed._replace(path=f"/{db_name}"))
+    return f"postgresql://postgres@localhost/{db_name}"
+
+
+def _pg_admin_cmd(tool: str, db_name: str, extra_args: list = None) -> tuple:
+    """Build a createdb/dropdb command with CI credentials."""
+    cmd = [tool] + (extra_args or []) + [db_name]
+    env = os.environ.copy()
+    base = os.environ.get("ELEPHANTQ_DATABASE_URL", "")
+    if base:
+        parsed = urlparse(base)
+        if parsed.password:
+            env["PGPASSWORD"] = parsed.password
+        if parsed.username:
+            cmd = [tool] + ["-U", parsed.username] + (extra_args or []) + [db_name]
+        if parsed.hostname:
+            cmd.extend(["-h", parsed.hostname])
+        if parsed.port:
+            cmd.extend(["-p", str(parsed.port)])
+    return cmd, env
+
+
+def run_createdb(db_name: str, check: bool = False):
+    """Run createdb with CI-compatible credentials."""
+    cmd, env = _pg_admin_cmd("createdb", db_name)
+    return subprocess.run(cmd, check=check, env=env, stderr=subprocess.DEVNULL)
+
+
+def run_dropdb(db_name: str):
+    """Run dropdb with CI-compatible credentials."""
+    cmd, env = _pg_admin_cmd("dropdb", db_name, extra_args=["--if-exists"])
+    return subprocess.run(cmd, check=False, env=env, stderr=subprocess.DEVNULL)
 
 
 async def create_test_database():
-    db_url = f"postgresql://postgres@localhost/{TEST_DB_NAME}"
+    db_url = os.environ.get(
+        "ELEPHANTQ_DATABASE_URL", f"postgresql://postgres@localhost/{TEST_DB_NAME}"
+    )
     os.environ["ELEPHANTQ_DATABASE_URL"] = db_url
 
     # Only create if it doesn't exist
     try:
-        subprocess.run(
-            ["createdb", TEST_DB_NAME], check=True, stderr=subprocess.DEVNULL
-        )
+        run_createdb(TEST_DB_NAME, check=True)
     except subprocess.CalledProcessError:
         # Database already exists, that's fine
         pass
@@ -45,11 +87,7 @@ async def create_test_database():
 async def drop_test_database():
     # Make dropping optional to avoid issues with concurrent tests
     try:
-        subprocess.run(
-            ["dropdb", "--if-exists", TEST_DB_NAME],
-            check=False,
-            stderr=subprocess.DEVNULL,
-        )
+        run_dropdb(TEST_DB_NAME)
     except Exception:
         pass
 

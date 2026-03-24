@@ -3,7 +3,6 @@ ElephantQ Features - Organized into logical objects.
 Groups related functionality into cohesive, easy-to-use classes.
 """
 
-from datetime import datetime
 from typing import List, Optional
 
 from .flags import require_feature
@@ -29,7 +28,11 @@ class WebhookManager:
         return await self._mod.stop_webhook_system()
 
     async def register_endpoint(
-        self, url: str, events: List[str] = None, secret: str = None, **kwargs
+        self,
+        url: str,
+        events: Optional[List[str]] = None,
+        secret: Optional[str] = None,
+        **kwargs,
     ):
         """Register a new webhook endpoint"""
         return await self._mod.register_webhook(url, events, secret, **kwargs)
@@ -90,9 +93,16 @@ class LoggingManager:
         """Setup structured logging"""
         return self._mod.setup_logging(format, level)
 
-    def get_job_logger(self, job_id: str):
+    def get_job_logger(
+        self,
+        job_id: str,
+        job_name: str = "",
+        queue: str = "default",
+        attempt: int = 1,
+        max_attempts: int = 3,
+    ):
         """Get a logger for a specific job"""
-        return self._mod.get_job_logger(job_id)
+        return self._mod.get_job_logger(job_id, job_name, queue, attempt, max_attempts)
 
     async def get_error_summary(self, hours: int = 24):
         """Get summary of errors in the specified time period"""
@@ -101,12 +111,12 @@ class LoggingManager:
     async def search_logs(
         self,
         query: str,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
-        limit: int = 100,
+        job_id: Optional[str] = None,
+        level: Optional[str] = None,
+        hours: int = 24,
     ):
         """Search through structured logs"""
-        return await self._mod.search_logs(query, start_time, end_time, limit)
+        return await self._mod.search_logs(query, job_id, level, hours)
 
 
 class DeadLetterManager:
@@ -124,9 +134,9 @@ class DeadLetterManager:
         """Setup the dead letter queue system"""
         return await self._mod.setup_dead_letter_queue()
 
-    async def move_job(self, job_id: str, reason: str = None):
+    async def move_job(self, job_id: str, reason: Optional[str] = None):
         """Move a job to the dead letter queue"""
-        return await self._mod.move_job_to_dead_letter(job_id, reason)
+        return await self._mod.move_job_to_dead_letter(job_id, reason)  # type: ignore[arg-type]
 
     async def resurrect_job(self, job_id: str):
         """Resurrect a single job from dead letter queue"""
@@ -134,11 +144,11 @@ class DeadLetterManager:
 
     async def resurrect_jobs(self, job_ids: List[str]):
         """Resurrect multiple jobs from dead letter queue"""
-        return await self._mod.bulk_resurrect_jobs(job_ids)
+        return await self._mod.bulk_resurrect_jobs(job_ids)  # type: ignore[arg-type]
 
     async def list_jobs(self, limit: int = 50, offset: int = 0):
         """List jobs in the dead letter queue"""
-        return await self._mod.list_dead_letter_jobs(limit, offset)
+        return await self._mod.list_dead_letter_jobs(limit, offset)  # type: ignore[arg-type, call-arg]
 
     async def get_stats(self):
         """Get dead letter queue statistics"""

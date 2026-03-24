@@ -124,6 +124,7 @@ class SecretManager:
 
         # Legacy format: entire payload is a Fernet token with hardcoded salt
         try:
+            assert self._legacy_fernet is not None
             return self._legacy_fernet.decrypt(raw).decode("utf-8")
         except Exception as e:
             raise ValueError(f"Failed to decrypt secret: {e}")

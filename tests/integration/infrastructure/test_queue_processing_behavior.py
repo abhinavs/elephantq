@@ -16,8 +16,10 @@ from datetime import datetime, timedelta
 
 import pytest
 
+from tests.db_utils import TEST_DATABASE_URL
+
 # Ensure we're using test database
-os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
+os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
 
 from elephantq.core.processor import process_jobs  # noqa: E402
 from elephantq.core.queue import enqueue_job  # noqa: E402
@@ -45,6 +47,7 @@ async def clean_db():
     yield
 
     await clear_table(pool)
+    clear_registry()
     clear_registry()
 
 

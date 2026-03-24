@@ -38,7 +38,7 @@ def compute_retry_delay_seconds(
         else:
             delay = 0.0
     else:
-        delay = float(retry_delay)
+        delay = float(retry_delay)  # type: ignore[arg-type]
 
     if retry_backoff:
         base = delay if delay > 0 else 1.0

@@ -3,13 +3,11 @@ import os
 
 import pytest
 
-from tests.db_utils import clear_table, create_test_database
+from tests.db_utils import TEST_DATABASE_URL, clear_table, create_test_database
 
 # Ensure test database URL is set — use setdefault so CI's ELEPHANTQ_DATABASE_URL
 # (which includes a password) is not overwritten.
-os.environ.setdefault(
-    "ELEPHANTQ_DATABASE_URL", "postgresql://postgres@localhost/elephantq_test"
-)
+os.environ.setdefault("ELEPHANTQ_DATABASE_URL", TEST_DATABASE_URL)
 os.environ.setdefault("ELEPHANTQ_JOBS_MODULES", "tests.fixtures.cli_jobs")
 
 # Cache the URL at import time so it survives any configure(database_url=None) calls

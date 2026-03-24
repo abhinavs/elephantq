@@ -353,7 +353,7 @@ def get_settings(
         try:
             if config_file and config_file.exists():
                 # Load settings from file if provided
-                _settings = ElephantQSettings(_env_file=str(config_file))
+                _settings = ElephantQSettings(_env_file=str(config_file))  # type: ignore[call-arg]
             else:
                 # Load from environment variables
                 _settings = ElephantQSettings()

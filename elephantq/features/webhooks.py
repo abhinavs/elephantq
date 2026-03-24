@@ -71,7 +71,7 @@ class WebhookEndpoint:
     id: str
     url: str
     secret: Optional[str] = None
-    events: List[str] = None  # None means all events
+    events: Optional[List[str]] = None  # None means all events
     active: bool = True
     max_retries: int = 3
     timeout_seconds: int = 30
@@ -116,7 +116,7 @@ class WebhookDelivery:
     last_error: Optional[str] = None
     response_status: Optional[int] = None
     response_body: Optional[str] = None
-    created_at: datetime = None
+    created_at: Optional[datetime] = None
     delivered_at: Optional[datetime] = None
 
     def __post_init__(self):
@@ -630,11 +630,11 @@ class WebhookManager:
         endpoint = WebhookEndpoint(
             id=str(uuid.uuid4()), url=url, secret=secret, events=events, **kwargs
         )
-        return await self.registry.register_endpoint(endpoint)
+        return await self.registry.register_endpoint(endpoint)  # type: ignore[no-any-return]
 
     async def unregister_webhook(self, endpoint_id: str) -> bool:
         """Unregister a webhook endpoint"""
-        return await self.registry.unregister_endpoint(endpoint_id)
+        return await self.registry.unregister_endpoint(endpoint_id)  # type: ignore[no-any-return]
 
     async def send_webhook(
         self,
@@ -797,7 +797,7 @@ async def send_job_dead_letter(
 
 async def get_webhook_endpoints() -> List[WebhookEndpoint]:
     """Get all registered webhook endpoints"""
-    return await _webhook_manager.registry.list_endpoints()
+    return await _webhook_manager.registry.list_endpoints()  # type: ignore[no-any-return]
 
 
 async def get_delivery_stats(hours: int = 24) -> Dict[str, Any]:

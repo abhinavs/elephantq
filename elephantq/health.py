@@ -8,7 +8,7 @@ import logging
 import time
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 
 class HealthStatus(Enum):
@@ -26,7 +26,7 @@ class HealthCheck:
     def __init__(
         self,
         name: str,
-        check_func: callable,
+        check_func: Callable,
         timeout: Optional[float] = None,
         critical: bool = True,
         interval: Optional[float] = None,
@@ -42,7 +42,7 @@ class HealthCheck:
         self.interval = (
             interval if interval is not None else settings.health_monitoring_interval
         )
-        self.last_check = None
+        self.last_check: Optional[datetime] = None
         self.last_status = HealthStatus.UNKNOWN
         self.last_message = "Not checked yet"
         self.last_duration = 0.0
@@ -60,7 +60,7 @@ class HealthMonitor:
     def add_check(
         self,
         name: str,
-        check_func: callable,
+        check_func: Callable,
         timeout: Optional[float] = None,
         critical: bool = True,
         interval: Optional[float] = None,
@@ -147,7 +147,9 @@ class HealthMonitor:
                 "message": message,
                 "duration_ms": round(duration * 1000, 2),
                 "critical": check.critical,
-                "last_check": check.last_check.isoformat(),
+                "last_check": (
+                    check.last_check.isoformat() if check.last_check else None
+                ),
                 "timeout": check.timeout,
             }
 
@@ -450,7 +452,7 @@ async def is_ready() -> bool:
             """
             )
 
-            return tables_exist > 0
+            return tables_exist > 0  # type: ignore[no-any-return]
 
     except Exception:
         return False
@@ -458,7 +460,7 @@ async def is_ready() -> bool:
 
 def add_health_check(
     name: str,
-    check_func: callable,
+    check_func: Callable,
     timeout: Optional[float] = None,
     critical: bool = True,
     interval: Optional[float] = None,

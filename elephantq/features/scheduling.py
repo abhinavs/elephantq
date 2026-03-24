@@ -166,7 +166,7 @@ class JobScheduleBuilder:
             self._dependencies = valid_deps
 
         # Use custom enqueue parameters if specified, otherwise use job defaults
-        enqueue_kwargs = {}
+        enqueue_kwargs: Dict[str, Any] = {}
         if self._scheduled_at:
             enqueue_kwargs["scheduled_at"] = self._scheduled_at
         if self._priority is not None:
@@ -231,7 +231,7 @@ class JobScheduleBuilder:
                 "dependencies": self._dependencies,
             }
 
-        return job_id
+        return job_id  # type: ignore[no-any-return]
 
     def _get_configuration(self, **kwargs) -> Dict[str, Any]:
         """Get job configuration for dry run"""
@@ -287,7 +287,9 @@ class BatchScheduler:
         """Add a job to the batch (fluent interface)"""
         return self.add_job(job_func, **kwargs)
 
-    async def enqueue_all(self, batch_priority: Optional[int] = None) -> List[str]:
+    async def enqueue_all(
+        self, batch_priority: Optional[int] = None
+    ) -> List[Union[str, Dict[str, Any]]]:
         """Enqueue all jobs in the batch"""
         job_ids = []
 
@@ -337,7 +339,7 @@ def schedule_job(job_func: Callable[..., Any]) -> JobScheduleBuilder:
 
 async def schedule(
     job_func: Callable[..., Any], when: Union[datetime, int, float, timedelta], **kwargs
-) -> str:
+) -> Union[str, Dict[str, Any]]:
     """
     Unified scheduling function supporting multiple time formats
 
@@ -373,7 +375,9 @@ def create_batch() -> BatchScheduler:
 
 
 # Priority-based scheduling convenience functions
-async def schedule_high_priority(job_func: Callable[..., Any], **kwargs) -> str:
+async def schedule_high_priority(
+    job_func: Callable[..., Any], **kwargs
+) -> Union[str, Dict[str, Any]]:
     """Schedule a high priority job (immediate execution)"""
     return (
         await schedule_job(job_func)
@@ -383,7 +387,9 @@ async def schedule_high_priority(job_func: Callable[..., Any], **kwargs) -> str:
     )
 
 
-async def schedule_background(job_func: Callable[..., Any], **kwargs) -> str:
+async def schedule_background(
+    job_func: Callable[..., Any], **kwargs
+) -> Union[str, Dict[str, Any]]:
     """Schedule a low priority background job (immediate execution)"""
     return (
         await schedule_job(job_func)
@@ -393,7 +399,9 @@ async def schedule_background(job_func: Callable[..., Any], **kwargs) -> str:
     )
 
 
-async def schedule_urgent(job_func: Callable[..., Any], **kwargs) -> str:
+async def schedule_urgent(
+    job_func: Callable[..., Any], **kwargs
+) -> Union[str, Dict[str, Any]]:
     """Schedule an urgent priority job (immediate execution)"""
     return (
         await schedule_job(job_func)

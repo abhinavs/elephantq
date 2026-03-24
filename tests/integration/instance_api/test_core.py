@@ -13,12 +13,13 @@ from pydantic import BaseModel
 import elephantq
 from elephantq.core.registry import get_job
 from elephantq.db.connection import close_pool
+from tests.db_utils import TEST_DATABASE_URL
 
 # Configure logging to see what's happening
 logging.basicConfig(level=logging.INFO)
 
 # Set test database URL for all tests
-os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
+os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
 
 
 class SampleJobArgs(BaseModel):
@@ -33,9 +34,7 @@ _flaky_job_fail_counts = {}
 async def test_enqueue_and_run_job():
     """Test job enqueue and processing with instance-based architecture"""
     # Create a ElephantQ instance for testing (not using global)
-    app = elephantq.ElephantQ(
-        database_url="postgresql://postgres@localhost/elephantq_test"
-    )
+    app = elephantq.ElephantQ(database_url=TEST_DATABASE_URL)
 
     # Register job with the instance
     @app.job(retries=5, args_model=SampleJobArgs)
@@ -76,7 +75,7 @@ async def test_enqueue_and_run_job():
 @pytest.mark.asyncio
 async def test_enqueue_job_invalid_args():
     # Configure global app to use test database
-    elephantq.configure(database_url="postgresql://postgres@localhost/elephantq_test")
+    elephantq.configure(database_url=TEST_DATABASE_URL)
 
     # Define job with args validation
     @elephantq.job(retries=5, args_model=SampleJobArgs)
@@ -103,7 +102,7 @@ async def test_retry_mechanism():
     _flaky_job_fail_counts = {}  # Reset for this test
 
     # Configure global app to use test database
-    elephantq.configure(database_url="postgresql://postgres@localhost/elephantq_test")
+    elephantq.configure(database_url=TEST_DATABASE_URL)
 
     # Define flaky job that fails first 2 times then succeeds
     @elephantq.job(retries=3)
@@ -165,7 +164,7 @@ async def test_retry_mechanism():
 @pytest.mark.asyncio
 async def test_run_worker_processes_job():
     # Configure global app to use test database
-    elephantq.configure(database_url="postgresql://postgres@localhost/elephantq_test")
+    elephantq.configure(database_url=TEST_DATABASE_URL)
 
     # Define sample job
     @elephantq.job(retries=5, args_model=SampleJobArgs)
@@ -214,14 +213,14 @@ async def test_cli_worker():
     # Test that ElephantQ instances have run_worker method
     from elephantq import ElephantQ
 
-    app = ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test")
+    app = ElephantQ(database_url=TEST_DATABASE_URL)
     assert app.run_worker is not None
 
 
 @pytest.mark.asyncio
 async def test_task_discovery():
     # Configure global app to use test database
-    elephantq.configure(database_url="postgresql://postgres@localhost/elephantq_test")
+    elephantq.configure(database_url=TEST_DATABASE_URL)
 
     # Clear test table using global app pool
     global_app = elephantq._get_global_app()

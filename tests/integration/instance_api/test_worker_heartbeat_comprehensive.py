@@ -12,8 +12,10 @@ import uuid
 
 import pytest
 
+from tests.db_utils import TEST_DATABASE_URL
+
 # Ensure we're using test database
-os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
+os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
 
 from elephantq import ElephantQ  # noqa: E402
 from elephantq.core.heartbeat import (  # noqa: E402
@@ -29,7 +31,7 @@ async def clean_db():
     # Just clear worker records, database setup handled by conftest.py
     from elephantq.client import ElephantQ
 
-    app = ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test")
+    app = ElephantQ(database_url=TEST_DATABASE_URL)
     pool = await app.get_pool()
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM elephantq_workers")
@@ -38,7 +40,7 @@ async def clean_db():
     yield
 
     # Clear worker records after test
-    app = ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test")
+    app = ElephantQ(database_url=TEST_DATABASE_URL)
     pool = await app.get_pool()
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM elephantq_workers")
@@ -48,7 +50,7 @@ async def clean_db():
 @pytest.fixture
 async def elephantq_instance():
     """Create a fresh ElephantQ instance for each test"""
-    app = ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test")
+    app = ElephantQ(database_url=TEST_DATABASE_URL)
     yield app
     if app.is_initialized:
         await app.close()
@@ -102,8 +104,8 @@ async def test_worker_heartbeat_lifecycle_complete(clean_db, elephantq_instance)
 async def test_multiple_elephantq_instances_shared_heartbeat(clean_db):
     """Test that multiple ElephantQ instances properly share worker heartbeat"""
     # Create multiple ElephantQ instances
-    app1 = ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test")
-    app2 = ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test")
+    app1 = ElephantQ(database_url=TEST_DATABASE_URL)
+    app2 = ElephantQ(database_url=TEST_DATABASE_URL)
 
     try:
         pool1 = await app1.get_pool()
@@ -349,9 +351,9 @@ async def test_database_pool_consistency_across_instances(clean_db):
     """Test that database operations are consistent across different ElephantQ instance pools"""
     # Create multiple ElephantQ instances
     instances = [
-        ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test"),
-        ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test"),
-        ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test"),
+        ElephantQ(database_url=TEST_DATABASE_URL),
+        ElephantQ(database_url=TEST_DATABASE_URL),
+        ElephantQ(database_url=TEST_DATABASE_URL),
     ]
 
     try:

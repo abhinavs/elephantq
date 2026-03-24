@@ -7,6 +7,7 @@ import asyncio
 import pytest
 
 from elephantq.client import ElephantQ
+from tests.db_utils import TEST_DATABASE_URL
 
 
 @pytest.mark.asyncio
@@ -17,7 +18,7 @@ async def test_pool_exhaustion_blocks_then_succeeds():
     """
     # Create an instance with a very small pool
     app = ElephantQ(
-        database_url="postgresql://postgres@localhost/elephantq_test",
+        database_url=TEST_DATABASE_URL,
         db_pool_min_size=1,
         db_pool_max_size=2,
     )
@@ -55,7 +56,7 @@ async def test_pool_size_warning(caplog):
     import logging
 
     app = ElephantQ(
-        database_url="postgresql://postgres@localhost/elephantq_test",
+        database_url=TEST_DATABASE_URL,
         db_pool_min_size=1,
         db_pool_max_size=3,
         db_pool_safety_margin=2,

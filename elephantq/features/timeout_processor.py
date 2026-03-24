@@ -8,7 +8,7 @@ import json
 import logging
 import os
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import asyncpg
 
@@ -49,7 +49,7 @@ async def get_job_timeout(job_id: str, conn: asyncpg.Connection) -> Optional[int
         )
 
         if timeout_data:
-            return timeout_data["timeout_seconds"]
+            return timeout_data["timeout_seconds"]  # type: ignore[no-any-return]
     except asyncpg.UndefinedTableError:
         # Table doesn't exist yet - will be created when needed
         pass
@@ -398,7 +398,7 @@ async def run_worker_with_timeout(
     concurrency: int = 4,
     run_once: bool = False,
     database_url: Optional[str] = None,
-    queues: list[str] = None,
+    queues: Optional[List[str]] = None,
 ):
     """
     Run the job worker process with timeout support.

@@ -8,7 +8,7 @@ Enables multiple isolated ElephantQ instances with independent configurations.
 import asyncio
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 
 import asyncpg
 import asyncpg.exceptions
@@ -70,7 +70,7 @@ class ElephantQ:
 
         if config_file:
             self._settings = ElephantQSettings(
-                _env_file=str(config_file), **settings_overrides
+                _env_file=str(config_file), **settings_overrides  # type: ignore[call-arg]
             )
         else:
             self._settings = ElephantQSettings(**settings_overrides)
@@ -216,7 +216,7 @@ class ElephantQ:
         from .core.queue import enqueue_job
 
         return await enqueue_job(
-            self._pool, self._job_registry, job_func, connection=connection, **kwargs
+            self._pool, self._job_registry, job_func, connection=connection, **kwargs  # type: ignore[arg-type]
         )
 
     async def schedule(self, job_func, run_at, **kwargs):
@@ -236,7 +236,7 @@ class ElephantQ:
     async def get_pool(self) -> asyncpg.Pool:
         """Get database connection pool."""
         await self._ensure_initialized()
-        return self._pool
+        return self._pool  # type: ignore[return-value]
 
     def get_job_registry(self) -> JobRegistry:
         """Get job registry."""
@@ -302,7 +302,7 @@ class ElephantQ:
         jobs_processed = 0
 
         while max_jobs is None or jobs_processed < max_jobs:
-            async with self._pool.acquire() as conn:
+            async with self._pool.acquire() as conn:  # type: ignore[union-attr]
                 processed = await process_jobs_with_registry(
                     conn=conn,
                     job_registry=self._job_registry,
@@ -331,7 +331,7 @@ class ElephantQ:
         from .utils.signals import GracefulSignalHandler
 
         # Create worker heartbeat system
-        heartbeat = WorkerHeartbeat(self._pool, queues, concurrency)
+        heartbeat = WorkerHeartbeat(self._pool, queues, concurrency)  # type: ignore[arg-type]
         await heartbeat.register_worker()
         await heartbeat.start_heartbeat()
 
@@ -346,7 +346,7 @@ class ElephantQ:
                 notification_event.set()
 
             try:
-                listen_conn = await self._pool.acquire()
+                listen_conn = await self._pool.acquire()  # type: ignore[union-attr]
                 # Set up LISTEN for job notifications
                 await listen_conn.add_listener(
                     "elephantq_new_job", notification_callback
@@ -368,7 +368,7 @@ class ElephantQ:
 
                         # Use separate connection for job processing to avoid blocking LISTEN
                         try:
-                            async with self._pool.acquire() as job_conn:
+                            async with self._pool.acquire() as job_conn:  # type: ignore[union-attr]
                                 # Process jobs efficiently
                                 processed = await process_jobs_with_registry(
                                     conn=job_conn,
@@ -406,7 +406,7 @@ class ElephantQ:
                                         )
 
                                         await cleanup_stale_workers(
-                                            self._pool,
+                                            self._pool,  # type: ignore[arg-type]
                                             stale_threshold_seconds=self._settings.stale_worker_threshold,
                                         )
 
@@ -456,7 +456,7 @@ class ElephantQ:
                         logger.debug(f"Failed to remove listener (pool closing): {e}")
 
                     try:
-                        await self._pool.release(listen_conn)
+                        await self._pool.release(listen_conn)  # type: ignore[union-attr]
                     except asyncpg.exceptions.InterfaceError as e:
                         logger.debug(
                             f"Failed to release connection (pool closing): {e}"
@@ -473,11 +473,13 @@ class ElephantQ:
         try:
             # Create a task that waits for shutdown signal
             shutdown_task = asyncio.create_task(shutdown_event.wait())
-            worker_task = asyncio.gather(*tasks, return_exceptions=True)
+            worker_task = asyncio.ensure_future(
+                asyncio.gather(*tasks, return_exceptions=True)
+            )
 
             # Wait for either workers to complete or shutdown signal
             done, pending = await asyncio.wait(
-                [worker_task, shutdown_task], return_when=asyncio.FIRST_COMPLETED
+                {worker_task, shutdown_task}, return_when=asyncio.FIRST_COMPLETED
             )
 
             # If shutdown was requested, cancel workers
@@ -526,7 +528,7 @@ class ElephantQ:
         import json
         import uuid
 
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire() as conn:  # type: ignore[union-attr]
             row = await conn.fetchrow(
                 """
                 SELECT id, job_name, args, status, attempts, max_attempts,
@@ -572,7 +574,7 @@ class ElephantQ:
 
         import uuid
 
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire() as conn:  # type: ignore[union-attr]
             result = await conn.execute(
                 """
                 UPDATE elephantq_jobs
@@ -599,7 +601,7 @@ class ElephantQ:
 
         import uuid
 
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire() as conn:  # type: ignore[union-attr]
             result = await conn.execute(
                 """
                 UPDATE elephantq_jobs
@@ -626,7 +628,7 @@ class ElephantQ:
 
         import uuid
 
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire() as conn:  # type: ignore[union-attr]
             result = await conn.execute(
                 "DELETE FROM elephantq_jobs WHERE id = $1",
                 uuid.UUID(job_id),
@@ -636,7 +638,11 @@ class ElephantQ:
             return _rows_affected(result) == 1
 
     async def list_jobs(
-        self, queue: str = None, status: str = None, limit: int = 100, offset: int = 0
+        self,
+        queue: Optional[str] = None,
+        status: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
     ):
         """
         List jobs with optional filtering.
@@ -655,8 +661,8 @@ class ElephantQ:
         import json
 
         # Build the query dynamically based on filters
-        conditions = []
-        params = []
+        conditions: list[str] = []
+        params: list[Any] = []
         param_count = 0
 
         if queue is not None:
@@ -689,7 +695,7 @@ class ElephantQ:
             LIMIT {limit_param} OFFSET {offset_param}
         """
 
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire() as conn:  # type: ignore[union-attr]
             rows = await conn.fetch(query, *params)
 
             return [
@@ -721,7 +727,7 @@ class ElephantQ:
         """
         await self._ensure_initialized()
 
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire() as conn:  # type: ignore[union-attr]
             rows = await conn.fetch(
                 """
                 SELECT
@@ -764,7 +770,7 @@ class ElephantQ:
         from .db.migrations import MigrationRunner
 
         migration_runner = MigrationRunner()
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire() as conn:  # type: ignore[union-attr]
             return await migration_runner._get_migration_status_with_connection(conn)
 
     async def run_migrations(self) -> int:
@@ -783,7 +789,7 @@ class ElephantQ:
         from .db.migrations import MigrationRunner
 
         migration_runner = MigrationRunner()
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire() as conn:  # type: ignore[union-attr]
             return await migration_runner._run_migrations_with_connection(conn)
 
     async def setup(self) -> int:

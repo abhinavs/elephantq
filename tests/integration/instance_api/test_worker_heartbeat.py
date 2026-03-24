@@ -12,8 +12,10 @@ from datetime import datetime, timezone
 
 import pytest
 
+from tests.db_utils import TEST_DATABASE_URL
+
 # Ensure we're using test database
-os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
+os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
 
 from elephantq import ElephantQ  # noqa: E402
 from elephantq.core.heartbeat import (  # noqa: E402
@@ -27,7 +29,7 @@ from elephantq.core.heartbeat import (  # noqa: E402
 @pytest.fixture
 async def elephantq_instance():
     """Create a fresh ElephantQ instance for each test"""
-    app = ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test")
+    app = ElephantQ(database_url=TEST_DATABASE_URL)
     yield app
     if app.is_initialized:
         await app.close()
@@ -37,9 +39,9 @@ async def elephantq_instance():
 async def multiple_instances():
     """Create multiple ElephantQ instances for isolation testing"""
     instances = [
-        ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test"),
-        ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test"),
-        ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test"),
+        ElephantQ(database_url=TEST_DATABASE_URL),
+        ElephantQ(database_url=TEST_DATABASE_URL),
+        ElephantQ(database_url=TEST_DATABASE_URL),
     ]
     yield instances
     for instance in instances:

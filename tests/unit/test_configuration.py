@@ -17,8 +17,10 @@ from pathlib import Path
 
 import pytest
 
+from tests.db_utils import TEST_DATABASE_URL
+
 # Set test database before importing elephantq modules
-os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
+os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
 
 
 class TestPydanticConfiguration:

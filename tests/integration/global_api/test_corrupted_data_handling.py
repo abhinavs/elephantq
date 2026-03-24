@@ -14,8 +14,10 @@ import uuid
 import pytest
 from pydantic import BaseModel
 
+from tests.db_utils import TEST_DATABASE_URL
+
 # Ensure we're using test database
-os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
+os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
 
 import elephantq  # noqa: E402
 from elephantq.db.connection import get_pool  # noqa: E402

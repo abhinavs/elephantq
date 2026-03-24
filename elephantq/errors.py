@@ -241,7 +241,7 @@ class WorkerError(ElephantQError):
         context = {"operation": operation, "reason": reason}
 
         if worker_config:
-            context["worker_config"] = worker_config
+            context["worker_config"] = worker_config  # type: ignore[assignment]
 
         suggestions = [
             "Check worker configuration settings",

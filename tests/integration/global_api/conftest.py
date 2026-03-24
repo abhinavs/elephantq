@@ -9,10 +9,10 @@ import os
 
 import pytest
 
-from tests.db_utils import clear_table, create_test_database
+from tests.db_utils import TEST_DATABASE_URL, clear_table, create_test_database
 
 # Ensure test database URL is set
-os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
+os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -38,17 +38,13 @@ async def clean_global_api_state():
             await clear_table(app_pool)
         else:
             # Initialize once if needed
-            elephantq.configure(
-                database_url="postgresql://postgres@localhost/elephantq_test"
-            )
+            elephantq.configure(database_url=TEST_DATABASE_URL)
             global_app = elephantq._get_global_app()
             app_pool = await global_app.get_pool()
             await clear_table(app_pool)
     except Exception:
         # Fallback - just configure without clearing
-        elephantq.configure(
-            database_url="postgresql://postgres@localhost/elephantq_test"
-        )
+        elephantq.configure(database_url=TEST_DATABASE_URL)
 
     yield
 

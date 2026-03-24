@@ -10,8 +10,10 @@ from pathlib import Path
 
 import pytest
 
+from tests.db_utils import TEST_DATABASE_URL, make_test_db_url, run_createdb, run_dropdb
+
 # Ensure we're using test database
-os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
+os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
 
 # Get project root directory dynamically
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -60,7 +62,7 @@ async def test_cli_help_commands():
 async def test_setup_command():
     """Test database setup command"""
     # Ensure test database exists (don't drop if in use by other tests)
-    subprocess.run(["createdb", "elephantq_test"], check=False)  # Ignore if exists
+    run_createdb("elephantq_test")  # Ignore if exists
 
     # Run setup
     result = run_cli_command(["setup"])
@@ -70,7 +72,7 @@ async def test_setup_command():
     check_result = subprocess.run(
         [
             "psql",
-            "postgresql://postgres@localhost/elephantq_test",
+            TEST_DATABASE_URL,
             "-c",
             "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'elephantq_jobs';",
         ],
@@ -113,9 +115,7 @@ async def test_environment_variable_integration():
     try:
         # Set custom environment variables
         os.environ["ELEPHANTQ_LOG_LEVEL"] = "DEBUG"
-        os.environ["ELEPHANTQ_DATABASE_URL"] = (
-            "postgresql://postgres@localhost/elephantq_test"
-        )
+        os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
 
         # Run start with environment variables
         result = run_cli_command(["start", "--run-once"], timeout=5)
@@ -322,10 +322,10 @@ async def test_cli_database_url_parameter():
     """Test CLI commands with --database-url parameter"""
     # Create a test database with a different name
     test_db_name = "elephantq_cli_instance_test"
-    test_db_url = f"postgresql://postgres@localhost/{test_db_name}"
+    test_db_url = make_test_db_url(test_db_name)
 
     # Create the test database
-    subprocess.run(["createdb", test_db_name], check=False)  # Ignore if exists
+    run_createdb(test_db_name)  # Ignore if exists
 
     try:
         # Test setup command with --database-url
@@ -345,26 +345,24 @@ async def test_cli_database_url_parameter():
 
     finally:
         # Clean up the test database
-        subprocess.run(["dropdb", test_db_name], check=False)
+        run_dropdb(test_db_name)
 
 
 @pytest.mark.asyncio
 async def test_cli_database_url_vs_environment():
     """Test that --database-url parameter overrides environment variable"""
     test_db_name = "elephantq_cli_override_test"
-    test_db_url = f"postgresql://postgres@localhost/{test_db_name}"
+    test_db_url = make_test_db_url(test_db_name)
 
     # Create the test database
-    subprocess.run(["createdb", test_db_name], check=False)
+    run_createdb(test_db_name)
 
     # Store original environment
     original_env = os.environ.copy()
 
     try:
         # Set environment variable to different database
-        os.environ["ELEPHANTQ_DATABASE_URL"] = (
-            "postgresql://postgres@localhost/elephantq_test"
-        )
+        os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
 
         # Use --database-url parameter to override environment
         result = run_cli_command(["setup", "--database-url", test_db_url])
@@ -392,7 +390,7 @@ async def test_cli_database_url_vs_environment():
         os.environ.clear()
         os.environ.update(original_env)
         # Clean up test database
-        subprocess.run(["dropdb", test_db_name], check=False)
+        run_dropdb(test_db_name)
 
 
 @pytest.mark.asyncio

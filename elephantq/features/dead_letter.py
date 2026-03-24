@@ -105,8 +105,8 @@ class DeadLetterFilter:
 
     def to_sql_conditions(self) -> Tuple[List[str], List[Any]]:
         """Convert filter to SQL WHERE conditions and parameters"""
-        conditions = []
-        params = []
+        conditions: List[str] = []
+        params: List[Any] = []
         param_count = 0
 
         if self.job_names:
