@@ -50,7 +50,7 @@ async def drop_test_database():
             check=False,
             stderr=subprocess.DEVNULL,
         )
-    except:
+    except Exception:
         pass
 
 

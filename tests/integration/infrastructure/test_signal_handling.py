@@ -10,7 +10,6 @@ import os
 import signal
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -111,11 +110,11 @@ async def main():
     elephantq.configure(
         database_url=os.environ.get("ELEPHANTQ_DATABASE_URL", "postgresql://localhost/elephantq_test")
     )
-    
+
     @elephantq.job()
     async def test_job():
         return "test"
-    
+
     # Start worker using global API
     await elephantq.run_worker(concurrency=1)
 
@@ -136,11 +135,11 @@ async def main():
     app = ElephantQ(
         database_url=os.environ.get("ELEPHANTQ_DATABASE_URL", "postgresql://localhost/elephantq_test")
     )
-    
+
     @app.job()
     async def test_job():
         return "test"
-    
+
     # Start instance worker
     await app.run_worker(concurrency=1)
 

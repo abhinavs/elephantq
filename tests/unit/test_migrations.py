@@ -4,8 +4,6 @@ Tests that the migration files are correctly structured and contain all required
 
 from pathlib import Path
 
-import pytest
-
 from elephantq.db.migrations import MigrationRunner
 
 MIGRATIONS_DIR = Path(__file__).parent.parent.parent / "elephantq" / "db" / "migrations"

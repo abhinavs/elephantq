@@ -9,7 +9,7 @@ responses, and enforces queue limits to prevent OOM under load.
 
 import inspect
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -22,7 +22,6 @@ from elephantq.features.webhooks import (  # noqa: E402
     WebhookEndpoint,
     WebhookRegistry,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -114,9 +113,9 @@ class TestWebhookResponseCap:
     def test_response_read_has_size_limit(self):
         """_process_delivery should use response.content.read with a size limit."""
         source = inspect.getsource(WebhookDispatcher._process_delivery)
-        assert "content.read(" in source, (
-            "Webhook response body should use response.content.read(N) with a cap"
-        )
+        assert (
+            "content.read(" in source
+        ), "Webhook response body should use response.content.read(N) with a cap"
 
 
 # ---------------------------------------------------------------------------

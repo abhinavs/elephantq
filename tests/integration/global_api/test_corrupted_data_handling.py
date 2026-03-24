@@ -17,8 +17,8 @@ from pydantic import BaseModel
 # Ensure we're using test database
 os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
 
-import elephantq
-from elephantq.db.connection import get_pool
+import elephantq  # noqa: E402
+from elephantq.db.connection import get_pool  # noqa: E402
 
 
 class JobArgsModel(BaseModel):
@@ -162,7 +162,10 @@ async def test_missing_required_arguments(clean_db):
         assert job["status"] == "dead_letter"
         # TypeError from missing argument is now retried (not immediately dead-lettered),
         # so after max_attempts it lands in dead letter with "Max retries exceeded"
-        assert "missing" in job["last_error"].lower() or "argument" in job["last_error"].lower()
+        assert (
+            "missing" in job["last_error"].lower()
+            or "argument" in job["last_error"].lower()
+        )
         assert job["attempts"] == 3  # Set to max attempts
 
 
@@ -203,7 +206,10 @@ async def test_extra_unexpected_arguments(clean_db):
         job = await conn.fetchrow("SELECT * FROM elephantq_jobs WHERE id = $1", job_id)
         assert job["status"] == "dead_letter"
         # TypeError from extra args is now retried, ending in dead letter
-        assert "unexpected" in job["last_error"].lower() or "argument" in job["last_error"].lower()
+        assert (
+            "unexpected" in job["last_error"].lower()
+            or "argument" in job["last_error"].lower()
+        )
         assert job["attempts"] == 3  # Set to max attempts
 
 

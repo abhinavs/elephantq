@@ -29,7 +29,9 @@ def test_recurring_jobs_uses_real_api():
     source = (EXAMPLES_DIR / "recurring_jobs.py").read_text()
 
     # These patterns indicate the broken API calls from the review
-    assert "elephantq.schedule(" not in source or "run_at" in source or "run_in" in source, (
+    assert (
+        "elephantq.schedule(" not in source or "run_at" in source or "run_in" in source
+    ), (
         "recurring_jobs.py calls elephantq.schedule() with a cron string, "
         "but elephantq.schedule() requires run_at or run_in keyword arguments"
     )
@@ -86,6 +88,6 @@ def test_no_dead_documentation_urls():
         if "docs.elephantq.dev" in content:
             dead_url_files.append(str(py_file.relative_to(PROJECT_ROOT)))
 
-    assert dead_url_files == [], (
-        f"Found references to non-existent docs.elephantq.dev in: {dead_url_files}"
-    )
+    assert (
+        dead_url_files == []
+    ), f"Found references to non-existent docs.elephantq.dev in: {dead_url_files}"

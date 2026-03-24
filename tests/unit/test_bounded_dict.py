@@ -1,11 +1,9 @@
 import os
 
-import pytest
-
 # Enable scheduling feature flag before importing
 os.environ.setdefault("ELEPHANTQ_SCHEDULING_ENABLED", "true")
 
-from elephantq.features.scheduling import _BoundedDict
+from elephantq.features.scheduling import _BoundedDict  # noqa: E402
 
 
 class TestBoundedDict:

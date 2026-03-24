@@ -1,8 +1,5 @@
-import asyncio
 import logging
-import os
 import uuid
-from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -164,9 +161,9 @@ class TestSecretKeyNotLogged:
         # The warning message should not contain the actual key
         generated_key = manager._secret_key
         for record in caplog.records:
-            assert generated_key not in record.message, (
-                "The generated secret key value must not appear in log messages"
-            )
+            assert (
+                generated_key not in record.message
+            ), "The generated secret key value must not appear in log messages"
 
 
 class TestRowsAffectedHelper:

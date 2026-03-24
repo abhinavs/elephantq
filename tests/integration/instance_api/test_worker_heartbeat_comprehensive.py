@@ -15,8 +15,8 @@ import pytest
 # Ensure we're using test database
 os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
 
-from elephantq import ElephantQ
-from elephantq.core.heartbeat import (
+from elephantq import ElephantQ  # noqa: E402
+from elephantq.core.heartbeat import (  # noqa: E402
     WorkerHeartbeat,
     cleanup_stale_workers,
     get_worker_status,

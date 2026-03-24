@@ -4,7 +4,6 @@ Tests for connection pool exhaustion behavior.
 
 import asyncio
 
-import asyncpg
 import pytest
 
 from elephantq.client import ElephantQ
@@ -68,8 +67,9 @@ async def test_pool_size_warning(caplog):
             # concurrency=5 + safety_margin=2 = 7 > max_size=3
             app._warn_if_pool_too_small(concurrency=5)
 
-        assert any("pool" in r.message.lower() and "concurrency" in r.message.lower() for r in caplog.records), (
-            "Expected warning about pool size vs concurrency"
-        )
+        assert any(
+            "pool" in r.message.lower() and "concurrency" in r.message.lower()
+            for r in caplog.records
+        ), "Expected warning about pool size vs concurrency"
     finally:
         await app.close()

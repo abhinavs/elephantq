@@ -15,8 +15,8 @@ import pytest
 # Ensure we're using test database
 os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
 
-from elephantq import ElephantQ
-from elephantq.core.heartbeat import (
+from elephantq import ElephantQ  # noqa: E402
+from elephantq.core.heartbeat import (  # noqa: E402
     WorkerHeartbeat,
     cleanup_stale_workers,
 )
@@ -283,7 +283,11 @@ async def test_database_pool_isolation_between_instances(clean_db, multiple_inst
     for timestamp in results:
         # Compare timezone-aware datetimes (TIMESTAMPTZ returns aware values)
         ts = timestamp if timestamp.tzinfo else timestamp.replace(tzinfo=timezone.utc)
-        it = initial_time if initial_time.tzinfo else initial_time.replace(tzinfo=timezone.utc)
+        it = (
+            initial_time
+            if initial_time.tzinfo
+            else initial_time.replace(tzinfo=timezone.utc)
+        )
         assert ts > it
 
     # Clean up

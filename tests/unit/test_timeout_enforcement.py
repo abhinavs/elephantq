@@ -40,6 +40,7 @@ def _make_job_meta(func, timeout=None):
 @pytest.mark.asyncio
 async def test_job_exceeding_timeout_is_failed():
     """A job that sleeps longer than its timeout should be marked as failed."""
+
     async def slow_job():
         await asyncio.sleep(5)
 
@@ -54,6 +55,7 @@ async def test_job_exceeding_timeout_is_failed():
 @pytest.mark.asyncio
 async def test_job_within_timeout_succeeds():
     """A job that completes within its timeout should succeed normally."""
+
     async def fast_job():
         await asyncio.sleep(0.01)
 
@@ -68,11 +70,13 @@ async def test_job_within_timeout_succeeds():
 @pytest.mark.asyncio
 async def test_per_job_timeout_overrides_global(monkeypatch):
     """Per-job timeout from job_meta should be used over the global setting."""
+
     async def slow_job():
         await asyncio.sleep(5)
 
     # Set global timeout to something large
     from elephantq.settings import get_settings
+
     settings = get_settings()
     original = settings.job_timeout
     monkeypatch.setattr(settings, "job_timeout", 999.0)

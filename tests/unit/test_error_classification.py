@@ -46,6 +46,7 @@ async def test_typeerror_with_parameter_in_message_is_retried():
     This is the core bug: the old code string-matched on 'argument'/'parameter'
     and would send this to dead letter.
     """
+
     async def bad_job():
         raise TypeError("NoneType has no attribute 'parameter_count'")
 
@@ -64,6 +65,7 @@ async def test_attributeerror_with_argument_in_message_is_retried():
     An AttributeError from job logic containing 'argument' in the message
     must be retried, not dead-lettered.
     """
+
     async def bad_job():
         raise AttributeError("'str' object has no attribute 'argument_parser'")
 
@@ -78,6 +80,7 @@ async def test_attributeerror_with_argument_in_message_is_retried():
 @pytest.mark.asyncio
 async def test_regular_typeerror_from_job_is_retried():
     """Regular TypeError from job logic (no 'argument'/'parameter') is retried."""
+
     async def bad_job():
         raise TypeError("unsupported operand type(s) for +: 'int' and 'str'")
 
@@ -133,6 +136,7 @@ async def test_pydantic_validation_failure_raises_valueerror():
 @pytest.mark.asyncio
 async def test_successful_job_returns_true():
     """A successful job returns (True, None)."""
+
     async def good_job(msg="hello"):
         pass
 
@@ -147,6 +151,7 @@ async def test_successful_job_returns_true():
 @pytest.mark.asyncio
 async def test_generic_exception_from_job_is_retried():
     """A generic Exception from job logic is retried."""
+
     async def bad_job():
         raise RuntimeError("external service unavailable")
 

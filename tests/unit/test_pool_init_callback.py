@@ -9,9 +9,7 @@ from pathlib import Path
 
 def test_instance_pool_has_init_callback():
     """ElephantQ._ensure_initialized must pass init= to create_pool."""
-    client_path = (
-        Path(__file__).parent.parent.parent / "elephantq" / "client.py"
-    )
+    client_path = Path(__file__).parent.parent.parent / "elephantq" / "client.py"
     source = client_path.read_text()
     tree = ast.parse(source)
 

@@ -5,12 +5,10 @@ Covers cron validation, feature-flag gating, the @recurring decorator registry,
 fire-and-forget safety, atomic state updates, and sync convenience helpers.
 """
 
-import asyncio
 import importlib
 import inspect
 import os
-import re
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -20,6 +18,7 @@ os.environ.setdefault("ELEPHANTQ_SCHEDULING_ENABLED", "true")
 # ---------------------------------------------------------------------------
 # Helpers / fixtures
 # ---------------------------------------------------------------------------
+
 
 def _reset_settings():
     """Clear cached settings so env-var changes take effect."""
@@ -42,6 +41,7 @@ def _enable_scheduling(monkeypatch):
 # ---------------------------------------------------------------------------
 # Cron feature-flag gating
 # ---------------------------------------------------------------------------
+
 
 class TestCronFeatureFlag:
     """cron() must raise RuntimeError when scheduling is disabled."""
@@ -78,6 +78,7 @@ class TestCronFeatureFlag:
 # ---------------------------------------------------------------------------
 # Cron expression validation
 # ---------------------------------------------------------------------------
+
 
 class TestCronValidation:
     """Invalid cron expressions must be rejected at creation time."""
@@ -125,6 +126,7 @@ class TestCronValidation:
 # @recurring decorator registry
 # ---------------------------------------------------------------------------
 
+
 class TestRecurringDecoratorRegistry:
     """Verify that @recurring registers functions in _decorated_recurring_jobs."""
 
@@ -166,6 +168,7 @@ class TestRecurringDecoratorRegistry:
 # No fire-and-forget create_task() calls
 # ---------------------------------------------------------------------------
 
+
 class TestNoFireAndForget:
     """Verify no fire-and-forget create_task() calls in recurring.py."""
 
@@ -174,55 +177,56 @@ class TestNoFireAndForget:
         import elephantq.features.recurring as mod
 
         source = inspect.getsource(mod.EnhancedRecurringManager._ensure_loaded)
-        assert "create_task" not in source, (
-            "_ensure_loaded() still uses fire-and-forget create_task()"
-        )
+        assert (
+            "create_task" not in source
+        ), "_ensure_loaded() still uses fire-and-forget create_task()"
 
     def test_no_create_task_in_schedule_update(self):
         """_schedule_update should not use loop.create_task()."""
         import elephantq.features.recurring as mod
 
         source = inspect.getsource(mod.EnhancedRecurringManager._schedule_update)
-        assert "create_task" not in source, (
-            "_schedule_update() still uses fire-and-forget create_task()"
-        )
+        assert (
+            "create_task" not in source
+        ), "_schedule_update() still uses fire-and-forget create_task()"
 
     def test_ensure_loaded_is_async(self):
         """_ensure_loaded must be async so callers can await it."""
         import elephantq.features.recurring as mod
 
-        assert inspect.iscoroutinefunction(mod.EnhancedRecurringManager._ensure_loaded), (
-            "_ensure_loaded() must be an async method"
-        )
+        assert inspect.iscoroutinefunction(
+            mod.EnhancedRecurringManager._ensure_loaded
+        ), "_ensure_loaded() must be an async method"
 
     def test_schedule_update_is_async(self):
         """_schedule_update must be async so callers can await it."""
         import elephantq.features.recurring as mod
 
-        assert inspect.iscoroutinefunction(mod.EnhancedRecurringManager._schedule_update), (
-            "_schedule_update() must be an async method"
-        )
+        assert inspect.iscoroutinefunction(
+            mod.EnhancedRecurringManager._schedule_update
+        ), "_schedule_update() must be an async method"
 
     def test_list_jobs_is_async(self):
         """list_jobs must be async since it calls async _ensure_loaded."""
         import elephantq.features.recurring as mod
 
-        assert inspect.iscoroutinefunction(mod.EnhancedRecurringManager.list_jobs), (
-            "list_jobs() must be async"
-        )
+        assert inspect.iscoroutinefunction(
+            mod.EnhancedRecurringManager.list_jobs
+        ), "list_jobs() must be async"
 
     def test_get_job_is_async(self):
         """get_job must be async since it calls async _ensure_loaded."""
         import elephantq.features.recurring as mod
 
-        assert inspect.iscoroutinefunction(mod.EnhancedRecurringManager.get_job), (
-            "get_job() must be async"
-        )
+        assert inspect.iscoroutinefunction(
+            mod.EnhancedRecurringManager.get_job
+        ), "get_job() must be async"
 
 
 # ---------------------------------------------------------------------------
 # Atomic state updates
 # ---------------------------------------------------------------------------
+
 
 class TestRecurringAtomicState:
     """Verify in-memory state is updated only after DB write succeeds."""
@@ -237,7 +241,7 @@ class TestRecurringAtomicState:
         # Find positions of key operations
         record_run_pos = source.find("_record_run")
         # Find in-memory update: jobs[job_id].update( or jobs[job_id]["
-        jobs_update_pos = source.find('.update(')
+        jobs_update_pos = source.find(".update(")
 
         assert record_run_pos > 0, "_record_run not found in source"
         assert jobs_update_pos > 0, ".update() not found in source"
@@ -252,6 +256,7 @@ class TestRecurringAtomicState:
 # ---------------------------------------------------------------------------
 # Sync convenience helpers
 # ---------------------------------------------------------------------------
+
 
 class TestRecurringSyncConvenience:
     """high_priority(), background(), and urgent() must be synchronous."""

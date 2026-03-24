@@ -22,12 +22,12 @@ class TestMetricsIndex:
         from elephantq.features.metrics import MetricsCollector
 
         source = inspect.getsource(MetricsCollector.record_job_completion)
-        assert "for metric in" not in source, (
-            "record_job_completion still uses linear scan"
-        )
-        assert "_job_metrics_index" in source, (
-            "record_job_completion should use _job_metrics_index for O(1) lookup"
-        )
+        assert (
+            "for metric in" not in source
+        ), "record_job_completion still uses linear scan"
+        assert (
+            "_job_metrics_index" in source
+        ), "record_job_completion should use _job_metrics_index for O(1) lookup"
 
     @pytest.mark.asyncio
     async def test_record_and_complete_roundtrip(self):

@@ -12,7 +12,6 @@ import os
 import time
 from typing import Any, Dict, List
 
-import asyncpg
 import pytest
 
 from elephantq import ElephantQ
@@ -74,7 +73,7 @@ async def test_listen_setup_verification(test_db, clean_app):
         await asyncio.sleep(1.5)
 
         # Check that there's a LISTEN on elephantq_new_job channel
-        listeners = await monitor_conn.fetch(
+        _listeners = await monitor_conn.fetch(  # noqa: F841
             """
             SELECT pg_listening_channels() AS channel
             """
@@ -85,7 +84,7 @@ async def test_listen_setup_verification(test_db, clean_app):
         has_listener = False
         try:
             # Check if we can see active listeners (may be empty due to connection isolation)
-            active_listeners = await monitor_conn.fetch(
+            _active_listeners = await monitor_conn.fetch(  # noqa: F841
                 "SELECT * FROM pg_stat_activity WHERE state = 'idle in transaction'"
             )
             # This is a weak test due to PostgreSQL connection isolation
@@ -276,7 +275,7 @@ async def test_notification_vs_polling_behavior(test_db, clean_app):
         while len(processed_jobs) == 0 and (time.time() - start_wait) < 10:
             await asyncio.sleep(0.1)
 
-        processing_time = time.time() - start_wait
+        _processing_time = time.time() - start_wait  # noqa: F841
 
         assert len(processed_jobs) == 1, "Job should be processed"
 

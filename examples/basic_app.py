@@ -1,13 +1,16 @@
-import elephantq
 from fastapi import FastAPI
+
+import elephantq
 
 elephantq.configure(database_url="postgresql://localhost/myapp")
 
 app = FastAPI()
 
+
 @elephantq.job()
 async def process_upload(file_path: str):
     return f"Processed {file_path}"
+
 
 @app.post("/upload")
 async def upload(file_path: str):

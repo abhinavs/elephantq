@@ -12,18 +12,18 @@ Tests the updated queue processing logic that handles:
 import asyncio
 import os
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 import pytest
 
 # Ensure we're using test database
 os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
 
-from elephantq.core.processor import process_jobs
-from elephantq.core.queue import enqueue_job
-from elephantq.core.registry import clear_registry
-from elephantq.db.connection import get_pool
-from tests.db_utils import clear_table
+from elephantq.core.processor import process_jobs  # noqa: E402
+from elephantq.core.queue import enqueue_job  # noqa: E402
+from elephantq.core.registry import clear_registry  # noqa: E402
+from elephantq.db.connection import get_pool  # noqa: E402
+from tests.db_utils import clear_table  # noqa: E402
 
 
 # Define test job function (not decorated at module level)

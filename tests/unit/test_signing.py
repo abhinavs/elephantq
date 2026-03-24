@@ -92,7 +92,7 @@ class TestLegacyDecryptCompat:
     """
 
     def test_legacy_token_decrypts(self):
-        from elephantq.features.signing import SecretManager, _LEGACY_SALT
+        from elephantq.features.signing import _LEGACY_SALT, SecretManager
 
         manager = SecretManager()
         plaintext = "old-webhook-secret"
@@ -104,9 +104,7 @@ class TestLegacyDecryptCompat:
             salt=_LEGACY_SALT,
             iterations=100000,
         )
-        key = base64.urlsafe_b64encode(
-            kdf.derive(manager._secret_key.encode("utf-8"))
-        )
+        key = base64.urlsafe_b64encode(kdf.derive(manager._secret_key.encode("utf-8")))
         legacy_fernet = Fernet(key)
         legacy_token = legacy_fernet.encrypt(plaintext.encode("utf-8"))
 
@@ -134,7 +132,9 @@ class TestRandomSaltProducesDifferentCiphertexts:
         ct1 = manager.encrypt(plaintext)
         ct2 = manager.encrypt(plaintext)
 
-        assert ct1 != ct2, "Two encryptions of the same plaintext should differ (random salt)"
+        assert (
+            ct1 != ct2
+        ), "Two encryptions of the same plaintext should differ (random salt)"
         # Both should still decrypt to the same value
         assert manager.decrypt(ct1) == plaintext
         assert manager.decrypt(ct2) == plaintext
@@ -149,9 +149,9 @@ class TestPBKDF2Iterations:
     def test_iterations_at_least_310k(self):
         from elephantq.features.signing import _PBKDF2_ITERATIONS
 
-        assert _PBKDF2_ITERATIONS >= 310000, (
-            f"PBKDF2 iterations ({_PBKDF2_ITERATIONS}) below NIST 2023 recommendation (310,000)"
-        )
+        assert (
+            _PBKDF2_ITERATIONS >= 310000
+        ), f"PBKDF2 iterations ({_PBKDF2_ITERATIONS}) below NIST 2023 recommendation (310,000)"
 
     def test_legacy_iterations_preserved(self):
         from elephantq.features.signing import _LEGACY_PBKDF2_ITERATIONS

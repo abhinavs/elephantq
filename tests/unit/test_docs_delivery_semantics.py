@@ -4,10 +4,7 @@ Tests that documentation correctly describes delivery semantics.
 Written to verify BLOCKER-04: docs must not claim exactly-once delivery.
 """
 
-import os
 from pathlib import Path
-
-import pytest
 
 DOCS_DIR = Path(__file__).parent.parent.parent / "docs"
 
@@ -26,11 +23,15 @@ class TestDeliverySemantics:
             for i, line in enumerate(lines, 1):
                 if "exactly-once" in line or "exactly once" in line:
                     # Allow it only in a "does NOT guarantee" context
-                    if "not guarantee" not in line and "not" not in line.split("exactly")[0]:
+                    if (
+                        "not guarantee" not in line
+                        and "not" not in line.split("exactly")[0]
+                    ):
                         violations.append(f"{doc_file.name}:{i}: {line.strip()}")
-        assert not violations, (
-            f"Documentation falsely claims exactly-once delivery:\n"
-            + "\n".join(violations)
+        assert (
+            not violations
+        ), "Documentation falsely claims exactly-once delivery:\n" + "\n".join(
+            violations
         )
 
     def test_at_least_once_mentioned_in_getting_started(self):

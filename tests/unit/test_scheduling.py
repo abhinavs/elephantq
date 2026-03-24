@@ -88,8 +88,13 @@ async def test_job_schedule_builder_records_metadata(monkeypatch):
         return DummyPool()
 
     monkeypatch.setattr(scheduling, "enqueue", fake_enqueue)
-    monkeypatch.setattr("elephantq.features.dependencies.store_job_dependencies", fake_store_job_dependencies)
-    monkeypatch.setattr("elephantq.features.timeout_processor.store_job_timeout", fake_store_job_timeout)
+    monkeypatch.setattr(
+        "elephantq.features.dependencies.store_job_dependencies",
+        fake_store_job_dependencies,
+    )
+    monkeypatch.setattr(
+        "elephantq.features.timeout_processor.store_job_timeout", fake_store_job_timeout
+    )
     monkeypatch.setattr("elephantq.db.context.get_context_pool", fake_get_context_pool)
 
     async def dummy_job(message: str):
@@ -257,12 +262,12 @@ async def test_enqueue_with_deps_uses_single_transaction(monkeypatch):
 
     # Both store_deps and store_timeout should have received a connection
     # (not None), proving they participate in the same transaction scope.
-    assert tracker.deps_connection is not None, (
-        "store_job_dependencies must receive a connection for transactional safety"
-    )
-    assert tracker.timeout_connection is not None, (
-        "store_job_timeout must receive a connection for transactional safety"
-    )
+    assert (
+        tracker.deps_connection is not None
+    ), "store_job_dependencies must receive a connection for transactional safety"
+    assert (
+        tracker.timeout_connection is not None
+    ), "store_job_timeout must receive a connection for transactional safety"
 
 
 @pytest.mark.asyncio
@@ -312,7 +317,10 @@ class TestDependsOnWarning:
 
             assert len(w) == 1
             assert "experimental" in str(w[0].message).lower()
-            assert "not yet enforce" in str(w[0].message).lower() or "not enforced" in str(w[0].message).lower()
+            assert (
+                "not yet enforce" in str(w[0].message).lower()
+                or "not enforced" in str(w[0].message).lower()
+            )
 
     def test_depends_on_still_stores_ids(self):
         from elephantq.features.scheduling import schedule_job

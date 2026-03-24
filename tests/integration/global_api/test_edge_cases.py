@@ -207,7 +207,7 @@ async def test_registry_edge_cases():
         return "duplicate"
 
     @elephantq.job()
-    async def duplicate_job():  # Same name, should replace
+    async def duplicate_job():  # Same name, should replace  # noqa: F811
         return "replaced"
 
     @elephantq.job()

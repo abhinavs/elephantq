@@ -824,7 +824,6 @@ class TestHealthUTC:
             if "datetime.now()" in stripped and "timezone" not in stripped:
                 violations.append(f"Line {i}: {stripped}")
 
-        assert not violations, (
-            f"health.py uses datetime.now() without timezone:\n"
-            + "\n".join(violations)
-        )
+        assert (
+            not violations
+        ), "health.py uses datetime.now() without timezone:\n" + "\n".join(violations)

@@ -6,8 +6,6 @@ Written to verify MED-01: lock should only be held while snapshotting the buffer
 
 import inspect
 
-import pytest
-
 
 class TestLoggingLockNotHeldDuringIO:
     """Verify the lock is released before flushing to database."""
@@ -19,18 +17,18 @@ class TestLoggingLockNotHeldDuringIO:
         source = inspect.getsource(DatabaseLogHandler._add_to_buffer)
 
         # Should not call _flush_buffer under the lock (it does DB I/O)
-        assert "_flush_buffer" not in source, (
-            "_add_to_buffer still calls _flush_buffer under the lock"
-        )
+        assert (
+            "_flush_buffer" not in source
+        ), "_add_to_buffer still calls _flush_buffer under the lock"
 
     def test_add_to_buffer_uses_flush_batch(self):
         """_add_to_buffer should use _flush_batch after releasing the lock."""
         from elephantq.features.logging import DatabaseLogHandler
 
         source = inspect.getsource(DatabaseLogHandler._add_to_buffer)
-        assert "_flush_batch" in source, (
-            "_add_to_buffer should call _flush_batch outside the lock"
-        )
+        assert (
+            "_flush_batch" in source
+        ), "_add_to_buffer should call _flush_batch outside the lock"
 
     def test_flush_batch_exists(self):
         """_flush_batch method should exist for lock-free database writes."""

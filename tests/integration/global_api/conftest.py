@@ -56,7 +56,7 @@ async def clean_global_api_state():
     try:
         if "app_pool" in locals():
             await clear_table(app_pool)
-    except:
+    except Exception:
         pass
 
 

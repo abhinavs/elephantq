@@ -27,7 +27,9 @@ async def test_concurrent_get_pool_calls_create_pool_once():
         return fake_pool
 
     try:
-        with patch.object(conn_mod.asyncpg, "create_pool", side_effect=slow_create_pool):
+        with patch.object(
+            conn_mod.asyncpg, "create_pool", side_effect=slow_create_pool
+        ):
             # Fire 10 concurrent get_pool() calls
             results = await asyncio.gather(*[conn_mod.get_pool() for _ in range(10)])
 

@@ -2,10 +2,6 @@
 Tests that ELEPHANTQ_SKIP_UPDATE_LOCK is only honored in debug/test mode.
 """
 
-import os
-
-import pytest
-
 
 def test_skip_lock_ignored_in_production(monkeypatch):
     """ELEPHANTQ_SKIP_UPDATE_LOCK must be ignored when environment=production and debug=False."""

@@ -7,8 +7,6 @@ during worker shutdown scenarios, ensuring excellent developer experience.
 
 import asyncio
 import logging
-import time
-from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -38,8 +36,6 @@ async def test_cleanup_stale_workers_with_closing_pool():
 @pytest.mark.asyncio
 async def test_cleanup_stale_workers_with_pool_closing_error():
     """Test that cleanup_stale_workers handles InterfaceError gracefully"""
-    import asyncpg
-
     # Test the specific exception handling by triggering it with a closed pool
     from elephantq.settings import get_settings
 
@@ -157,7 +153,7 @@ async def test_worker_listener_cleanup_handles_errors():
 
         try:
             await pool.release(conn)
-        except Exception as e:
+        except Exception:
             # Should handle gracefully (like our fix does)
             pass
 
@@ -171,9 +167,6 @@ async def test_worker_listener_cleanup_handles_errors():
 @pytest.mark.asyncio
 async def test_graceful_shutdown_integration():
     """Integration test for complete graceful shutdown flow"""
-    import os
-    import signal
-
     # This test verifies the complete shutdown flow works
     # without race conditions or error spam
 

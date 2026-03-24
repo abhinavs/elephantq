@@ -5,7 +5,6 @@ The connection must be acquired inside the try block so it is always
 released in the finally block, even if an exception occurs during setup.
 """
 
-import ast
 from pathlib import Path
 
 
@@ -15,9 +14,7 @@ def test_listen_conn_acquired_inside_try():
     listen_conn must be assigned inside the try block (or initialized
     to None before try) so the finally block can always clean it up.
     """
-    client_path = (
-        Path(__file__).parent.parent.parent / "elephantq" / "client.py"
-    )
+    client_path = Path(__file__).parent.parent.parent / "elephantq" / "client.py"
     source = client_path.read_text()
 
     # The fix requires one of:
@@ -50,7 +47,9 @@ def test_listen_conn_acquired_inside_try():
             if "pool.acquire()" in stripped and not found_try:
                 found_acquire_before_try = True
             # Stop at the end of the worker function
-            if stripped.startswith("# Setup signal") or stripped.startswith("shutdown_event"):
+            if stripped.startswith("# Setup signal") or stripped.startswith(
+                "shutdown_event"
+            ):
                 break
 
     assert not found_acquire_before_try or found_none_init, (

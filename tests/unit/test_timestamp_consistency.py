@@ -4,9 +4,7 @@ Tests that all migration SQL files use TIMESTAMP WITH TIME ZONE consistently.
 
 from pathlib import Path
 
-MIGRATIONS_DIR = (
-    Path(__file__).parent.parent.parent / "elephantq" / "db" / "migrations"
-)
+MIGRATIONS_DIR = Path(__file__).parent.parent.parent / "elephantq" / "db" / "migrations"
 
 
 def test_all_migrations_use_timestamptz():

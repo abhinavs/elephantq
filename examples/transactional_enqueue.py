@@ -48,13 +48,15 @@ async def startup():
 
     # Create a simple users table for the demo
     async with app.state.pool.acquire() as conn:
-        await conn.execute("""
+        await conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 name TEXT NOT NULL,
                 email TEXT NOT NULL UNIQUE
             )
-        """)
+        """
+        )
 
 
 @app.on_event("shutdown")

@@ -43,9 +43,9 @@ def test_batch_add_returns_job_schedule_builder():
     """batch.add(job) must return a JobScheduleBuilder, not the BatchScheduler."""
     batch = BatchScheduler()
     result = batch.add(dummy_job_a)
-    assert type(result).__name__ == "JobScheduleBuilder", (
-        f"Expected JobScheduleBuilder, got {type(result).__name__}"
-    )
+    assert (
+        type(result).__name__ == "JobScheduleBuilder"
+    ), f"Expected JobScheduleBuilder, got {type(result).__name__}"
 
 
 def test_batch_add_chaining_with_priority():

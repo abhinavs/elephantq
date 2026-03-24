@@ -2,7 +2,6 @@
 Tests for the global convenience API
 """
 
-import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest

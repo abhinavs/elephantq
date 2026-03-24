@@ -2,7 +2,6 @@
 Test that jobs with unregistered handlers are dead-lettered correctly.
 """
 
-import json
 import uuid
 
 import pytest

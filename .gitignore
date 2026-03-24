@@ -29,6 +29,7 @@ env/
 ENV/
 .venv/
 .env/
+.venv-old/
 
 # IDEs
 .vscode/
@@ -82,3 +83,5 @@ PACKAGE_STRUCTURE*.md
 verify_structure.py
 jobs_examples/
 
+PLAN.md
+TODO.md

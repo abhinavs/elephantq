@@ -12,15 +12,15 @@ Features:
 - Dependency security checking
 """
 
-import os
-import sys
-import subprocess
 import argparse
-import re
+import datetime
 import json
+import os
+import re
+import subprocess
+import sys
 from pathlib import Path
 from typing import List, Optional, Tuple
-import datetime
 
 
 class ReleaseManager:

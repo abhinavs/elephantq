@@ -38,7 +38,11 @@ async def clean_test_state():
     import elephantq
 
     global_app = elephantq._global_app
-    if global_app is not None and global_app.is_initialized and not global_app.is_closed:
+    if (
+        global_app is not None
+        and global_app.is_initialized
+        and not global_app.is_closed
+    ):
         await global_app.close()
 
     elephantq.configure(database_url="postgresql://postgres@localhost/elephantq_test")

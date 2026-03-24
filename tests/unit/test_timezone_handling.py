@@ -28,9 +28,7 @@ class TestNormalizeScheduledTime:
     def test_int_seconds_returns_utc_aware(self):
         result = _normalize_scheduled_time(60)
         assert result.tzinfo == timezone.utc
-        diff = abs(
-            (result - datetime.now(timezone.utc)).total_seconds() - 60
-        )
+        diff = abs((result - datetime.now(timezone.utc)).total_seconds() - 60)
         assert diff < 2
 
     def test_utc_aware_datetime_preserved(self):

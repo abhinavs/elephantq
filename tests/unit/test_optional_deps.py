@@ -4,8 +4,6 @@ Tests that optional dependency guards work correctly.
 Written to verify HIGH-03: optional deps produce clear error messages.
 """
 
-import pytest
-
 
 class TestOptionalDepGuards:
     """Verify import guards produce actionable error messages."""
@@ -65,4 +63,6 @@ class TestOptionalDepGuards:
         assert "croniter" not in core_deps, "croniter should be in [scheduling] extra"
         assert "aiohttp" not in core_deps, "aiohttp should be in [webhooks] extra"
         assert "structlog" not in core_deps, "structlog should be in [logging] extra"
-        assert "cryptography" not in core_deps, "cryptography should be in [webhooks] extra"
+        assert (
+            "cryptography" not in core_deps
+        ), "cryptography should be in [webhooks] extra"

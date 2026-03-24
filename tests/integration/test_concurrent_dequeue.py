@@ -6,7 +6,6 @@ under actual contention from multiple async tasks.
 """
 
 import asyncio
-import uuid
 
 import pytest
 
@@ -99,9 +98,9 @@ async def test_unique_job_concurrent_enqueue():
 
     # All should return the same job ID
     unique_ids = set(results)
-    assert len(unique_ids) == 1, (
-        f"Expected all enqueues to return the same ID, got {len(unique_ids)} distinct IDs"
-    )
+    assert (
+        len(unique_ids) == 1
+    ), f"Expected all enqueues to return the same ID, got {len(unique_ids)} distinct IDs"
 
     # Verify only 1 job row exists
     async with pool.acquire() as conn:

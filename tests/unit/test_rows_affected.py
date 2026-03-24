@@ -5,8 +5,6 @@ This test was written to catch the infinite recursion bug in dead_letter.py
 where _rows_affected called itself instead of parsing the result string.
 """
 
-import pytest
-
 
 class TestRowsAffectedDeadLetter:
     """Test _rows_affected from dead_letter.py specifically — the broken copy."""

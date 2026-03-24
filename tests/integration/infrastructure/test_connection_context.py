@@ -29,10 +29,10 @@ import asyncpg
 import pytest
 
 import elephantq.settings
+from elephantq.db.connection import _pool  # noqa: F401
 from elephantq.db.connection import (
     PoolContext,
     _context_pool,
-    _pool,
     close_pool,
     connection_context,
     create_pool,
@@ -291,7 +291,6 @@ async def test_create_pool_utility_function():
     standalone_pool = await create_pool()
 
     # Global pool should still be None
-    global _pool
     assert _pool is None
 
     # get_pool() should create a new global pool, different from standalone

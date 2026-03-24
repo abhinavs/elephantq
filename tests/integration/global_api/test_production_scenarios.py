@@ -12,7 +12,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
