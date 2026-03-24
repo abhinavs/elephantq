@@ -3,6 +3,9 @@ Smoke tests for all example files and codebase hygiene checks.
 
 Ensures every example is syntactically valid Python and uses importable APIs.
 Also checks for dead documentation URLs.
+
+These tests do NOT need a database connection.
+Run with: pytest tests/test_examples_smoke.py --noconftest -v
 """
 
 import ast

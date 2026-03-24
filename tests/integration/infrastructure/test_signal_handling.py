@@ -326,11 +326,19 @@ if __name__ == "__main__":
                     "cleanup",
                     "graceful",
                 ]
+                # Filter out known non-shutdown warnings (e.g., SKIP_UPDATE_LOCK guard)
+                filtered_lines = [
+                    line
+                    for line in output.strip().splitlines()
+                    if "ELEPHANTQ_SKIP_UPDATE_LOCK" not in line
+                ]
+                filtered_output = "\n".join(filtered_lines).strip()
+
                 # Silent shutdown is also acceptable for graceful signal handling
                 has_shutdown_message = any(
                     keyword in output.lower() for keyword in shutdown_keywords
                 )
-                silent_shutdown = output.strip() == ""
+                silent_shutdown = filtered_output == ""
                 assert (
                     has_shutdown_message or silent_shutdown
                 ), f"Expected shutdown keywords or silent shutdown, got: {repr(output)}"
