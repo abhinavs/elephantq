@@ -18,6 +18,7 @@ This is a pragmatic checklist for running ElephantQ in production. It focuses on
 - Use multiple workers per queue for throughput.
 - Set `ELEPHANTQ_JOBS_MODULES` so workers can import job code.
 - Tune concurrency per workload.
+- ElephantQ is designed for single-process asyncio. Each worker process runs its own event loop. Do not share `ElephantQ` instances across threads.
 
 ## 3. Queue Design
 
@@ -25,11 +26,12 @@ This is a pragmatic checklist for running ElephantQ in production. It focuses on
 - Run dedicated worker groups per queue.
 - Keep job payloads small; pass IDs instead of large blobs.
 
-## 4. Retries & Timeouts
+## 4. Retries, Timeouts & Idempotency
 
 - Set retries per job, especially for external APIs.
 - Use backoff for flaky integrations.
 - Enable timeouts for long‑running tasks.
+- **Design all jobs to be idempotent.** ElephantQ provides at-least-once delivery — a job may execute more than once if a worker crashes after execution but before status update.
 
 Recommended flags:
 
@@ -111,7 +113,23 @@ Common paths to production:
 - **Systemd**: `deployment/elephantq-worker.service` and `deployment/elephantq-dashboard.service`\n  Best for simple Linux hosts with direct process control.
 - **Kubernetes**: `deployment/kubernetes.yaml`\n  Best for containerized environments with autoscaling.\n- **Docker Compose**: `deployment/docker-compose.yml`\n  Best for staging or small production deployments.
 
-## 9. Recommended Environment Variables
+## 11. Stuck Job Recovery
+
+Jobs in `processing` status are not automatically recovered after a worker crash (SIGKILL, OOM, pod eviction). Until automatic recovery is implemented, use manual recovery:
+
+```sql
+-- Reset stuck jobs that have been processing for more than 10 minutes
+UPDATE elephantq_jobs
+SET status = 'queued', updated_at = NOW()
+WHERE status = 'processing'
+  AND updated_at < NOW() - INTERVAL '10 minutes';
+```
+
+Tune the interval to match your longest-running job. The `ELEPHANTQ_STALE_WORKER_THRESHOLD` setting (default `300` seconds) controls when workers are considered stale — stuck jobs typically belong to workers that have exceeded this threshold.
+
+This is a known limitation. Automatic `processing → queued` recovery for stale workers is planned for a future release.
+
+## 12. Recommended Environment Variables
 
 ```bash
 # Required

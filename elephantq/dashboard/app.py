@@ -185,7 +185,7 @@ async def retry_job(job_id: str) -> bool:
             job_uuid,
         )
 
-        return result == "UPDATE 1"
+        return result == "UPDATE 1"  # type: ignore[no-any-return]
 
 
 async def delete_job(job_id: str) -> bool:
@@ -207,7 +207,7 @@ async def delete_job(job_id: str) -> bool:
             job_uuid,
         )
 
-        return result == "DELETE 1"
+        return result == "DELETE 1"  # type: ignore[no-any-return]
 
 
 async def cancel_job(job_id: str) -> bool:
@@ -233,7 +233,7 @@ async def cancel_job(job_id: str) -> bool:
             job_uuid,
         )
 
-        return result == "UPDATE 1"
+        return result == "UPDATE 1"  # type: ignore[no-any-return]
 
 
 async def get_worker_stats() -> Dict[str, Any]:

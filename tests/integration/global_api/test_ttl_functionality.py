@@ -10,11 +10,13 @@ import os
 
 import pytest
 
-# Ensure we're using test database
-os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
+from tests.db_utils import TEST_DATABASE_URL
 
-import elephantq
-from elephantq.settings import get_settings
+# Ensure we're using test database
+os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
+
+import elephantq  # noqa: E402
+from elephantq.settings import get_settings  # noqa: E402
 
 
 @elephantq.job()
@@ -168,4 +170,4 @@ async def test_ttl_failed_jobs_not_cleaned_up():
 
 
 # Add missing import
-import uuid
+import uuid  # noqa: E402

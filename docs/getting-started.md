@@ -8,11 +8,15 @@ This guide walks through the minimal sequence to enqueue, run, and observe a job
 pip install elephantq
 ```
 
-Optional extras add the dashboard and monitoring dependencies:
+Optional extras add feature-specific dependencies:
 
 ```bash
-pip install elephantq[dashboard]
-pip install elephantq[monitoring]
+pip install elephantq[scheduling]   # Recurring jobs (croniter)
+pip install elephantq[webhooks]     # Webhooks + signing (aiohttp, cryptography)
+pip install elephantq[logging]      # Structured logging (structlog)
+pip install elephantq[dashboard]    # Web dashboard (fastapi, uvicorn)
+pip install elephantq[monitoring]   # Metrics (prometheus-client, psutil)
+pip install elephantq[full]         # Everything
 ```
 
 ## 2. Configure the environment
@@ -80,7 +84,13 @@ ELEPHANTQ_DASHBOARD_ENABLED=true elephantq dashboard
 
 Add `ELEPHANTQ_DASHBOARD_WRITE_ENABLED=true` only in trusted environments if you need retry/delete buttons.
 
-## 8. Troubleshooting tips
+## 8. Delivery semantics and idempotency
+
+ElephantQ provides **at-least-once delivery**. Jobs may execute more than once if a worker crashes after running the job but before updating its status. Design your job functions to be idempotent — for example, use database upserts or deduplication keys for side effects like emails or payments.
+
+Every job has a default **300-second timeout**. If your job needs more time, override it with `@elephantq.job(timeout=600)` or disable it with `timeout=None`. See [retries.md](retries.md) for details.
+
+## 9. Troubleshooting tips
 
 - **Jobs not appearing?** Confirm `ELEPHANTQ_JOBS_MODULES` matches the module path your worker loads.
 - **Tables missing?** Re-run `elephantq setup` before starting the worker.

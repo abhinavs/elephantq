@@ -10,10 +10,10 @@ import os
 import pytest
 
 from elephantq.db.connection import close_pool
-from tests.db_utils import clear_table, create_test_database
+from tests.db_utils import TEST_DATABASE_URL, clear_table, create_test_database
 
 # Ensure test database URL is set
-os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
+os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -41,7 +41,7 @@ async def clean_db():
     # Just clear tables instead of recreating database
     from elephantq.client import ElephantQ
 
-    app = ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test")
+    app = ElephantQ(database_url=TEST_DATABASE_URL)
     pool = await app.get_pool()
     await clear_table(pool)
     await app.close()

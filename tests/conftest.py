@@ -3,11 +3,15 @@ import os
 
 import pytest
 
-from tests.db_utils import clear_table, create_test_database
+from tests.db_utils import TEST_DATABASE_URL, clear_table, create_test_database
 
-# Ensure test database URL is set
-os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
+# Ensure test database URL is set — use setdefault so CI's ELEPHANTQ_DATABASE_URL
+# (which includes a password) is not overwritten.
+os.environ.setdefault("ELEPHANTQ_DATABASE_URL", TEST_DATABASE_URL)
 os.environ.setdefault("ELEPHANTQ_JOBS_MODULES", "tests.fixtures.cli_jobs")
+
+# Cache the URL at import time so it survives any configure(database_url=None) calls
+_TEST_DATABASE_URL = os.environ["ELEPHANTQ_DATABASE_URL"]
 
 
 @pytest.fixture(scope="session")
@@ -34,10 +38,18 @@ async def clean_test_state():
 
     await close_pool()
 
-    # Configure global ElephantQ app to use test database consistently
+    # Close existing global app to allow reconfiguration
     import elephantq
 
-    elephantq.configure(database_url="postgresql://postgres@localhost/elephantq_test")
+    global_app = elephantq._global_app
+    if (
+        global_app is not None
+        and global_app.is_initialized
+        and not global_app.is_closed
+    ):
+        await global_app.close()
+
+    elephantq.configure(database_url=_TEST_DATABASE_URL)
 
     # Get pool and clear any existing jobs (use global app's pool for consistency)
     global_app = elephantq._get_global_app()

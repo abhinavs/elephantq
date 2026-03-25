@@ -27,10 +27,11 @@ await elephantq.schedule(send_email, run_in=timedelta(minutes=10), to="user@exam
 If you need the schedule to be part of an existing database transaction, pass a connection:
 
 ```python
-pool = await elephantq.get_pool()
+app = ElephantQ(database_url="postgresql://localhost/myapp")
+pool = await app.get_pool()
 async with pool.acquire() as conn:
     async with conn.transaction():
-        await elephantq.schedule(send_email, run_in=60, connection=conn, to="user@example.com")
+        await app.schedule(send_email, run_in=60, connection=conn, to="user@example.com")
 ```
 
 ### Recurring (cron)
@@ -48,7 +49,7 @@ await elephantq.features.recurring.cron("0 9 * * *").schedule(daily_report)
 ### Recurring (interval)
 
 ```python
-elephantq.features.recurring.every(10).minutes().schedule(daily_report)
+await elephantq.features.recurring.every(10).minutes().schedule(daily_report)
 ```
 
 ## Fluent scheduling builders
@@ -61,7 +62,7 @@ When your workflow needs richer expressions, use the builders under `elephantq.f
 await elephantq.features.recurring.every(1).days().at("09:00").high_priority().schedule(daily_report)
 ```
 
-Behind the scenes the recurring builder builds cron/interval expressions and forwards them to `EnhancedRecurringManager.schedule_job()`. The same `ELEPHANTQ_SCHEDULING_ENABLED` flag gates the feature.
+Behind the scenes the recurring builder builds cron/interval expressions and forwards them to `EnhancedRecurringManager.add_recurring_job()`. The same `ELEPHANTQ_SCHEDULING_ENABLED` flag gates the feature.
 
 ### JobScheduleBuilder (advanced workers)
 
@@ -71,8 +72,7 @@ await (
     builder.with_queue("maintenance")
     .with_priority(20)
     .with_timeout(120)
-    .depends_on(latest_snapshot_job_id)
-    .enqueue(connection=conn)
+    .enqueue(connection=conn)  # all metadata joins this transaction
 )
 ```
 
@@ -85,11 +85,11 @@ await (
 | `.with_priority()` / `.in_queue()` | Override priority and queue for this run. |
 | `.with_retries()` / `.with_timeout()` | Set retries or timeout metadata (stored alongside the job row). |
 | `.with_tags()` | Add structured tags for dashboards or metadata. |
-| `.depends_on()` | Declare other job IDs that must finish first (requires dependencies feature). |
+| `.depends_on()` | **Experimental.** Stores dependency metadata but the worker does not yet enforce execution order. |
 | `.if_condition()` | Skip scheduling unless the provided predicate returns `True`. |
 | `.dry_run()` | Return the final configuration dict instead of enqueuing (useful for previews). |
 
-After calling `.enqueue()`, ElephantQ wires metadata, dependency tracking, and timeout propagation into the same transaction that writes the job row. `_scheduler_metadata` retains extra information for Observability APIs such as `elephantq.features.scheduling.get_job_metadata()`.
+After calling `.enqueue()`, ElephantQ wires metadata, dependency tracking, and timeout propagation into the same transaction that writes the job row — so a worker cannot pick up a job before its dependencies or timeout are recorded. If you pass `connection=conn`, all writes join the caller's transaction. `_scheduler_metadata` retains extra information for Observability APIs such as `elephantq.features.scheduling.get_job_metadata()`.
 
 ### Batch scheduling
 

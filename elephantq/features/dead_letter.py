@@ -5,6 +5,7 @@ Management of permanently failed jobs, resurrection, bulk operations.
 
 import json
 import logging
+import re
 import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -13,8 +14,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from elephantq.core.registry import get_job
 from elephantq.db.context import get_context_pool
+from elephantq.db.helpers import rows_affected as _rows_affected
 
 logger = logging.getLogger(__name__)
+
+_VALID_TABLE_NAME = re.compile(r"^[a-z_][a-z0-9_]*$")
 
 
 class DeadLetterReason(str, Enum):
@@ -101,8 +105,8 @@ class DeadLetterFilter:
 
     def to_sql_conditions(self) -> Tuple[List[str], List[Any]]:
         """Convert filter to SQL WHERE conditions and parameters"""
-        conditions = []
-        params = []
+        conditions: List[str] = []
+        params: List[Any] = []
         param_count = 0
 
         if self.job_names:
@@ -148,8 +152,10 @@ class DeadLetterFilter:
 class DeadLetterManager:
     """Manager for dead letter queue operations"""
 
-    def __init__(self):
-        self.table_name = "elephantq_dead_letter_jobs"
+    def __init__(self, table_name: str = "elephantq_dead_letter_jobs"):
+        if not _VALID_TABLE_NAME.match(table_name):
+            raise ValueError(f"Invalid table name: {table_name!r}")
+        self.table_name = table_name
 
     async def setup_database(self):
         """Create dead letter table if it doesn't exist"""
@@ -264,6 +270,7 @@ class DeadLetterManager:
                 dead_job = await conn.fetchrow(
                     f"""
                     SELECT * FROM {self.table_name} WHERE id = $1
+                    FOR UPDATE
                 """,
                     uuid.UUID(dead_letter_id),
                 )
@@ -357,7 +364,7 @@ class DeadLetterManager:
                 uuid.UUID(dead_letter_id),
             )
 
-            deleted = result.split()[-1] == "1"
+            deleted = _rows_affected(result) == 1
             if deleted:
                 logger.info(f"Permanently deleted dead letter job {dead_letter_id}")
             return deleted
@@ -379,7 +386,7 @@ class DeadLetterManager:
                 *params,
             )
 
-            deleted_count = int(result.split()[-1])
+            deleted_count = _rows_affected(result)
             logger.info(f"Bulk deleted {deleted_count} dead letter jobs")
             return deleted_count
 
@@ -396,8 +403,14 @@ class DeadLetterManager:
         if conditions:
             where_clause = "WHERE " + " AND ".join(conditions)
 
-        # Add limit and offset
-        limit_clause = f"LIMIT {filter_criteria.limit} OFFSET {filter_criteria.offset}"
+        # Add limit and offset as parameterized values
+        param_count = len(params)
+        param_count += 1
+        limit_param = f"${param_count}"
+        params.append(filter_criteria.limit)
+        param_count += 1
+        offset_param = f"${param_count}"
+        params.append(filter_criteria.offset)
 
         pool = await get_context_pool()
         async with pool.acquire() as conn:
@@ -406,7 +419,7 @@ class DeadLetterManager:
                 SELECT * FROM {self.table_name}
                 {where_clause}
                 ORDER BY moved_to_dead_letter_at DESC
-                {limit_clause}
+                LIMIT {limit_param} OFFSET {offset_param}
             """,
                 *params,
             )
@@ -477,10 +490,8 @@ class DeadLetterManager:
             time_condition = ""
             params = []
             if hours:
-                time_condition = (
-                    "WHERE moved_to_dead_letter_at >= NOW() - INTERVAL '%s hours'"
-                )
-                params.append(hours)
+                time_condition = "WHERE moved_to_dead_letter_at >= NOW() - ($1 || ' hours')::INTERVAL"
+                params.append(str(hours))
 
             # Total count
             total_count = await conn.fetchval(
@@ -591,11 +602,12 @@ class DeadLetterManager:
             result = await conn.execute(
                 f"""
                 DELETE FROM {self.table_name}
-                WHERE moved_to_dead_letter_at < NOW() - INTERVAL '{days} days'
-            """
+                WHERE moved_to_dead_letter_at < NOW() - ($1 || ' days')::INTERVAL
+            """,
+                str(days),
             )
 
-            deleted_count = int(result.split()[-1])
+            deleted_count = _rows_affected(result)
             logger.info(
                 f"Cleaned up {deleted_count} dead letter jobs older than {days} days"
             )
@@ -630,7 +642,7 @@ class DeadLetterManager:
                 uuid.UUID(dead_letter_id),
             )
 
-            return result.split()[-1] == "1"
+            return _rows_affected(result) == 1
 
     async def export_dead_letter_jobs(
         self, filter_criteria: Optional[DeadLetterFilter] = None, format: str = "json"

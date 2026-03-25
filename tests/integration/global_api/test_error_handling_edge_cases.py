@@ -10,10 +10,12 @@ import os
 
 import pytest
 
-# Ensure we're using test database
-os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
+from tests.db_utils import TEST_DATABASE_URL
 
-import elephantq
+# Ensure we're using test database
+os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
+
+import elephantq  # noqa: E402
 
 
 # Test jobs for edge cases

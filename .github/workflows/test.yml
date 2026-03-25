@@ -1,0 +1,55 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: elephantq_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      ELEPHANTQ_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/elephantq_test
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,dashboard,monitoring]"
+          pip install pytest-cov
+
+      - name: Run example smoke tests
+        run: pytest tests/test_examples_smoke.py --noconftest -v --tb=short
+
+      - name: Run unit tests
+        run: pytest tests/unit/ -v --tb=short --cov=elephantq --cov-report=term-missing
+
+      - name: Run integration tests
+        run: pytest tests/integration/ -v --tb=short

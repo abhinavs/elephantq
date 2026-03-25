@@ -10,9 +10,10 @@ import pytest
 from pydantic import BaseModel
 
 import elephantq
+from tests.db_utils import TEST_DATABASE_URL
 
 # Use test database
-os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
+os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
 
 
 class ComplexJobArgs(BaseModel):
@@ -207,7 +208,7 @@ async def test_registry_edge_cases():
         return "duplicate"
 
     @elephantq.job()
-    async def duplicate_job():  # Same name, should replace
+    async def duplicate_job():  # Same name, should replace  # noqa: F811
         return "replaced"
 
     @elephantq.job()

@@ -78,7 +78,7 @@ class DatabaseConnectionError(ElephantQError):
             error_code="DB_CONNECTION_FAILED",
             context=context,
             suggestions=suggestions,
-            documentation_url="https://docs.elephantq.dev/troubleshooting/database",
+            documentation_url="https://github.com/abhinavs/elephantq/blob/main/docs/production.md",
         )
 
     @staticmethod
@@ -109,7 +109,7 @@ class JobNotFoundError(ElephantQError):
             error_code="JOB_NOT_FOUND",
             context=context,
             suggestions=suggestions,
-            documentation_url="https://docs.elephantq.dev/guide/job-definition",
+            documentation_url="https://github.com/abhinavs/elephantq/blob/main/docs/getting-started.md",
         )
 
 
@@ -143,7 +143,7 @@ class JobValidationError(ElephantQError):
             error_code="JOB_VALIDATION_FAILED",
             context=context,
             suggestions=suggestions,
-            documentation_url="https://docs.elephantq.dev/guide/type-validation",
+            documentation_url="https://github.com/abhinavs/elephantq/blob/main/docs/getting-started.md",
         )
 
 
@@ -193,7 +193,7 @@ class JobExecutionError(ElephantQError):
             error_code="JOB_EXECUTION_FAILED",
             context=context,
             suggestions=suggestions,
-            documentation_url="https://docs.elephantq.dev/troubleshooting/job-failures",
+            documentation_url="https://github.com/abhinavs/elephantq/blob/main/docs/retries.md",
         )
 
 
@@ -225,7 +225,7 @@ class QueueError(ElephantQError):
             error_code="QUEUE_OPERATION_FAILED",
             context=context,
             suggestions=suggestions,
-            documentation_url="https://docs.elephantq.dev/guide/queues",
+            documentation_url="https://github.com/abhinavs/elephantq/blob/main/docs/getting-started.md",
         )
 
 
@@ -241,7 +241,7 @@ class WorkerError(ElephantQError):
         context = {"operation": operation, "reason": reason}
 
         if worker_config:
-            context["worker_config"] = worker_config
+            context["worker_config"] = worker_config  # type: ignore[assignment]
 
         suggestions = [
             "Check worker configuration settings",
@@ -256,7 +256,7 @@ class WorkerError(ElephantQError):
             error_code="WORKER_OPERATION_FAILED",
             context=context,
             suggestions=suggestions,
-            documentation_url="https://docs.elephantq.dev/guide/workers",
+            documentation_url="https://github.com/abhinavs/elephantq/blob/main/docs/production.md",
         )
 
 
@@ -291,7 +291,7 @@ class ConfigurationError(ElephantQError):
             error_code="CONFIGURATION_ERROR",
             context=context,
             suggestions=suggestions,
-            documentation_url="https://docs.elephantq.dev/guide/configuration",
+            documentation_url="https://github.com/abhinavs/elephantq/blob/main/docs/getting-started.md",
         )
 
 
@@ -318,7 +318,7 @@ class SchedulingError(ElephantQError):
             error_code="SCHEDULING_FAILED",
             context=context,
             suggestions=suggestions,
-            documentation_url="https://docs.elephantq.dev/guide/scheduling",
+            documentation_url="https://github.com/abhinavs/elephantq/blob/main/docs/scheduling.md",
         )
 
 
@@ -349,7 +349,7 @@ class MigrationError(ElephantQError):
             error_code="MIGRATION_FAILED",
             context=context,
             suggestions=suggestions,
-            documentation_url="https://docs.elephantq.dev/guide/migrations",
+            documentation_url="https://github.com/abhinavs/elephantq/blob/main/docs/getting-started.md",
         )
 
 
@@ -396,7 +396,7 @@ def create_user_friendly_error(
         error_code="UNEXPECTED_ERROR",
         context={"original_error_type": error_type, **(context or {})},
         suggestions=suggestions,
-        documentation_url="https://docs.elephantq.dev/troubleshooting",
+        documentation_url="https://github.com/abhinavs/elephantq/blob/main/docs/production.md",
     )
 
 

@@ -9,7 +9,6 @@ for backward compatibility.
 """
 
 import json
-import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional, Union
@@ -18,8 +17,8 @@ import asyncpg
 from pydantic import ValidationError
 
 from elephantq.core.registry import JobRegistry
-from elephantq.db.connection import get_pool
 from elephantq.db.context import get_context_pool
+from elephantq.db.helpers import rows_affected as _rows_affected
 from elephantq.utils.hashing import compute_args_hash
 
 
@@ -47,68 +46,40 @@ def _normalize_scheduled_time(
     scheduled_at: Optional[Union[datetime, int, float, timedelta]],
 ) -> Optional[datetime]:
     """
-    Normalize scheduled_at to be timezone-naive in UTC.
+    Normalize scheduled_at to a timezone-aware UTC datetime for database storage.
+
+    Users can pass datetimes in any timezone:
+    - Timezone-aware datetimes are converted to UTC automatically.
+    - Naive datetimes (no tzinfo) are interpreted as local machine time
+      and converted to UTC.
+    - timedelta and numeric values are treated as offsets from now.
 
     Args:
-        scheduled_at: Optional datetime, timedelta, or seconds from now (int/float) to normalize
+        scheduled_at: datetime, timedelta, or seconds from now (int/float)
 
     Returns:
-        Normalized datetime or None
+        Timezone-aware UTC datetime suitable for TIMESTAMPTZ storage, or None
     """
-    if not scheduled_at:
+    if scheduled_at is None:
         return None
 
-    # Handle timedelta values (add to current time)
+    # Handle timedelta values (add to current UTC time)
     if isinstance(scheduled_at, timedelta):
-        return datetime.now(timezone.utc).replace(tzinfo=None) + scheduled_at
+        return datetime.now(timezone.utc) + scheduled_at
 
     # Handle numeric values (seconds from now)
     if isinstance(scheduled_at, (int, float)):
-        return datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(
-            seconds=scheduled_at
-        )
+        return datetime.now(timezone.utc) + timedelta(seconds=scheduled_at)
 
     if scheduled_at.tzinfo is not None:
-        # Convert timezone-aware datetime to UTC
-        return scheduled_at.astimezone(timezone.utc).replace(tzinfo=None)
+        # Timezone-aware: convert to UTC
+        return scheduled_at.astimezone(timezone.utc)
     else:
-        # For timezone-naive datetime, assume it's in local time and convert to UTC
-        # Get the local timezone offset and apply it to get UTC
-        # Get timezone offset in seconds (accounts for DST)
-        is_dst = time.daylight and time.localtime().tm_isdst
-        offset_seconds = time.altzone if is_dst else time.timezone
-        # timezone/altzone gives seconds west of UTC (negative for east)
-        # To convert local time to UTC, we add this offset (which is negative for eastern timezones)
-        offset_delta = timedelta(seconds=offset_seconds)
-        return scheduled_at + offset_delta
-
-
-async def _handle_unique_job_check(
-    conn, job_name: str, args_hash: str
-) -> Optional[str]:
-    """
-    Check for existing unique job and return its ID if found.
-
-    Args:
-        conn: Database connection
-        job_name: Name of the job function
-        args_hash: Hash of job arguments
-
-    Returns:
-        Existing job ID if found, None otherwise
-    """
-    existing_job = await conn.fetchrow(
-        """
-        SELECT id FROM elephantq_jobs
-        WHERE job_name = $1 AND args_hash = $2 AND status = 'queued' AND unique_job = TRUE
-    """,
-        job_name,
-        args_hash,
-    )
-
-    if existing_job:
-        return str(existing_job["id"])
-    return None
+        # Naive datetime: treat as local time, convert to UTC.
+        # This is user-friendly — datetime.now() and datetime(2025, 3, 23, 14, 0)
+        # are interpreted in the user's local timezone.
+        local_dt = scheduled_at.astimezone()  # attach local tz
+        return local_dt.astimezone(timezone.utc)
 
 
 async def _create_job_record(
@@ -122,33 +93,61 @@ async def _create_job_record(
     final_queue: str,
     final_unique: bool,
     scheduled_at: Optional[datetime],
-) -> None:
+) -> Optional[str]:
     """
     Create a new job record in the database.
 
-    Args:
-        conn: Database connection
-        job_id: Generated job ID
-        job_name: Name of the job function
-        job_meta: Job metadata from registry
-        args_json: JSON-serialized arguments
-        args_hash: Hash of arguments for uniqueness
-        final_priority: Final priority value
-        final_queue: Final queue name
-        final_unique: Whether job is unique
-        scheduled_at: When to execute the job
+    For unique jobs, uses INSERT...ON CONFLICT to atomically prevent duplicates.
+
+    Returns:
+        The job_id if inserted, or the existing job's ID on conflict (unique jobs).
+        Returns the passed job_id for non-unique jobs.
     """
+    if final_unique:
+        # Atomic upsert: relies on partial unique index idx_elephantq_jobs_unique_queued
+        row = await conn.fetchrow(
+            """
+            INSERT INTO elephantq_jobs (id, job_name, args, args_hash, max_attempts, priority, queue, unique_job, scheduled_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            ON CONFLICT (job_name, args_hash) WHERE status = 'queued' AND unique_job = TRUE
+            DO NOTHING
+            RETURNING id
+            """,
+            uuid.UUID(job_id),
+            job_name,
+            args_json,
+            args_hash,
+            job_meta["retries"] + 1,
+            final_priority,
+            final_queue,
+            final_unique,
+            scheduled_at,
+        )
+        if row is None:
+            # Conflict — fetch the existing job's ID
+            existing = await conn.fetchrow(
+                """
+                SELECT id FROM elephantq_jobs
+                WHERE job_name = $1 AND args_hash = $2 AND status = 'queued' AND unique_job = TRUE
+                """,
+                job_name,
+                args_hash,
+            )
+            return str(existing["id"]) if existing else job_id
+        # Inserted successfully — notify workers
+        await conn.execute("SELECT pg_notify($1, $2)", "elephantq_new_job", final_queue)
+        return str(row["id"])
+
     await conn.execute(
         """
         INSERT INTO elephantq_jobs (id, job_name, args, args_hash, max_attempts, priority, queue, unique_job, scheduled_at)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-    """,
+        """,
         uuid.UUID(job_id),
         job_name,
         args_json,
         args_hash,
-        job_meta["retries"]
-        + 1,  # max_attempts = retries + 1 (original attempt + retries)
+        job_meta["retries"] + 1,
         final_priority,
         final_queue,
         final_unique,
@@ -156,7 +155,8 @@ async def _create_job_record(
     )
 
     # Notify workers about the new job for instant processing
-    await conn.execute(f"NOTIFY elephantq_new_job, '{final_queue}'")
+    await conn.execute("SELECT pg_notify($1, $2)", "elephantq_new_job", final_queue)
+    return job_id
 
 
 async def enqueue_job(
@@ -211,17 +211,10 @@ async def enqueue_job(
     args_hash = compute_args_hash(kwargs) if final_unique else None
 
     async def _enqueue_with_connection(conn: asyncpg.Connection) -> str:
-        # Handle unique job checking
-        if final_unique:
-            existing_job_id = await _handle_unique_job_check(conn, job_name, args_hash)
-            if existing_job_id:
-                return existing_job_id
-
-        # Create and insert job record
         job_id = str(uuid.uuid4())
         args_json = json.dumps(kwargs, default=str)
 
-        await _create_job_record(
+        return await _create_job_record(  # type: ignore[return-value]
             conn,
             job_id,
             job_name,
@@ -233,7 +226,6 @@ async def enqueue_job(
             final_unique,
             scheduled_at,
         )
-        return job_id
 
     if connection is not None:
         return await _enqueue_with_connection(connection)
@@ -368,8 +360,7 @@ async def cancel_job(job_id: str) -> bool:
             uuid.UUID(job_id),
         )
 
-        # Check if any rows were affected
-        return result.split()[-1] == "1"
+        return _rows_affected(result) == 1
 
 
 async def retry_job(job_id: str) -> bool:
@@ -395,7 +386,7 @@ async def retry_job(job_id: str) -> bool:
             uuid.UUID(job_id),
         )
 
-        return result.split()[-1] == "1"
+        return _rows_affected(result) == 1
 
 
 async def delete_job(job_id: str) -> bool:
@@ -418,13 +409,13 @@ async def delete_job(job_id: str) -> bool:
             uuid.UUID(job_id),
         )
 
-        return result.split()[-1] == "1"
+        return _rows_affected(result) == 1
 
 
 async def list_jobs(
     queue: Optional[str] = None,
     status: Optional[str] = None,
-    limit: int = 50,
+    limit: int = 100,
     offset: int = 0,
 ) -> List[Dict[str, Any]]:
     """
@@ -439,11 +430,11 @@ async def list_jobs(
     Returns:
         List of job dictionaries
     """
-    pool = await get_pool()
+    pool = await get_context_pool()
 
     # Build query with optional filters
-    conditions = []
-    params = []
+    conditions: list[str] = []
+    params: list[Any] = []
     param_count = 0
 
     if queue:
@@ -588,9 +579,9 @@ async def schedule(
         if isinstance(when, datetime):
             scheduled_time = when
         elif isinstance(when, (int, float)):
-            scheduled_time = datetime.now() + timedelta(seconds=when)
+            scheduled_time = datetime.now(timezone.utc) + timedelta(seconds=when)
         elif isinstance(when, timedelta):
-            scheduled_time = datetime.now() + when
+            scheduled_time = datetime.now(timezone.utc) + when
         else:
             raise ValueError(
                 f"Invalid 'when' parameter: {type(when)}. Must be datetime, timedelta, or int/float"
@@ -607,9 +598,9 @@ async def schedule(
             scheduled_time = run_at
         else:
             if isinstance(run_in, (int, float)):
-                scheduled_time = datetime.now() + timedelta(seconds=run_in)
+                scheduled_time = datetime.now(timezone.utc) + timedelta(seconds=run_in)
             elif isinstance(run_in, timedelta):
-                scheduled_time = datetime.now() + run_in
+                scheduled_time = datetime.now(timezone.utc) + run_in
             else:
                 raise ValueError(
                     f"Invalid 'run_in' parameter: {type(run_in)}. Must be int/float (seconds) or timedelta"

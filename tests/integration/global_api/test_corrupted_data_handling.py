@@ -14,11 +14,13 @@ import uuid
 import pytest
 from pydantic import BaseModel
 
-# Ensure we're using test database
-os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
+from tests.db_utils import TEST_DATABASE_URL
 
-import elephantq
-from elephantq.db.connection import get_pool
+# Ensure we're using test database
+os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
+
+import elephantq  # noqa: E402
+from elephantq.db.connection import get_pool  # noqa: E402
 
 
 class JobArgsModel(BaseModel):
@@ -156,11 +158,16 @@ async def test_missing_required_arguments(clean_db):
 
     assert processed  # Job should be processed (moved to dead letter)
 
-    # Verify job was moved to dead letter
+    # Verify job ends up in dead letter after exhausting retries
     async with app_pool.acquire() as conn:
         job = await conn.fetchrow("SELECT * FROM elephantq_jobs WHERE id = $1", job_id)
         assert job["status"] == "dead_letter"
-        assert "Function argument mismatch" in job["last_error"]
+        # TypeError from missing argument is now retried (not immediately dead-lettered),
+        # so after max_attempts it lands in dead letter with "Max retries exceeded"
+        assert (
+            "missing" in job["last_error"].lower()
+            or "argument" in job["last_error"].lower()
+        )
         assert job["attempts"] == 3  # Set to max attempts
 
 
@@ -196,11 +203,15 @@ async def test_extra_unexpected_arguments(clean_db):
 
     assert processed  # Job should be processed (moved to dead letter)
 
-    # Verify job was moved to dead letter
+    # Verify job ends up in dead letter after exhausting retries
     async with app_pool.acquire() as conn:
         job = await conn.fetchrow("SELECT * FROM elephantq_jobs WHERE id = $1", job_id)
         assert job["status"] == "dead_letter"
-        assert "Function argument mismatch" in job["last_error"]
+        # TypeError from extra args is now retried, ending in dead letter
+        assert (
+            "unexpected" in job["last_error"].lower()
+            or "argument" in job["last_error"].lower()
+        )
         assert job["attempts"] == 3  # Set to max attempts
 
 

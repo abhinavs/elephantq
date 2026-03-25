@@ -6,9 +6,9 @@ Provides health monitoring capabilities for ElephantQ workers and components.
 import asyncio
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 
 class HealthStatus(Enum):
@@ -26,7 +26,7 @@ class HealthCheck:
     def __init__(
         self,
         name: str,
-        check_func: callable,
+        check_func: Callable,
         timeout: Optional[float] = None,
         critical: bool = True,
         interval: Optional[float] = None,
@@ -42,7 +42,7 @@ class HealthCheck:
         self.interval = (
             interval if interval is not None else settings.health_monitoring_interval
         )
-        self.last_check = None
+        self.last_check: Optional[datetime] = None
         self.last_status = HealthStatus.UNKNOWN
         self.last_message = "Not checked yet"
         self.last_duration = 0.0
@@ -60,7 +60,7 @@ class HealthMonitor:
     def add_check(
         self,
         name: str,
-        check_func: callable,
+        check_func: Callable,
         timeout: Optional[float] = None,
         critical: bool = True,
         interval: Optional[float] = None,
@@ -137,7 +137,7 @@ class HealthMonitor:
             status, message, duration = await self.run_check(check)
 
             # Update check state
-            check.last_check = datetime.now()
+            check.last_check = datetime.now(timezone.utc)
             check.last_status = status
             check.last_message = message
             check.last_duration = duration
@@ -147,7 +147,9 @@ class HealthMonitor:
                 "message": message,
                 "duration_ms": round(duration * 1000, 2),
                 "critical": check.critical,
-                "last_check": check.last_check.isoformat(),
+                "last_check": (
+                    check.last_check.isoformat() if check.last_check else None
+                ),
                 "timeout": check.timeout,
             }
 
@@ -175,7 +177,7 @@ class HealthMonitor:
         return {
             "status": overall_status.value,
             "message": message,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "checks": check_results,
         }
 
@@ -349,8 +351,9 @@ async def check_system_resources() -> Tuple[HealthStatus, str]:
         if disk.percent > settings.disk_usage_threshold:
             return HealthStatus.DEGRADED, f"High disk usage: {disk.percent:.1f}%"
 
-        # Check CPU usage (average over 1 second)
-        cpu_percent = psutil.cpu_percent(interval=1)
+        # Check CPU usage — use interval=None for non-blocking snapshot
+        # (compares against last call rather than sleeping for 1 second)
+        cpu_percent = psutil.cpu_percent(interval=None)
         if cpu_percent > settings.cpu_usage_threshold:
             return HealthStatus.DEGRADED, f"High CPU usage: {cpu_percent:.1f}%"
 
@@ -449,7 +452,7 @@ async def is_ready() -> bool:
             """
             )
 
-            return tables_exist > 0
+            return tables_exist > 0  # type: ignore[no-any-return]
 
     except Exception:
         return False
@@ -457,7 +460,7 @@ async def is_ready() -> bool:
 
 def add_health_check(
     name: str,
-    check_func: callable,
+    check_func: Callable,
     timeout: Optional[float] = None,
     critical: bool = True,
     interval: Optional[float] = None,

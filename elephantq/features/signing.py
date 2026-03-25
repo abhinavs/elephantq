@@ -8,29 +8,49 @@ import os
 import secrets
 from typing import Optional, Union
 
-from cryptography.fernet import Fernet
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+try:
+    from cryptography.fernet import Fernet
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+except ImportError:
+    Fernet = None  # type: ignore[assignment,misc]
+    hashes = None  # type: ignore[assignment]
+    PBKDF2HMAC = None  # type: ignore[assignment,misc]
+
+
+def _require_cryptography():
+    if Fernet is None:
+        raise ImportError(
+            "cryptography is required for signing/encryption. "
+            "Install it with: pip install elephantq[webhooks]"
+        )
+
+
+_LEGACY_SALT = b"elephantq_security_salt_v1"
+_SALT_LENGTH = 16
+_PBKDF2_ITERATIONS = 310000
+_LEGACY_PBKDF2_ITERATIONS = 100000
 
 
 class SecretManager:
     """
     Manages encryption and decryption of sensitive data like webhook secrets.
 
-    Uses Fernet (symmetric encryption) with a key derived from ELEPHANTQ_SECRET_KEY
-    environment variable or auto-generated key.
+    Uses Fernet (symmetric encryption) with a per-encryption random salt.
+    Supports decrypting legacy tokens that used a hardcoded salt.
     """
 
     def __init__(self):
-        self._fernet: Optional[Fernet] = None
+        _require_cryptography()
+        self._secret_key: str = ""
+        self._legacy_fernet: Optional[Fernet] = None
         self._initialize_encryption()
 
     def _initialize_encryption(self):
-        """Initialize Fernet encryption with environment key or generated key"""
+        """Initialize encryption with environment key or generated key"""
         secret_key = os.environ.get("ELEPHANTQ_SECRET_KEY")
 
         if not secret_key:
-            # Generate a random key and warn user
             secret_key = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode(
                 "utf-8"
             )
@@ -39,65 +59,73 @@ class SecretManager:
             logger = logging.getLogger(__name__)
             logger.warning(
                 "No ELEPHANTQ_SECRET_KEY environment variable found. "
-                "Using auto-generated key. For production, set ELEPHANTQ_SECRET_KEY. "
-                f"Generated key: {secret_key}"
+                "Using auto-generated key. For production, set ELEPHANTQ_SECRET_KEY."
             )
 
-        # Derive encryption key from secret
-        key = self._derive_key(secret_key)
-        self._fernet = Fernet(key)
+        self._secret_key = secret_key
+        # Pre-compute the legacy Fernet for backward-compatible decryption
+        self._legacy_fernet = Fernet(
+            self._derive_key(secret_key, _LEGACY_SALT, _LEGACY_PBKDF2_ITERATIONS)
+        )
 
-    def _derive_key(self, password: str) -> bytes:
+    @staticmethod
+    def _derive_key(
+        password: str, salt: bytes, iterations: int = _PBKDF2_ITERATIONS
+    ) -> bytes:
         """Derive encryption key from password using PBKDF2"""
-        # Use a fixed salt for deterministic key derivation
-        # In production, consider storing salt separately
-        salt = b"elephantq_security_salt_v1"
-
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
             salt=salt,
-            iterations=100000,
+            iterations=iterations,
         )
-        key = base64.urlsafe_b64encode(kdf.derive(password.encode("utf-8")))
-        return key
+        return base64.urlsafe_b64encode(kdf.derive(password.encode("utf-8")))
 
     def encrypt(self, plaintext: str) -> str:
         """
-        Encrypt a plaintext string and return base64-encoded ciphertext.
+        Encrypt a plaintext string using a random salt.
 
-        Args:
-            plaintext: The string to encrypt
-
-        Returns:
-            Base64-encoded encrypted string
+        The output format is base64(salt + fernet_token), which embeds
+        the salt so each encryption uses unique key material.
         """
         if not plaintext:
             return plaintext
 
-        encrypted_bytes = self._fernet.encrypt(plaintext.encode("utf-8"))
-        return base64.urlsafe_b64encode(encrypted_bytes).decode("utf-8")
+        salt = os.urandom(_SALT_LENGTH)
+        key = self._derive_key(self._secret_key, salt)
+        fernet = Fernet(key)
+        token = fernet.encrypt(plaintext.encode("utf-8"))
+        return base64.urlsafe_b64encode(salt + token).decode("utf-8")
 
     def decrypt(self, ciphertext: str) -> str:
         """
-        Decrypt a base64-encoded ciphertext string.
+        Decrypt a ciphertext string.
 
-        Args:
-            ciphertext: Base64-encoded encrypted string
-
-        Returns:
-            Decrypted plaintext string
-
-        Raises:
-            ValueError: If decryption fails (invalid ciphertext or wrong key)
+        Tries the new random-salt format first, then falls back to the
+        legacy hardcoded-salt format for backward compatibility.
         """
         if not ciphertext:
             return ciphertext
 
+        raw = base64.urlsafe_b64decode(ciphertext.encode("utf-8"))
+
+        # Try new format: first 16 bytes are the salt
+        if len(raw) > _SALT_LENGTH:
+            salt = raw[:_SALT_LENGTH]
+            token = raw[_SALT_LENGTH:]
+            # Try current iteration count first
+            for iters in (_PBKDF2_ITERATIONS, _LEGACY_PBKDF2_ITERATIONS):
+                try:
+                    key = self._derive_key(self._secret_key, salt, iters)
+                    fernet = Fernet(key)
+                    return fernet.decrypt(token).decode("utf-8")
+                except Exception:
+                    continue
+
+        # Legacy format: entire payload is a Fernet token with hardcoded salt
         try:
-            encrypted_bytes = base64.urlsafe_b64decode(ciphertext.encode("utf-8"))
-            decrypted_bytes = self._fernet.decrypt(encrypted_bytes)
-            return decrypted_bytes.decode("utf-8")
+            assert self._legacy_fernet is not None
+            return self._legacy_fernet.decrypt(raw).decode("utf-8")
         except Exception as e:
             raise ValueError(f"Failed to decrypt secret: {e}")
 
@@ -110,11 +138,11 @@ class SecretManager:
         if not value:
             return False
 
-        # Encrypted values should be base64 and much longer than typical secrets
         try:
             decoded = base64.urlsafe_b64decode(value.encode("utf-8"))
-            # Fernet tokens have specific length requirements
-            return len(decoded) >= 73  # Minimum Fernet token length
+            # New format: 16-byte salt + Fernet token (min 73 bytes)
+            # Legacy: just Fernet token (min 73 bytes)
+            return len(decoded) >= 73
         except Exception:
             return False
 

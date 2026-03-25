@@ -12,8 +12,10 @@ from pathlib import Path
 
 import pytest
 
+from tests.db_utils import TEST_DATABASE_URL
+
 # Ensure we're using test database
-os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
+os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
 
 # Get project root directory dynamically
 PROJECT_ROOT = Path(__file__).parent.parent.parent

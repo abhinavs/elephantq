@@ -24,19 +24,23 @@ Instance-based usage for advanced scenarios:
     await app.run_worker()
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from importlib.metadata import PackageNotFoundError, version
 from typing import Optional, Union
 
 from .client import ElephantQ
 from .settings import configure as settings_configure
 
-__version__ = "0.1.1"
+try:
+    __version__ = version("elephantq")
+except PackageNotFoundError:
+    __version__ = "0.0.0"
 
 # Global ElephantQ instance for convenience API
-_global_app: ElephantQ = None
+_global_app: Optional[ElephantQ] = None
 
 # Global job registry to survive instance recreation
-_global_job_registry = []
+_global_job_registry: list[tuple] = []
 
 __all__ = [
     "ElephantQ",
@@ -125,16 +129,16 @@ def configure(**kwargs):
     if settings_kwargs:
         settings_configure(**settings_kwargs)
 
-    # Close old global app if it exists and is initialized
-    if _global_app is not None and _global_app.is_initialized:
-        import asyncio
-
-        try:
-            loop = asyncio.get_event_loop()
-            if not loop.is_closed():
-                loop.create_task(_global_app.close())
-        except RuntimeError:
-            pass
+    # If the global app is already initialized, mark it as closed so the new
+    # app gets a fresh pool. The old pool (if any) will be closed when the
+    # old app is garbage collected or via close_pool().
+    if (
+        _global_app is not None
+        and _global_app.is_initialized
+        and not _global_app.is_closed
+    ):
+        _global_app._closed = True
+        _global_app._initialized = False
 
     _global_app = ElephantQ(**settings_kwargs)
 
@@ -184,9 +188,9 @@ async def schedule(
 
     if run_in is not None:
         if isinstance(run_in, (int, float)):
-            run_at = datetime.now() + timedelta(seconds=run_in)
+            run_at = datetime.now(timezone.utc) + timedelta(seconds=run_in)
         elif isinstance(run_in, timedelta):
-            run_at = datetime.now() + run_in
+            run_at = datetime.now(timezone.utc) + run_in
         else:
             raise ValueError("run_in must be int, float (seconds), or timedelta")
 
@@ -196,7 +200,7 @@ async def schedule(
 async def run_worker(
     concurrency: int = 4,
     run_once: bool = False,
-    queues: list = None,
+    queues: Optional[list] = None,
 ):
     """Run a worker using the global ElephantQ instance."""
     app = _get_global_app()
@@ -237,7 +241,10 @@ async def delete_job(job_id: str):
 
 
 async def list_jobs(
-    queue: str = None, status: str = None, limit: int = 100, offset: int = 0
+    queue: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
 ):
     """List jobs with optional filtering."""
     app = _get_global_app()

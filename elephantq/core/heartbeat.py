@@ -178,7 +178,7 @@ class WorkerHeartbeat:
     async def _get_worker_metadata(self) -> Dict[str, Any]:
         """Get current worker metadata (CPU, memory, etc.)"""
         try:
-            metadata = {
+            metadata: Dict[str, Any] = {
                 "python_version": platform.python_version(),
                 "platform": platform.platform(),
                 "load_avg": os.getloadavg() if hasattr(os, "getloadavg") else None,
@@ -230,23 +230,32 @@ async def cleanup_stale_workers(
 
     try:
         async with pool.acquire() as conn:
-            # Mark stale workers as stopped
-            result = await conn.execute(
+            # Mark stale workers as stopped and capture their IDs
+            stale_worker_ids = await conn.fetch(
                 """
-                UPDATE elephantq_workers 
+                UPDATE elephantq_workers
                 SET status = 'stopped'
-                WHERE status = 'active' 
-                AND last_heartbeat < NOW() - INTERVAL '%s seconds'
-                """
-                % stale_threshold_seconds
+                WHERE status = 'active'
+                AND last_heartbeat < NOW() - ($1 || ' seconds')::INTERVAL
+                RETURNING id
+                """,
+                str(stale_threshold_seconds),
             )
 
-            # Extract count from result string like "UPDATE 3"
-            cleaned_count = (
-                int(result.split()[-1]) if result.split()[-1].isdigit() else 0
-            )
+            cleaned_count = len(stale_worker_ids)
 
             if cleaned_count > 0:
+                # Reset any jobs left in 'processing' by crashed workers
+                worker_ids = [row["id"] for row in stale_worker_ids]
+                await conn.execute(
+                    """
+                    UPDATE elephantq_jobs
+                    SET status = 'queued', worker_id = NULL, updated_at = NOW()
+                    WHERE status = 'processing'
+                      AND worker_id = ANY($1::uuid[])
+                    """,
+                    worker_ids,
+                )
                 logger.warning(f"Marked {cleaned_count} stale workers as stopped")
 
             return cleaned_count

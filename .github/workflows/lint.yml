@@ -1,0 +1,43 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,dashboard,monitoring]"
+          pip install mypy
+
+      - name: Check formatting with black
+        run: black --check elephantq/ tests/ examples/ run_tests.py release.py
+
+      - name: Check import order with isort
+        run: isort --check-only elephantq/ tests/ examples/ run_tests.py release.py
+
+      - name: Lint with flake8
+        run: flake8 elephantq/ tests/
+
+      - name: Type check with mypy
+        run: mypy elephantq/ --ignore-missing-imports
+
+      - name: Check for dead documentation URLs
+        run: |
+          if grep -r "docs\.elephantq\.dev" elephantq/ examples/ docs/; then
+            echo "ERROR: Found references to non-existent docs.elephantq.dev"
+            exit 1
+          fi

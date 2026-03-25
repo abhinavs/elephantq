@@ -12,11 +12,13 @@ from datetime import datetime, timezone
 
 import pytest
 
-# Ensure we're using test database
-os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
+from tests.db_utils import TEST_DATABASE_URL
 
-from elephantq import ElephantQ
-from elephantq.core.heartbeat import (
+# Ensure we're using test database
+os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
+
+from elephantq import ElephantQ  # noqa: E402
+from elephantq.core.heartbeat import (  # noqa: E402
     WorkerHeartbeat,
     cleanup_stale_workers,
 )
@@ -27,7 +29,7 @@ from elephantq.core.heartbeat import (
 @pytest.fixture
 async def elephantq_instance():
     """Create a fresh ElephantQ instance for each test"""
-    app = ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test")
+    app = ElephantQ(database_url=TEST_DATABASE_URL)
     yield app
     if app.is_initialized:
         await app.close()
@@ -37,9 +39,9 @@ async def elephantq_instance():
 async def multiple_instances():
     """Create multiple ElephantQ instances for isolation testing"""
     instances = [
-        ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test"),
-        ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test"),
-        ElephantQ(database_url="postgresql://postgres@localhost/elephantq_test"),
+        ElephantQ(database_url=TEST_DATABASE_URL),
+        ElephantQ(database_url=TEST_DATABASE_URL),
+        ElephantQ(database_url=TEST_DATABASE_URL),
     ]
     yield instances
     for instance in instances:
@@ -281,7 +283,14 @@ async def test_database_pool_isolation_between_instances(clean_db, multiple_inst
 
     # All operations should succeed and return timestamps after the initial time
     for timestamp in results:
-        assert timestamp > initial_time.replace(tzinfo=None)
+        # Compare timezone-aware datetimes (TIMESTAMPTZ returns aware values)
+        ts = timestamp if timestamp.tzinfo else timestamp.replace(tzinfo=timezone.utc)
+        it = (
+            initial_time
+            if initial_time.tzinfo
+            else initial_time.replace(tzinfo=timezone.utc)
+        )
+        assert ts > it
 
     # Clean up
     await worker.stop_heartbeat()

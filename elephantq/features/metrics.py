@@ -28,7 +28,7 @@ class JobMetrics:
     duration_ms: float
     memory_usage_mb: Optional[float] = None
     cpu_usage_percent: Optional[float] = None
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 @dataclass
@@ -70,6 +70,7 @@ class MetricsCollector:
     def __init__(self, retention_hours: int = 24):
         self.retention_hours = retention_hours
         self.job_metrics: deque = deque(maxlen=10000)  # In-memory buffer
+        self._job_metrics_index: Dict[str, JobMetrics] = {}  # O(1) lookup by job_id
         self.queue_throughput: Dict[str, deque] = defaultdict(
             lambda: deque(maxlen=1000)
         )
@@ -81,6 +82,11 @@ class MetricsCollector:
     async def record_job_start(self, job_id: str, job_name: str, queue: str):
         """Record job start event"""
         async with self._lock:
+            # Evict oldest entry from index if deque is at capacity and will drop
+            if len(self.job_metrics) == self.job_metrics.maxlen:
+                evicted = self.job_metrics[0]
+                self._job_metrics_index.pop(evicted.job_id, None)
+
             metric = JobMetrics(
                 job_id=job_id,
                 job_name=job_name,
@@ -89,6 +95,7 @@ class MetricsCollector:
                 duration_ms=0.0,
             )
             self.job_metrics.append(metric)
+            self._job_metrics_index[job_id] = metric
 
     async def record_job_completion(
         self,
@@ -100,18 +107,15 @@ class MetricsCollector:
     ):
         """Record job completion event"""
         async with self._lock:
-            # Find and update the job metric
-            for metric in reversed(self.job_metrics):
-                if metric.job_id == job_id:
-                    metric.status = status
-                    metric.duration_ms = duration_ms
-                    metric.memory_usage_mb = memory_usage_mb
-                    metric.cpu_usage_percent = cpu_usage_percent
+            metric = self._job_metrics_index.get(job_id)
+            if metric:
+                metric.status = status
+                metric.duration_ms = duration_ms
+                metric.memory_usage_mb = memory_usage_mb
+                metric.cpu_usage_percent = cpu_usage_percent
 
-                    # Record processing time and throughput
-                    self.processing_times[metric.queue].append(duration_ms)
-                    self.queue_throughput[metric.queue].append(time.time())
-                    break
+                self.processing_times[metric.queue].append(duration_ms)
+                self.queue_throughput[metric.queue].append(time.time())
 
     async def get_recent_metrics(self, minutes: int = 60) -> List[JobMetrics]:
         """Get metrics from the last N minutes"""
@@ -163,10 +167,10 @@ class MetricsAnalyzer:
                 """
                 SELECT status, COUNT(*) as count
                 FROM elephantq_jobs 
-                WHERE created_at >= NOW() - INTERVAL '%s hours'
+                WHERE created_at >= NOW() - ($1 || ' hours')::INTERVAL
                 GROUP BY status
             """,
-                timeframe_hours,
+                str(timeframe_hours),
             )
 
             jobs_per_status = {row["status"]: row["count"] for row in status_counts}
@@ -181,9 +185,9 @@ class MetricsAnalyzer:
                     PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (updated_at - created_at)) * 1000) as p99_time_ms
                 FROM elephantq_jobs 
                 WHERE status IN ('done', 'failed') 
-                AND created_at >= NOW() - INTERVAL '%s hours'
+                AND created_at >= NOW() - ($1 || ' hours')::INTERVAL
             """,
-                timeframe_hours,
+                str(timeframe_hours),
             )
 
             # Calculate success rate
@@ -204,11 +208,11 @@ class MetricsAnalyzer:
                        EXTRACT(EPOCH FROM (updated_at - created_at)) * 1000 as duration_ms
                 FROM elephantq_jobs 
                 WHERE status IN ('done', 'failed')
-                AND created_at >= NOW() - INTERVAL '%s hours'
+                AND created_at >= NOW() - ($1 || ' hours')::INTERVAL
                 ORDER BY duration_ms DESC 
                 LIMIT 10
             """,
-                timeframe_hours,
+                str(timeframe_hours),
             )
 
             # Get top failed jobs
@@ -218,12 +222,12 @@ class MetricsAnalyzer:
                        array_agg(DISTINCT last_error) as error_messages
                 FROM elephantq_jobs 
                 WHERE status = 'failed'
-                AND created_at >= NOW() - INTERVAL '%s hours'
+                AND created_at >= NOW() - ($1 || ' hours')::INTERVAL
                 GROUP BY job_name, queue
                 ORDER BY failure_count DESC 
                 LIMIT 10
             """,
-                timeframe_hours,
+                str(timeframe_hours),
             )
 
             # Calculate system throughput
@@ -263,7 +267,7 @@ class MetricsAnalyzer:
                     THEN EXTRACT(EPOCH FROM (updated_at - created_at)) * 1000 
                     ELSE NULL END) as avg_processing_time_ms
             FROM elephantq_jobs 
-            WHERE created_at >= NOW() - INTERVAL '%s hours'
+            WHERE created_at >= NOW() - ($1 || ' hours')::INTERVAL
             GROUP BY queue
         """,
             timeframe_hours,
@@ -302,7 +306,7 @@ class MetricsAnalyzer:
         try:
             import psutil
 
-            return psutil.virtual_memory().used / (1024 * 1024)
+            return psutil.virtual_memory().used / (1024 * 1024)  # type: ignore[no-any-return]
         except ImportError:
             return 0.0
 
@@ -311,7 +315,7 @@ class MetricsAnalyzer:
         try:
             import psutil
 
-            return psutil.cpu_percent(interval=1)
+            return psutil.cpu_percent(interval=1)  # type: ignore[no-any-return]
         except ImportError:
             return 0.0
 
@@ -330,11 +334,11 @@ class MetricsAnalyzer:
                     COUNT(*) as job_count,
                     SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) as success_count
                 FROM elephantq_jobs 
-                WHERE created_at >= NOW() - INTERVAL '%s hours'
+                WHERE created_at >= NOW() - ($1 || ' hours')::INTERVAL
                 GROUP BY hour
                 ORDER BY hour
             """,
-                timeframe_hours,
+                str(timeframe_hours),
             )
 
             # Get error pattern analysis
@@ -347,12 +351,12 @@ class MetricsAnalyzer:
                 FROM elephantq_jobs 
                 WHERE status = 'failed' 
                 AND last_error IS NOT NULL
-                AND created_at >= NOW() - INTERVAL '%s hours'
+                AND created_at >= NOW() - ($1 || ' hours')::INTERVAL
                 GROUP BY last_error
                 ORDER BY occurrence_count DESC
                 LIMIT 20
             """,
-                timeframe_hours,
+                str(timeframe_hours),
             )
 
         return {
@@ -416,7 +420,7 @@ class AlertManager:
             "throughput_min_per_minute": 10,
             "memory_usage_max_mb": 4096,
         }
-        self.alert_cooldown = {}  # Prevent alert spam
+        self.alert_cooldown: Dict[str, float] = {}  # Prevent alert spam
 
     async def check_alerts(self) -> List[Dict]:
         """Check for alert conditions and return active alerts"""

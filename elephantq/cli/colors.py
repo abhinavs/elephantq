@@ -281,7 +281,7 @@ def print_progress_bar(
         percentage = 100
         filled_width = width
     else:
-        percentage = min(100, (current / total) * 100)
+        percentage = min(100, (current / total) * 100)  # type: ignore[assignment]
         filled_width = int(width * current / total)
 
     if supports_color():

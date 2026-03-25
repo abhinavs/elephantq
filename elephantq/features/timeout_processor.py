@@ -8,7 +8,7 @@ import json
 import logging
 import os
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import asyncpg
 
@@ -42,14 +42,14 @@ async def get_job_timeout(job_id: str, conn: asyncpg.Connection) -> Optional[int
     try:
         timeout_data = await conn.fetchrow(
             """
-            SELECT timeout_seconds FROM elephantq_pro_job_timeouts 
+            SELECT timeout_seconds FROM elephantq_job_timeouts 
             WHERE job_id = $1
         """,
             job_id,
         )
 
         if timeout_data:
-            return timeout_data["timeout_seconds"]
+            return timeout_data["timeout_seconds"]  # type: ignore[no-any-return]
     except asyncpg.UndefinedTableError:
         # Table doesn't exist yet - will be created when needed
         pass
@@ -75,7 +75,7 @@ async def store_job_timeout(
         # Create timeout metadata table if it doesn't exist
         await conn.execute(
             """
-            CREATE TABLE IF NOT EXISTS elephantq_pro_job_timeouts (
+            CREATE TABLE IF NOT EXISTS elephantq_job_timeouts (
                 job_id UUID PRIMARY KEY REFERENCES elephantq_jobs(id) ON DELETE CASCADE,
                 timeout_seconds INTEGER NOT NULL,
                 created_at TIMESTAMP DEFAULT NOW(),
@@ -87,7 +87,7 @@ async def store_job_timeout(
         # Store timeout configuration
         await conn.execute(
             """
-            INSERT INTO elephantq_pro_job_timeouts (job_id, timeout_seconds)
+            INSERT INTO elephantq_job_timeouts (job_id, timeout_seconds)
             VALUES ($1, $2)
             ON CONFLICT (job_id) DO UPDATE SET 
                 timeout_seconds = EXCLUDED.timeout_seconds,
@@ -398,7 +398,7 @@ async def run_worker_with_timeout(
     concurrency: int = 4,
     run_once: bool = False,
     database_url: Optional[str] = None,
-    queues: list[str] = None,
+    queues: Optional[List[str]] = None,
 ):
     """
     Run the job worker process with timeout support.
@@ -565,7 +565,7 @@ class TimeoutConfiguration:
                 # Create global timeout configuration table
                 await conn.execute(
                     """
-                    CREATE TABLE IF NOT EXISTS elephantq_pro_global_config (
+                    CREATE TABLE IF NOT EXISTS elephantq_config (
                         key TEXT PRIMARY KEY,
                         value TEXT NOT NULL,
                         updated_at TIMESTAMP DEFAULT NOW()
@@ -576,7 +576,7 @@ class TimeoutConfiguration:
                 # Store global timeout
                 await conn.execute(
                     """
-                    INSERT INTO elephantq_pro_global_config (key, value)
+                    INSERT INTO elephantq_config (key, value)
                     VALUES ('default_timeout_seconds', $1)
                     ON CONFLICT (key) DO UPDATE SET 
                         value = EXCLUDED.value,
@@ -612,7 +612,7 @@ class TimeoutConfiguration:
                 try:
                     result = await conn.fetchrow(
                         """
-                        SELECT value FROM elephantq_pro_global_config 
+                        SELECT value FROM elephantq_config 
                         WHERE key = 'default_timeout_seconds'
                     """
                     )
@@ -645,7 +645,7 @@ class TimeoutConfiguration:
             async with pool.acquire() as conn:
                 await conn.execute(
                     """
-                    DELETE FROM elephantq_pro_global_config 
+                    DELETE FROM elephantq_config 
                     WHERE key = 'default_timeout_seconds'
                 """
                 )

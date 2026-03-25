@@ -24,7 +24,7 @@ Examples:
   elephantq setup
   elephantq status --verbose --jobs
 
-For more information, visit: https://docs.elephantq.dev
+For more information, visit: https://github.com/abhinavs/elephantq
         """,
     )
 

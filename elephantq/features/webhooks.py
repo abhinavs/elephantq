@@ -11,18 +11,30 @@ import logging
 import time
 import uuid
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-import aiohttp
 import asyncpg
+
+try:
+    import aiohttp
+except ImportError:
+    aiohttp = None  # type: ignore[assignment]
 
 from elephantq.db.connection import get_pool
 
 from .signing import SecureWebhookSecret
 
 logger = logging.getLogger(__name__)
+
+
+def _require_aiohttp():
+    if aiohttp is None:
+        raise ImportError(
+            "aiohttp is required for webhooks. "
+            "Install it with: pip install elephantq[webhooks]"
+        )
 
 
 class WebhookEvent(str, Enum):
@@ -59,7 +71,7 @@ class WebhookEndpoint:
     id: str
     url: str
     secret: Optional[str] = None
-    events: List[str] = None  # None means all events
+    events: Optional[List[str]] = None  # None means all events
     active: bool = True
     max_retries: int = 3
     timeout_seconds: int = 30
@@ -104,7 +116,7 @@ class WebhookDelivery:
     last_error: Optional[str] = None
     response_status: Optional[int] = None
     response_body: Optional[str] = None
-    created_at: datetime = None
+    created_at: Optional[datetime] = None
     delivered_at: Optional[datetime] = None
 
     def __post_init__(self):
@@ -312,7 +324,7 @@ class WebhookDispatcher:
     def __init__(self, registry: WebhookRegistry, max_concurrent_deliveries: int = 10):
         self.registry = registry
         self.max_concurrent_deliveries = max_concurrent_deliveries
-        self.delivery_queue: asyncio.Queue = asyncio.Queue()
+        self.delivery_queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
         self.delivery_semaphore = asyncio.Semaphore(max_concurrent_deliveries)
         self._delivery_workers: List[asyncio.Task] = []
         self._running = False
@@ -411,6 +423,7 @@ class WebhookDispatcher:
 
     async def _process_delivery(self, delivery: WebhookDelivery):
         """Process a single webhook delivery"""
+        _require_aiohttp()
         endpoint = await self.registry.get_endpoint(delivery.endpoint_id)
         if not endpoint or not endpoint.active:
             logger.warning(f"Endpoint {delivery.endpoint_id} not found or inactive")
@@ -449,7 +462,10 @@ class WebhookDispatcher:
                     endpoint.url, data=payload_json, headers=headers
                 ) as response:
                     delivery.response_status = response.status
-                    delivery.response_body = await response.text()
+                    # Cap response body at 4KB to prevent OOM from large responses
+                    delivery.response_body = (await response.content.read(4096)).decode(
+                        "utf-8", errors="replace"
+                    )
 
                     if 200 <= response.status < 300:
                         # Success
@@ -483,7 +499,7 @@ class WebhookDispatcher:
                 )  # Max 5 minutes
                 delivery.next_retry_at = datetime.now(timezone.utc).replace(
                     microsecond=0
-                ) + asyncio.timedelta(seconds=delay_seconds)
+                ) + timedelta(seconds=delay_seconds)
                 delivery.status = "pending"
                 logger.warning(
                     f"Webhook delivery failed, will retry: {delivery.id} -> {endpoint.url}: {e}"
@@ -505,7 +521,9 @@ class WebhookDispatcher:
                         WHERE status = 'pending'
                         AND next_retry_at IS NOT NULL
                         AND next_retry_at <= NOW()
+                        ORDER BY next_retry_at
                         LIMIT 100
+                        FOR UPDATE SKIP LOCKED
                     """
                     )
 
@@ -612,11 +630,11 @@ class WebhookManager:
         endpoint = WebhookEndpoint(
             id=str(uuid.uuid4()), url=url, secret=secret, events=events, **kwargs
         )
-        return await self.registry.register_endpoint(endpoint)
+        return await self.registry.register_endpoint(endpoint)  # type: ignore[no-any-return]
 
     async def unregister_webhook(self, endpoint_id: str) -> bool:
         """Unregister a webhook endpoint"""
-        return await self.registry.unregister_endpoint(endpoint_id)
+        return await self.registry.unregister_endpoint(endpoint_id)  # type: ignore[no-any-return]
 
     async def send_webhook(
         self,
@@ -637,31 +655,31 @@ class WebhookManager:
         async with pool.acquire() as conn:
             stats = await conn.fetchrow(
                 """
-                SELECT 
+                SELECT
                     COUNT(*) as total_deliveries,
                     SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) as successful_deliveries,
                     SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_deliveries,
                     SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending_deliveries,
                     AVG(attempts) as avg_attempts
                 FROM elephantq_webhook_deliveries
-                WHERE created_at >= NOW() - INTERVAL '%s hours'
+                WHERE created_at >= NOW() - ($1 || ' hours')::INTERVAL
             """,
-                hours,
+                str(hours),
             )
 
             # Get delivery trends
             trends = await conn.fetch(
                 """
-                SELECT 
+                SELECT
                     DATE_TRUNC('hour', created_at) as hour,
                     COUNT(*) as total,
                     SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) as successful
                 FROM elephantq_webhook_deliveries
-                WHERE created_at >= NOW() - INTERVAL '%s hours'
+                WHERE created_at >= NOW() - ($1 || ' hours')::INTERVAL
                 GROUP BY hour
                 ORDER BY hour
             """,
-                hours,
+                str(hours),
             )
 
             return {
@@ -779,7 +797,7 @@ async def send_job_dead_letter(
 
 async def get_webhook_endpoints() -> List[WebhookEndpoint]:
     """Get all registered webhook endpoints"""
-    return await _webhook_manager.registry.list_endpoints()
+    return await _webhook_manager.registry.list_endpoints()  # type: ignore[no-any-return]
 
 
 async def get_delivery_stats(hours: int = 24) -> Dict[str, Any]:

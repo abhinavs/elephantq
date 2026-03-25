@@ -8,8 +8,6 @@ import asyncio
 import signal
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from elephantq.utils.signals import (
     GracefulSignalHandler,
     cleanup_global_signal_handlers,

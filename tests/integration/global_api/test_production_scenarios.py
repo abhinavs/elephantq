@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 import elephantq
-from elephantq.db.connection import DatabaseContext
+from elephantq.db.connection import PoolContext as DatabaseContext
 from elephantq.settings import get_settings
 
 
@@ -416,7 +416,7 @@ if __name__ == "__main__":
                 async with pool.acquire() as conn:
                     await conn.execute("DELETE FROM elephantq_jobs")
 
-            # Schedule jobs at different times
+            # Schedule jobs at different times (local time — framework converts to UTC)
             now = datetime.now()
             scheduled_times = [
                 now + timedelta(seconds=1),
@@ -435,17 +435,20 @@ if __name__ == "__main__":
                     )
                     job_ids.append(job_id)
 
-                # Process jobs with timing checks
+                # Process jobs with timing checks — wait for scheduled times
+                from elephantq.core.processor import process_jobs
+
                 start_time = time.time()
-                async with pool.acquire() as conn:
-                    processed_jobs = 0
-                    while (
-                        processed_jobs < 3 and time.time() - start_time < 10
-                    ):  # 10-second timeout
-                        processed = await elephantq.run_worker(run_once=True)
-                        if processed:
-                            processed_jobs += 1
-                        await asyncio.sleep(0.1)
+                processed_jobs = 0
+                while (
+                    processed_jobs < 3 and time.time() - start_time < 10
+                ):  # 10-second timeout
+                    async with pool.acquire() as conn:
+                        processed = await process_jobs(conn, None)
+                    if processed:
+                        processed_jobs += 1
+                    else:
+                        await asyncio.sleep(0.2)
 
                 # Analyze timing accuracy
                 assert os.path.exists(timing_file), "No timing log found"

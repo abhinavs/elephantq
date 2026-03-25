@@ -40,3 +40,31 @@ Notes:
 - `retries` means additional attempts. Total attempts = `retries + 1`.
 - Backoff is applied on top of `retry_delay`.
 - If delay is 0, the retry is immediate.
+
+## Job Timeouts
+
+Every job has a default execution timeout of **300 seconds** (5 minutes). If a job exceeds its timeout, it is treated as a failure and follows the normal retry logic.
+
+```python
+# Override timeout per job (in seconds)
+@elephantq.job(retries=3, timeout=60)  # 60 second timeout
+async def quick_task():
+    ...
+
+# Disable timeout for long-running jobs
+@elephantq.job(timeout=None)
+async def long_running_import():
+    ...
+```
+
+The global default can be changed via the `ELEPHANTQ_JOB_TIMEOUT` environment variable or `elephantq.configure(job_timeout=600)`. Set to `0` to disable timeouts globally.
+
+Timed-out jobs are retried like any other failure. After exhausting retries, they are moved to the dead letter queue.
+
+## Idempotency
+
+ElephantQ provides **at-least-once delivery**. Because retries re-execute your job function, and because a worker crash can also cause re-execution, your jobs should be idempotent. Common patterns:
+
+- **Database upserts:** Use `INSERT ... ON CONFLICT DO UPDATE` instead of plain inserts.
+- **Idempotency keys:** Store a unique key per operation and check before performing side effects.
+- **Check-before-act:** Verify the current state before taking action (e.g., check if the email was already sent).

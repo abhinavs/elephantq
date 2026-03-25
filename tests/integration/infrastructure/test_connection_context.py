@@ -17,7 +17,7 @@ Example usage for better test isolation:
     # Tests could interfere with each other
 
     # New approach (isolated contexts)
-    async with DatabaseContext() as pool:
+    async with PoolContext() as pool:
         await enqueue(some_job)  # Uses isolated pool
         # Each test gets its own database context
 """
@@ -29,16 +29,16 @@ import asyncpg
 import pytest
 
 import elephantq.settings
+from elephantq.db.connection import _pool  # noqa: F401
 from elephantq.db.connection import (
-    DatabaseContext,
+    PoolContext,
     _context_pool,
-    _pool,
     close_pool,
     connection_context,
     create_pool,
     get_pool,
 )
-from tests.db_utils import clear_table, create_test_database
+from tests.db_utils import TEST_DATABASE_URL, clear_table, create_test_database
 
 
 @pytest.mark.asyncio
@@ -137,13 +137,13 @@ async def test_context_local_pools_take_precedence():
 
 @pytest.mark.asyncio
 async def test_database_context_class():
-    """Test that the DatabaseContext class works correctly"""
+    """Test that the PoolContext class works correctly"""
     await create_test_database()
 
     # Reset global state
     await close_pool()
 
-    async with DatabaseContext() as pool:
+    async with PoolContext() as pool:
         assert isinstance(pool, asyncpg.Pool)
 
         # Should be able to use the pool
@@ -165,12 +165,12 @@ async def test_database_context_class():
 
 @pytest.mark.asyncio
 async def test_database_context_with_custom_url():
-    """Test DatabaseContext with custom database URL"""
+    """Test PoolContext with custom database URL"""
     await create_test_database()
 
-    custom_url = "postgresql://postgres@localhost/elephantq_test"
+    custom_url = TEST_DATABASE_URL
 
-    async with DatabaseContext(custom_url) as pool:
+    async with PoolContext(custom_url) as pool:
         # Should work with custom URL
         async with pool.acquire() as conn:
             result = await conn.fetchval("SELECT 4")
@@ -291,7 +291,6 @@ async def test_create_pool_utility_function():
     standalone_pool = await create_pool()
 
     # Global pool should still be None
-    global _pool
     assert _pool is None
 
     # get_pool() should create a new global pool, different from standalone
@@ -340,14 +339,14 @@ async def test_context_var_token_management():
 
 @pytest.mark.asyncio
 async def test_database_context_exception_handling():
-    """Test that DatabaseContext properly handles exceptions"""
+    """Test that PoolContext properly handles exceptions"""
     await create_test_database()
 
     # Reset global state
     await close_pool()
 
     try:
-        async with DatabaseContext():
+        async with PoolContext():
             # Simulate an exception
             raise ValueError("Test exception")
     except ValueError:
@@ -367,9 +366,7 @@ async def test_database_context_exception_handling():
 async def test_elephantq_integration_with_contexts():
     """Test integration with ElephantQ functionality using contexts"""
     # Set up environment variables for testing
-    os.environ["ELEPHANTQ_DATABASE_URL"] = (
-        "postgresql://postgres@localhost/elephantq_test"
-    )
+    os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
 
     # Clear settings cache and reload
     elephantq.settings._settings = None
@@ -377,13 +374,16 @@ async def test_elephantq_integration_with_contexts():
 
     await create_test_database()
 
-    # Import here to avoid circular imports during test discovery
-    from elephantq import enqueue, job
     from elephantq.core.processor import process_jobs
+    from elephantq.core.queue import enqueue_job
+    from elephantq.core.registry import get_global_registry
 
-    @job()
+    registry = get_global_registry()
+
     async def test_context_job(value: int):
         return value * 2
+
+    registry.register_job(test_context_job)
 
     # Reset global state
     await close_pool()
@@ -392,8 +392,9 @@ async def test_elephantq_integration_with_contexts():
         # Clear any existing jobs
         await clear_table(pool)
 
-        # Enqueue a job (this should use the context pool)
-        job_id = await enqueue(test_context_job, value=21)
+        # Enqueue a job using the context pool directly (not via global app)
+        async with pool.acquire() as conn:
+            job_id = await enqueue_job(pool, registry, test_context_job, value=21)
 
         # Process the job using the context pool connection
         async with pool.acquire() as conn:

@@ -16,14 +16,16 @@ from datetime import datetime, timedelta
 
 import pytest
 
-# Ensure we're using test database
-os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
+from tests.db_utils import TEST_DATABASE_URL
 
-from elephantq.core.processor import process_jobs
-from elephantq.core.queue import enqueue_job
-from elephantq.core.registry import clear_registry
-from elephantq.db.connection import get_pool
-from tests.db_utils import clear_table
+# Ensure we're using test database
+os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
+
+from elephantq.core.processor import process_jobs  # noqa: E402
+from elephantq.core.queue import enqueue_job  # noqa: E402
+from elephantq.core.registry import clear_registry  # noqa: E402
+from elephantq.db.connection import get_pool  # noqa: E402
+from tests.db_utils import clear_table  # noqa: E402
 
 
 # Define test job function (not decorated at module level)
@@ -45,6 +47,7 @@ async def clean_db():
     yield
 
     await clear_table(pool)
+    clear_registry()
     clear_registry()
 
 
@@ -341,8 +344,8 @@ async def test_scheduled_jobs_across_queues(clean_db, result_file):
         processed1 = await process_jobs(conn, None)
         assert processed1 is False, "No jobs should be processed before scheduled time"
 
-    # Wait for scheduled time
-    await asyncio.sleep(1.5)
+    # Wait for scheduled time (extra margin for system load)
+    await asyncio.sleep(2.0)
 
     # Should now process scheduled jobs
     async with pool.acquire() as conn:

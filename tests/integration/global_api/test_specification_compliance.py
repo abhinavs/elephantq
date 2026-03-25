@@ -8,9 +8,10 @@ import uuid
 import pytest
 
 import elephantq
+from tests.db_utils import TEST_DATABASE_URL
 
 # Use test database
-os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://postgres@localhost/elephantq_test"
+os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
 
 
 # Test job definitions

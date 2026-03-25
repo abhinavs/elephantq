@@ -3,7 +3,8 @@ Advanced scheduling with fluent interface for ElephantQ.
 """
 
 import uuid
-from datetime import datetime, timedelta
+from collections import OrderedDict
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from elephantq import enqueue
@@ -28,37 +29,40 @@ class JobScheduleBuilder:
 
     def in_seconds(self, seconds: int) -> "JobScheduleBuilder":
         """Schedule job to run in X seconds"""
-        self._scheduled_at = datetime.now() + timedelta(seconds=seconds)
+        self._scheduled_at = datetime.now(timezone.utc) + timedelta(seconds=seconds)
         return self
 
     def in_minutes(self, minutes: int) -> "JobScheduleBuilder":
         """Schedule job to run in X minutes"""
-        self._scheduled_at = datetime.now() + timedelta(minutes=minutes)
+        self._scheduled_at = datetime.now(timezone.utc) + timedelta(minutes=minutes)
         return self
 
     def in_hours(self, hours: int) -> "JobScheduleBuilder":
         """Schedule job to run in X hours"""
-        self._scheduled_at = datetime.now() + timedelta(hours=hours)
+        self._scheduled_at = datetime.now(timezone.utc) + timedelta(hours=hours)
         return self
 
     def in_days(self, days: int) -> "JobScheduleBuilder":
         """Schedule job to run in X days"""
-        self._scheduled_at = datetime.now() + timedelta(days=days)
+        self._scheduled_at = datetime.now(timezone.utc) + timedelta(days=days)
         return self
 
     def at_time(self, time_str: str) -> "JobScheduleBuilder":
         """
-        Schedule job at specific time
+        Schedule job at specific time.
 
         Args:
-            time_str: ISO format datetime string or HH:MM format for today
+            time_str: ISO format datetime string or HH:MM format for today.
+                      HH:MM is interpreted in the machine's local timezone.
+                      ISO strings with timezone info are converted to UTC.
+                      ISO strings without timezone info are treated as local time.
         """
         try:
             # Try parsing as ISO datetime first
             self._scheduled_at = datetime.fromisoformat(time_str.replace("Z", "+00:00"))
         except ValueError:
             try:
-                # Try parsing as HH:MM for today
+                # Try parsing as HH:MM for today in local time
                 time_part = datetime.strptime(time_str, "%H:%M").time()
                 today = datetime.now().date()
                 self._scheduled_at = datetime.combine(today, time_part)
@@ -94,7 +98,21 @@ class JobScheduleBuilder:
         return self
 
     def depends_on(self, *job_ids: str) -> "JobScheduleBuilder":
-        """Set job dependencies (jobs that must complete first)"""
+        """Set job dependencies (jobs that must complete first).
+
+        .. warning::
+            Dependency metadata is stored but the worker does not yet enforce
+            execution order. Jobs will execute regardless of dependency status.
+            This feature is experimental.
+        """
+        import warnings
+
+        warnings.warn(
+            "depends_on() stores dependency metadata but the worker does not "
+            "yet enforce execution order. Jobs will run regardless of dependency "
+            "status. This feature is experimental.",
+            stacklevel=2,
+        )
         self._dependencies.extend(job_ids)
         return self
 
@@ -113,9 +131,13 @@ class JobScheduleBuilder:
         self._dry_run = True
         return self
 
-    async def enqueue(self, **kwargs) -> Union[str, Dict[str, Any]]:
+    async def enqueue(self, connection=None, **kwargs) -> Union[str, Dict[str, Any]]:
         """
         Enqueue the job with configured options
+
+        Args:
+            connection: Optional database connection to join an existing transaction
+            **kwargs: Arguments to pass to the job
 
         Returns:
             Job ID if scheduled, or configuration dict if dry run
@@ -144,7 +166,7 @@ class JobScheduleBuilder:
             self._dependencies = valid_deps
 
         # Use custom enqueue parameters if specified, otherwise use job defaults
-        enqueue_kwargs = {}
+        enqueue_kwargs: Dict[str, Any] = {}
         if self._scheduled_at:
             enqueue_kwargs["scheduled_at"] = self._scheduled_at
         if self._priority is not None:
@@ -155,23 +177,50 @@ class JobScheduleBuilder:
         # Add job arguments
         enqueue_kwargs.update(kwargs)
 
-        job_id = await enqueue(self.job_func, **enqueue_kwargs)
+        has_metadata = bool(self._dependencies or self._timeout)
 
-        # Store dependencies in database if any
-        if self._dependencies:
-            from .dependencies import store_job_dependencies
-
-            await store_job_dependencies(job_id, self._dependencies, self._timeout)
-
-        # Store timeout configuration if specified
-        if self._timeout:
+        if has_metadata:
+            # Use a single transaction for job row + metadata to prevent
+            # race conditions where a worker picks up the job before deps
+            # or timeout are stored.
             from elephantq.db.context import get_context_pool
 
-            from .timeout_processor import store_job_timeout
-
             pool = await get_context_pool()
-            async with pool.acquire() as conn:
-                await store_job_timeout(job_id, self._timeout, conn)
+
+            if connection is not None:
+                # Join the caller's transaction
+                job_id = await enqueue(
+                    self.job_func, **enqueue_kwargs, connection=connection
+                )
+                if self._dependencies:
+                    from .dependencies import store_job_dependencies
+
+                    await store_job_dependencies(
+                        job_id, self._dependencies, self._timeout, conn=connection
+                    )
+                if self._timeout:
+                    from .timeout_processor import store_job_timeout
+
+                    await store_job_timeout(job_id, self._timeout, connection)
+            else:
+                async with pool.acquire() as conn:
+                    async with conn.transaction():
+                        job_id = await enqueue(
+                            self.job_func, **enqueue_kwargs, connection=conn
+                        )
+                        if self._dependencies:
+                            from .dependencies import store_job_dependencies
+
+                            await store_job_dependencies(
+                                job_id, self._dependencies, self._timeout, conn=conn
+                            )
+                        if self._timeout:
+                            from .timeout_processor import store_job_timeout
+
+                            await store_job_timeout(job_id, self._timeout, conn)
+        else:
+            # Simple path: no deps or timeout, no overhead
+            job_id = await enqueue(self.job_func, **enqueue_kwargs)
 
         # Store additional metadata (tags, timeout, etc.)
         if any([self._tags, self._timeout, self._retries is not None]):
@@ -182,7 +231,7 @@ class JobScheduleBuilder:
                 "dependencies": self._dependencies,
             }
 
-        return job_id
+        return job_id  # type: ignore[no-any-return]
 
     def _get_configuration(self, **kwargs) -> Dict[str, Any]:
         """Get job configuration for dry run"""
@@ -202,8 +251,21 @@ class JobScheduleBuilder:
         }
 
 
-# Global metadata storage for scheduler features
-_scheduler_metadata: Dict[str, Dict[str, Any]] = {}
+class _BoundedDict(OrderedDict):
+    """OrderedDict that evicts the oldest entry when capacity is exceeded."""
+
+    def __init__(self, max_size: int = 10_000, *args, **kwargs):
+        self.max_size = max_size
+        super().__init__(*args, **kwargs)
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        while len(self) > self.max_size:
+            self.popitem(last=False)
+
+
+# Global metadata storage for scheduler features (bounded to prevent memory leaks)
+_scheduler_metadata: _BoundedDict = _BoundedDict(max_size=10_000)
 
 
 class BatchScheduler:
@@ -221,12 +283,13 @@ class BatchScheduler:
         self.enqueue_kwargs.append(kwargs)
         return builder
 
-    def add(self, job_func: Callable[..., Any], **kwargs) -> "BatchScheduler":
+    def add(self, job_func: Callable[..., Any], **kwargs) -> JobScheduleBuilder:
         """Add a job to the batch (fluent interface)"""
-        self.add_job(job_func, **kwargs)
-        return self
+        return self.add_job(job_func, **kwargs)
 
-    async def enqueue_all(self, batch_priority: Optional[int] = None) -> List[str]:
+    async def enqueue_all(
+        self, batch_priority: Optional[int] = None
+    ) -> List[Union[str, Dict[str, Any]]]:
         """Enqueue all jobs in the batch"""
         job_ids = []
 
@@ -276,7 +339,7 @@ def schedule_job(job_func: Callable[..., Any]) -> JobScheduleBuilder:
 
 async def schedule(
     job_func: Callable[..., Any], when: Union[datetime, int, float, timedelta], **kwargs
-) -> str:
+) -> Union[str, Dict[str, Any]]:
     """
     Unified scheduling function supporting multiple time formats
 
@@ -312,7 +375,9 @@ def create_batch() -> BatchScheduler:
 
 
 # Priority-based scheduling convenience functions
-async def schedule_high_priority(job_func: Callable[..., Any], **kwargs) -> str:
+async def schedule_high_priority(
+    job_func: Callable[..., Any], **kwargs
+) -> Union[str, Dict[str, Any]]:
     """Schedule a high priority job (immediate execution)"""
     return (
         await schedule_job(job_func)
@@ -322,7 +387,9 @@ async def schedule_high_priority(job_func: Callable[..., Any], **kwargs) -> str:
     )
 
 
-async def schedule_background(job_func: Callable[..., Any], **kwargs) -> str:
+async def schedule_background(
+    job_func: Callable[..., Any], **kwargs
+) -> Union[str, Dict[str, Any]]:
     """Schedule a low priority background job (immediate execution)"""
     return (
         await schedule_job(job_func)
@@ -332,7 +399,9 @@ async def schedule_background(job_func: Callable[..., Any], **kwargs) -> str:
     )
 
 
-async def schedule_urgent(job_func: Callable[..., Any], **kwargs) -> str:
+async def schedule_urgent(
+    job_func: Callable[..., Any], **kwargs
+) -> Union[str, Dict[str, Any]]:
     """Schedule an urgent priority job (immediate execution)"""
     return (
         await schedule_job(job_func)
@@ -381,97 +450,3 @@ def scheduled(schedule_type: str, **schedule_kwargs):
         return func
 
     return decorator
-
-
-# Example usage and testing
-async def example_scheduled_job(message: str = "Hello"):
-    """Example job for testing scheduling"""
-    print(f"Scheduled job executed: {message}")
-    return message
-
-
-async def demo_advanced_scheduling():
-    """Demonstrate advanced scheduling functionality"""
-    print("ElephantQ - Advanced Scheduling Demo")
-    print("=====================================")
-
-    # Basic fluent interface
-    print("\n1. Fluent interface examples:")
-
-    # Schedule in 30 minutes with high priority
-    job_id1 = (
-        await schedule_job(example_scheduled_job)
-        .in_minutes(30)
-        .with_priority(5)
-        .enqueue(message="High priority job")
-    )
-    print(f"Scheduled high priority job: {job_id1}")
-
-    # Schedule at specific time tomorrow
-    tomorrow_9am = (datetime.now() + timedelta(days=1)).replace(
-        hour=9, minute=0, second=0, microsecond=0
-    )
-    job_id2 = (
-        await schedule_job(example_scheduled_job)
-        .at_time(tomorrow_9am.isoformat())
-        .enqueue(message="Tomorrow at 9 AM")
-    )
-    print(f"Scheduled for tomorrow 9 AM: {job_id2}")
-
-    # Conditional scheduling
-    job_id3 = (
-        await schedule_job(example_scheduled_job)
-        .in_hours(2)
-        .if_condition(lambda: True)  # Always true for demo
-        .with_tags("conditional", "demo")
-        .enqueue(message="Conditional job")
-    )
-    print(f"Scheduled conditional job: {job_id3}")
-
-    # Batch scheduling
-    print("\n2. Batch scheduling:")
-    batch = create_batch()
-
-    batch.add_job(example_scheduled_job).in_minutes(5).with_priority(10).with_tags(
-        "batch1"
-    )
-    batch.add_job(example_scheduled_job).in_minutes(10).with_priority(20).with_tags(
-        "batch2"
-    )
-    batch.add_job(example_scheduled_job).in_minutes(15).with_priority(30).with_tags(
-        "batch3"
-    )
-
-    batch_job_ids = await batch.enqueue_all()
-    print(f"Batch scheduled: {batch_job_ids}")
-
-    # Dry run example
-    print("\n3. Dry run preview:")
-    config = (
-        await schedule_job(example_scheduled_job)
-        .in_days(1)
-        .with_priority(1)
-        .dry_run()
-        .enqueue(message="Dry run job")
-    )
-    print(f"Dry run configuration: {config}")
-
-    # Convenience functions
-    print("\n4. Convenience functions:")
-    urgent_job = await schedule_high_priority(
-        example_scheduled_job, message="Urgent task"
-    )
-    background_job = await schedule_background(
-        example_scheduled_job, message="Background task"
-    )
-
-    print(f"Urgent job: {urgent_job}")
-    print(f"Background job: {background_job}")
-
-    print("\nAdvanced scheduling demo completed!")
-
-
-if __name__ == "__main__":
-    import asyncio
-
-    asyncio.run(demo_advanced_scheduling())

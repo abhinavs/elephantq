@@ -9,10 +9,20 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
 import pytest
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
+
+
+def _make_test_db_url(db_name: str) -> str:
+    """Build a database URL for the given DB name, inheriting credentials from CI env."""
+    base = os.environ.get("ELEPHANTQ_DATABASE_URL", "")
+    if base:
+        parsed = urlparse(base)
+        return urlunparse(parsed._replace(path=f"/{db_name}"))
+    return f"postgresql://postgres@localhost/{db_name}"
 
 
 def run_cli_command(cmd_args, timeout=10, expect_success=True):
@@ -43,12 +53,27 @@ async def setup_test_databases():
         "elephantq_db_url_test_3",
     ]
 
-    # Create test databases
+    # Create test databases — pass PGPASSWORD for CI environments
+    createdb_env = os.environ.copy()
+    base_url = os.environ.get("ELEPHANTQ_DATABASE_URL", "")
+    if base_url:
+        parsed = urlparse(base_url)
+        if parsed.password:
+            createdb_env["PGPASSWORD"] = parsed.password
     for db_name in test_databases:
-        subprocess.run(["createdb", db_name], check=False)
+        createdb_cmd = ["createdb", db_name]
+        if base_url:
+            parsed = urlparse(base_url)
+            if parsed.username:
+                createdb_cmd.extend(["-U", parsed.username])
+            if parsed.hostname:
+                createdb_cmd.extend(["-h", parsed.hostname])
+            if parsed.port:
+                createdb_cmd.extend(["-p", str(parsed.port)])
+        subprocess.run(createdb_cmd, check=False, env=createdb_env)
 
         # Set up each database with ElephantQ schema using the setup command
-        db_url = f"postgresql://postgres@localhost/{db_name}"
+        db_url = _make_test_db_url(db_name)
         setup_result = subprocess.run(
             [
                 sys.executable,
@@ -71,7 +96,16 @@ async def setup_test_databases():
 
     # Cleanup databases
     for db_name in test_databases:
-        subprocess.run(["dropdb", db_name], check=False)
+        dropdb_cmd = ["dropdb", "--if-exists", db_name]
+        if base_url:
+            parsed = urlparse(base_url)
+            if parsed.username:
+                dropdb_cmd.extend(["-U", parsed.username])
+            if parsed.hostname:
+                dropdb_cmd.extend(["-h", parsed.hostname])
+            if parsed.port:
+                dropdb_cmd.extend(["-p", str(parsed.port)])
+        subprocess.run(dropdb_cmd, check=False, env=createdb_env)
 
 
 class TestDatabaseUrlIntegration:
@@ -79,7 +113,7 @@ class TestDatabaseUrlIntegration:
 
     def test_setup_with_database_url(self):
         """Test that setup command works with --database-url parameter."""
-        test_db_url = "postgresql://postgres@localhost/elephantq_db_url_test_1"
+        test_db_url = _make_test_db_url("elephantq_db_url_test_1")
 
         result = run_cli_command(["setup", "--database-url", test_db_url])
         assert result.returncode == 0
@@ -88,7 +122,7 @@ class TestDatabaseUrlIntegration:
 
     def test_migrate_status_with_database_url(self):
         """Test that migrate-status command works with --database-url parameter."""
-        test_db_url = "postgresql://postgres@localhost/elephantq_db_url_test_1"
+        test_db_url = _make_test_db_url("elephantq_db_url_test_1")
 
         result = run_cli_command(["migrate-status", "--database-url", test_db_url])
         assert result.returncode == 0
@@ -96,7 +130,7 @@ class TestDatabaseUrlIntegration:
 
     def test_status_with_database_url(self):
         """Test that status command works with --database-url parameter."""
-        test_db_url = "postgresql://postgres@localhost/elephantq_db_url_test_1"
+        test_db_url = _make_test_db_url("elephantq_db_url_test_1")
 
         result = run_cli_command(["status", "--database-url", test_db_url])
         assert result.returncode == 0
@@ -104,7 +138,7 @@ class TestDatabaseUrlIntegration:
 
     def test_workers_with_database_url(self):
         """Test that workers command works with --database-url parameter."""
-        test_db_url = "postgresql://postgres@localhost/elephantq_db_url_test_1"
+        test_db_url = _make_test_db_url("elephantq_db_url_test_1")
 
         result = run_cli_command(["workers", "--database-url", test_db_url])
         assert result.returncode == 0
@@ -112,7 +146,7 @@ class TestDatabaseUrlIntegration:
 
     def test_start_worker_with_database_url(self):
         """Test that start command works with --database-url parameter."""
-        test_db_url = "postgresql://postgres@localhost/elephantq_db_url_test_1"
+        test_db_url = _make_test_db_url("elephantq_db_url_test_1")
 
         # Use --run-once to exit quickly
         result = run_cli_command(
@@ -131,8 +165,8 @@ class TestDatabaseUrlIntegration:
 
     def test_multiple_database_urls_isolation(self):
         """Test that different --database-url parameters target different databases."""
-        test_db_url_1 = "postgresql://postgres@localhost/elephantq_db_url_test_1"
-        test_db_url_2 = "postgresql://postgres@localhost/elephantq_db_url_test_2"
+        test_db_url_1 = _make_test_db_url("elephantq_db_url_test_1")
+        test_db_url_2 = _make_test_db_url("elephantq_db_url_test_2")
 
         # Both should work independently
         result1 = run_cli_command(["status", "--database-url", test_db_url_1])
@@ -178,9 +212,7 @@ class TestDatabaseContextSystem:
         )
 
         # Create instance and context
-        instance = ElephantQ(
-            database_url="postgresql://postgres@localhost/elephantq_db_url_test_1"
-        )
+        instance = ElephantQ(database_url=_make_test_db_url("elephantq_db_url_test_1"))
         context = DatabaseContext.from_instance(instance)
 
         # Set context
@@ -191,9 +223,8 @@ class TestDatabaseContextSystem:
         assert current_context is context
 
         # Context should have the correct database URL
-        assert (
-            current_context.database_url
-            == "postgresql://postgres@localhost/elephantq_db_url_test_1"
+        assert current_context.database_url == _make_test_db_url(
+            "elephantq_db_url_test_1"
         )
 
     @pytest.mark.asyncio
@@ -203,9 +234,7 @@ class TestDatabaseContextSystem:
         from elephantq.db.context import DatabaseContext
 
         # Create instance and context
-        instance = ElephantQ(
-            database_url="postgresql://postgres@localhost/elephantq_db_url_test_1"
-        )
+        instance = ElephantQ(database_url=_make_test_db_url("elephantq_db_url_test_1"))
         context = DatabaseContext.from_instance(instance)
 
         # Should be able to get pool
@@ -226,8 +255,8 @@ class TestBackwardsCompatibility:
 
         try:
             # Set global database URL
-            os.environ["ELEPHANTQ_DATABASE_URL"] = (
-                "postgresql://postgres@localhost/elephantq_db_url_test_1"
+            os.environ["ELEPHANTQ_DATABASE_URL"] = _make_test_db_url(
+                "elephantq_db_url_test_1"
             )
 
             # Commands should work without --database-url parameter

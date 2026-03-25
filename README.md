@@ -4,7 +4,7 @@ Async-native background job queue - built for developers who want solid queues w
 
 ## What is ElephantQ
 
-ElephantQ is a background job system for modern async Python. It uses PostgreSQL (`LISTEN/NOTIFY`` + row locks) as the single backend for enqueueing, scheduling, retries, and monitoring—so if you already run Postgres, you already have your queue.
+ElephantQ is a background job system for modern async Python. It uses PostgreSQL (`LISTEN/NOTIFY` + row locks) as the single backend for enqueueing, scheduling, retries, and monitoring—so if you already run Postgres, you already have your queue.
 
 ## Why ElephantQ exists
 
@@ -18,6 +18,20 @@ ElephantQ is a background job system for modern async Python. It uses PostgreSQL
 - Async from the ground up: coroutine workers fit modern Python.
 - Production ready: retries, scheduling, dead-letter, monitoring are built in.
 - Fast to adopt: install, point at Postgres, start a worker.
+
+## Transactional enqueue
+
+Enqueue a job inside your existing database transaction. If the transaction rolls back, the job never enters the queue.
+
+```python
+async with pool.acquire() as conn:
+    async with conn.transaction():
+        await conn.execute("INSERT INTO orders ...")
+        await elephantq.enqueue(send_invoice, connection=conn, order_id=order_id)
+        # If this transaction fails, the job is never enqueued
+```
+
+This is the core guarantee: your application data and your job are committed atomically.
 
 ## Quick start
 
@@ -93,7 +107,7 @@ For more control, use `elephantq.features.scheduling.schedule_job(...)` and chai
 
 ## Built for Production
 
-- Architecture: Postgres-backed jobs, `LISTEN/NOTIFY`` for wakeups, `SKIP LOCKED`` for safe concurrency.
+- Architecture: Postgres-backed jobs, `LISTEN/NOTIFY` for wakeups, `SKIP LOCKED` for safe concurrency.
 - Reliability: retries with backoff, dead-letter queue, persistent scheduling, at-least-once processing semantics.
 - Operational tooling: CLI for workers/scheduler/dashboard, health checks, connection pool safety warnings.
 
@@ -107,9 +121,16 @@ Monitor queues, workers, retries, and system health.
 
 ```bash
 pip install elephantq[dashboard]    # dashboard
-pip install elephantq[monitoring]   # metrics + webhook deps
+pip install elephantq[monitoring]   # Prometheus metrics and process-level stats
 pip install elephantq[all]          # everything above
 ```
+
+## Not for you if
+
+- You already run Celery and are happy with it.
+- You need 10k+ jobs/sec throughput (Redis-backed queues are faster at that scale).
+- Your stack doesn't include PostgreSQL.
+- You need cross-language producers or consumers.
 
 ## Documentation
 

@@ -4,14 +4,17 @@ Implements job dependency tracking and enforcement.
 """
 
 import asyncio
+import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from elephantq.db.context import get_context_pool
 
 from .flags import require_feature
+
+logger = logging.getLogger(__name__)
 
 
 class DependencyStatus(Enum):
@@ -25,7 +28,10 @@ class DependencyStatus(Enum):
 
 
 async def store_job_dependencies(
-    job_id: str, dependencies: List[str], dependency_timeout: Optional[int] = None
+    job_id: str,
+    dependencies: List[str],
+    dependency_timeout: Optional[int] = None,
+    conn=None,
 ) -> bool:
     """
     Store job dependencies in the database
@@ -34,6 +40,7 @@ async def store_job_dependencies(
         job_id: ID of the job that has dependencies
         dependencies: List of job IDs this job depends on
         dependency_timeout: Timeout in seconds for waiting for dependencies
+        conn: Optional database connection to join an existing transaction
 
     Returns:
         True if stored successfully
@@ -42,35 +49,29 @@ async def store_job_dependencies(
     if not dependencies:
         return True
 
+    if conn is not None:
+        return await _store_dependencies_with_conn(
+            conn, job_id, dependencies, dependency_timeout
+        )
+
     pool = await get_context_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
-            # Create dependency table if it doesn't exist
-            await conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS elephantq_job_dependencies (
-                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    job_id UUID NOT NULL REFERENCES elephantq_jobs(id) ON DELETE CASCADE,
-                    depends_on_job_id UUID NOT NULL,
-                    dependency_status TEXT DEFAULT 'pending' CHECK (dependency_status IN ('pending', 'waiting', 'ready', 'failed', 'timeout')),
-                    created_at TIMESTAMP DEFAULT NOW(),
-                    updated_at TIMESTAMP DEFAULT NOW(),
-                    timeout_at TIMESTAMP,
-                    UNIQUE(job_id, depends_on_job_id)
-                )
-            """
-            )
-
-            # Store each dependency
+            # Table created by 001_initial_schema.sql migration
             for dep_job_id in dependencies:
                 try:
                     dep_uuid = uuid.UUID(dep_job_id)
                 except ValueError:
-                    continue
+                    raise ValueError(
+                        f"Invalid dependency job ID: {dep_job_id!r}. "
+                        "Expected a valid UUID string."
+                    )
 
                 timeout_at = None
                 if dependency_timeout:
-                    timeout_at = datetime.now() + timedelta(seconds=dependency_timeout)
+                    timeout_at = datetime.now(timezone.utc).replace(
+                        tzinfo=None
+                    ) + timedelta(seconds=dependency_timeout)
 
                 await conn.execute(
                     """
@@ -83,6 +84,38 @@ async def store_job_dependencies(
                     dep_uuid,
                     timeout_at,
                 )
+
+    return True
+
+
+async def _store_dependencies_with_conn(
+    conn, job_id: str, dependencies: List[str], dependency_timeout: Optional[int] = None
+) -> bool:
+    """Store dependencies using an existing connection (joins caller's transaction)."""
+    # Table created by 001_initial_schema.sql migration
+    for dep_job_id in dependencies:
+        try:
+            dep_uuid = uuid.UUID(dep_job_id)
+        except ValueError:
+            continue
+
+        timeout_at = None
+        if dependency_timeout:
+            timeout_at = datetime.now(timezone.utc) + timedelta(
+                seconds=dependency_timeout
+            )
+
+        await conn.execute(
+            """
+            INSERT INTO elephantq_job_dependencies
+            (job_id, depends_on_job_id, timeout_at)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (job_id, depends_on_job_id) DO NOTHING
+        """,
+            uuid.UUID(job_id),
+            dep_uuid,
+            timeout_at,
+        )
 
     return True
 
@@ -119,97 +152,54 @@ async def check_job_dependencies(job_id: str) -> DependencyStatus:
         )
 
         if not dependencies:
-            # No dependencies, job is ready
             return DependencyStatus.READY
 
-        # Check each dependency
-        pending_count = 0
-        failed_count = 0
-        timeout_count = 0
-        completed_count = 0
+        # Classify each dependency into a status bucket
+        job_uuid = uuid.UUID(job_id)
+        now = datetime.now(timezone.utc)
+        status_buckets: Dict[str, List] = {
+            "timeout": [],
+            "failed": [],
+            "ready": [],
+            "waiting": [],
+        }
 
         for dep in dependencies:
-            # Check for timeout
-            if dep["timeout_at"] and datetime.now() > dep["timeout_at"]:
-                timeout_count += 1
-                # Update status to timeout
-                await conn.execute(
-                    """
-                    UPDATE elephantq_job_dependencies 
-                    SET dependency_status = 'timeout', updated_at = NOW()
-                    WHERE job_id = $1 AND depends_on_job_id = $2
-                """,
-                    uuid.UUID(job_id),
-                    dep["depends_on_job_id"],
-                )
-                continue
-
-            # Check if dependency job exists
-            if not dep["dep_job_exists"]:
-                # Dependency job doesn't exist, treat as failed
-                failed_count += 1
-                await conn.execute(
-                    """
-                    UPDATE elephantq_job_dependencies 
-                    SET dependency_status = 'failed', updated_at = NOW()
-                    WHERE job_id = $1 AND depends_on_job_id = $2
-                """,
-                    uuid.UUID(job_id),
-                    dep["depends_on_job_id"],
-                )
-                continue
-
-            dep_status = dep["dep_job_status"]
-
-            if dep_status == "done":
-                completed_count += 1
-                # Update dependency status to ready
-                await conn.execute(
-                    """
-                    UPDATE elephantq_job_dependencies 
-                    SET dependency_status = 'ready', updated_at = NOW()
-                    WHERE job_id = $1 AND depends_on_job_id = $2
-                """,
-                    uuid.UUID(job_id),
-                    dep["depends_on_job_id"],
-                )
-
-            elif dep_status in ("failed", "dead_letter"):
-                failed_count += 1
-                # Update dependency status to failed
-                await conn.execute(
-                    """
-                    UPDATE elephantq_job_dependencies 
-                    SET dependency_status = 'failed', updated_at = NOW()
-                    WHERE job_id = $1 AND depends_on_job_id = $2
-                """,
-                    uuid.UUID(job_id),
-                    dep["depends_on_job_id"],
-                )
-
+            dep_id = dep["depends_on_job_id"]
+            if dep["timeout_at"] and now > dep["timeout_at"]:
+                status_buckets["timeout"].append(dep_id)
+            elif not dep["dep_job_exists"]:
+                status_buckets["failed"].append(dep_id)
+            elif dep["dep_job_status"] == "done":
+                status_buckets["ready"].append(dep_id)
+            elif dep["dep_job_status"] in ("failed", "dead_letter"):
+                status_buckets["failed"].append(dep_id)
             else:
-                # Still pending (queued, or other status)
-                pending_count += 1
-                # Update dependency status to waiting
+                status_buckets["waiting"].append(dep_id)
+
+        # Batch-update each status group in a single statement
+        async with conn.transaction():
+            for new_status, dep_ids in status_buckets.items():
+                if not dep_ids:
+                    continue
                 await conn.execute(
                     """
-                    UPDATE elephantq_job_dependencies 
-                    SET dependency_status = 'waiting', updated_at = NOW()
-                    WHERE job_id = $1 AND depends_on_job_id = $2
-                """,
-                    uuid.UUID(job_id),
-                    dep["depends_on_job_id"],
+                    UPDATE elephantq_job_dependencies
+                    SET dependency_status = $1, updated_at = NOW()
+                    WHERE job_id = $2 AND depends_on_job_id = ANY($3::uuid[])
+                    """,
+                    new_status,
+                    job_uuid,
+                    dep_ids,
                 )
 
-        # Determine overall status
-        if timeout_count > 0:
+        if status_buckets["timeout"]:
             return DependencyStatus.TIMEOUT
-        elif failed_count > 0:
+        elif status_buckets["failed"]:
             return DependencyStatus.FAILED
-        elif pending_count > 0:
+        elif status_buckets["waiting"]:
             return DependencyStatus.WAITING
         else:
-            # All dependencies completed
             return DependencyStatus.READY
 
 
@@ -440,7 +430,7 @@ class DependencyManager:
             try:
                 await self._check_all_dependencies()
             except Exception as e:
-                print(f"Error checking dependencies: {e}")
+                logger.error("Error checking dependencies: %s", e)
 
             await asyncio.sleep(self.check_interval)
 

@@ -34,6 +34,7 @@ class JobRegistry:
         retry_delay: Optional[Union[int, float, List[Union[int, float]]]] = 0,
         retry_backoff: bool = False,
         retry_max_delay: Optional[Union[int, float]] = None,
+        timeout: Optional[Union[int, float]] = None,
         **kwargs,
     ) -> Callable[..., Any]:
         """
@@ -49,6 +50,7 @@ class JobRegistry:
             retry_delay: Retry delay in seconds or list of delays per attempt
             retry_backoff: Apply exponential backoff to retry_delay
             retry_max_delay: Optional maximum delay cap in seconds
+            timeout: Per-job timeout in seconds (None = use global default)
             **kwargs: Additional job configuration
 
         Returns:
@@ -72,14 +74,15 @@ class JobRegistry:
             "retry_delay": retry_delay,
             "retry_backoff": retry_backoff,
             "retry_max_delay": retry_max_delay,
+            "timeout": timeout,
             **kwargs,  # Allow additional configuration
         }
 
         self._registry[job_name] = job_config
 
         # Set job metadata on function for introspection
-        wrapper._elephantq_name = job_name
-        wrapper._elephantq_config = job_config
+        wrapper._elephantq_name = job_name  # type: ignore[attr-defined]
+        wrapper._elephantq_config = job_config  # type: ignore[attr-defined]
 
         return wrapper
 
@@ -170,6 +173,7 @@ def job(
     retry_delay: Optional[Union[int, float, List[Union[int, float]]]] = 0,
     retry_backoff: bool = False,
     retry_max_delay: Optional[Union[int, float]] = None,
+    timeout: Optional[Union[int, float]] = None,
     **kwargs,
 ):
     """
@@ -187,6 +191,7 @@ def job(
         retry_delay: Retry delay in seconds or list of delays per attempt
         retry_backoff: Apply exponential backoff to retry_delay
         retry_max_delay: Optional maximum delay cap in seconds
+        timeout: Per-job timeout in seconds (None = use global default)
         **kwargs: Additional job configuration
 
     Returns:
@@ -204,6 +209,7 @@ def job(
             retry_delay=retry_delay,
             retry_backoff=retry_backoff,
             retry_max_delay=retry_max_delay,
+            timeout=timeout,
             **kwargs,
         )
 

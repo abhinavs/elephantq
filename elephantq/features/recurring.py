@@ -3,20 +3,43 @@ Enhanced Recurring Jobs System for ElephantQ.
 Streamlined API with fluent interfaces and better integration.
 """
 
+__all__ = [
+    "every",
+    "cron",
+    "daily",
+    "FluentRecurringScheduler",
+    "Priority",
+]
+
 import asyncio
 import json
+import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Union
 
-from croniter import croniter
+logger = logging.getLogger(__name__)
 
-from elephantq import enqueue
-from elephantq.core.registry import get_job as get_registered_job
-from elephantq.db.context import get_context_pool
+try:
+    from croniter import croniter  # type: ignore[import-untyped]  # noqa: E402
+except ImportError:
+    croniter = None  # type: ignore[assignment,misc]
 
-from .flags import require_feature
+
+def _require_croniter():
+    if croniter is None:
+        raise ImportError(
+            "croniter is required for recurring jobs. "
+            "Install it with: pip install elephantq[scheduling]"
+        )
+
+
+from elephantq import enqueue  # noqa: E402
+from elephantq.core.registry import get_job as get_registered_job  # noqa: E402
+from elephantq.db.context import get_context_pool  # noqa: E402
+
+from .flags import require_feature  # noqa: E402
 
 
 class Priority(Enum):
@@ -281,9 +304,12 @@ class EnhancedRecurringManager:
                 job_record["next_run"] = self._calculate_next_run(
                     job_record["schedule_type"],
                     job_record["schedule_value"],
-                    datetime.now(),
+                    datetime.now(timezone.utc),
                 )
-                await self._persist_next_run(job_record["id"], job_record["next_run"])
+                if job_record["next_run"] is not None:
+                    await self._persist_next_run(
+                        job_record["id"], job_record["next_run"]
+                    )
 
             self.jobs[job_record["id"]] = job_record
 
@@ -310,6 +336,14 @@ class EnhancedRecurringManager:
         except TypeError as exc:
             raise ValueError("job_kwargs must be JSON-serializable") from exc
 
+        if schedule_type == "cron":
+            _require_croniter()
+            if not croniter.is_valid(schedule_value):
+                raise ValueError(
+                    f"Invalid cron expression: {schedule_value!r}. "
+                    "Expected a standard 5-field cron expression (e.g. '*/5 * * * *')."
+                )
+
         # Create job record
         job_record = {
             "id": job_id,
@@ -321,7 +355,7 @@ class EnhancedRecurringManager:
             "queue": queue,
             "max_attempts": max_attempts,
             "job_kwargs": job_kwargs,
-            "created_at": datetime.now(),
+            "created_at": datetime.now(timezone.utc),
             "last_run": None,
             "next_run": None,
             "run_count": 0,
@@ -330,9 +364,12 @@ class EnhancedRecurringManager:
 
         # Calculate next run time
         if schedule_type == "interval":
-            job_record["next_run"] = datetime.now() + timedelta(seconds=schedule_value)
+            job_record["next_run"] = datetime.now(timezone.utc) + timedelta(
+                seconds=int(schedule_value)
+            )
         elif schedule_type == "cron":
-            cron = croniter(schedule_value, datetime.now())
+            _require_croniter()
+            cron = croniter(schedule_value, datetime.now(timezone.utc))
             job_record["next_run"] = cron.get_next(datetime)
 
         await self._persist_job(job_record)
@@ -344,60 +381,50 @@ class EnhancedRecurringManager:
 
         return job_id
 
-    def remove_job(self, job_id: str) -> bool:
+    async def remove_job(self, job_id: str) -> bool:
         """Remove a recurring job"""
         if job_id in self.jobs:
             del self.jobs[job_id]
-            self._schedule_update(self._delete_job(job_id))
+            await self._schedule_update(self._delete_job(job_id))
             return True
         return False
 
-    def pause_job(self, job_id: str) -> bool:
+    async def pause_job(self, job_id: str) -> bool:
         """Pause a recurring job"""
         if job_id in self.jobs:
             self.jobs[job_id]["status"] = "paused"
-            self._schedule_update(self._set_status(job_id, "paused"))
+            await self._schedule_update(self._set_status(job_id, "paused"))
             return True
         return False
 
-    def resume_job(self, job_id: str) -> bool:
+    async def resume_job(self, job_id: str) -> bool:
         """Resume a paused recurring job"""
         if job_id in self.jobs:
             self.jobs[job_id]["status"] = "active"
-            self._schedule_update(self._set_status(job_id, "active"))
+            await self._schedule_update(self._set_status(job_id, "active"))
             return True
         return False
 
-    def list_jobs(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def list_jobs(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
         """List recurring jobs, optionally filtered by status"""
-        self._ensure_loaded()
+        await self._ensure_loaded()
         jobs = list(self.jobs.values())
         if status:
             jobs = [job for job in jobs if job["status"] == status]
         return jobs
 
-    def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
+    async def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
         """Get details of a specific recurring job"""
-        self._ensure_loaded()
+        await self._ensure_loaded()
         return self.jobs.get(job_id)
 
-    def _ensure_loaded(self) -> None:
+    async def _ensure_loaded(self) -> None:
         if self._loaded:
             return
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            asyncio.run(self.load_jobs())
-            return
-        loop.create_task(self.load_jobs())
+        await self.load_jobs()
 
-    def _schedule_update(self, coro: "asyncio.Future") -> None:
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            asyncio.run(coro)
-            return
-        loop.create_task(coro)
+    async def _schedule_update(self, coro) -> None:
+        await coro
 
     async def _persist_job(self, job_record: Dict[str, Any]) -> None:
         pool = await get_context_pool()
@@ -495,8 +522,9 @@ class EnhancedRecurringManager:
         if schedule_type == "interval":
             return current_time + timedelta(seconds=int(schedule_value))
         if schedule_type == "cron":
+            _require_croniter()
             cron = croniter(schedule_value, current_time)
-            return cron.get_next(datetime)
+            return cron.get_next(datetime)  # type: ignore[no-any-return]
         return None
 
 
@@ -515,8 +543,9 @@ class EnhancedRecurringScheduler:
 
         self.running = True
         self._task = asyncio.create_task(self._scheduler_loop())
-        print(
-            f"Enhanced recurring scheduler started (check interval: {self.check_interval}s)"
+        logger.info(
+            "Enhanced recurring scheduler started (check interval: %ds)",
+            self.check_interval,
         )
 
     async def stop(self):
@@ -532,7 +561,7 @@ class EnhancedRecurringScheduler:
             except asyncio.CancelledError:
                 pass
             self._task = None
-        print("Enhanced recurring scheduler stopped")
+        logger.info("Enhanced recurring scheduler stopped")
 
     async def _scheduler_loop(self):
         """Main scheduler loop with improved error handling"""
@@ -543,12 +572,12 @@ class EnhancedRecurringScheduler:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                print(f"Scheduler error: {e}")
+                logger.error("Scheduler error: %s", e)
                 await asyncio.sleep(min(self.check_interval, 60))  # Backoff
 
     async def _process_due_jobs(self):
         """Process jobs that are due to run"""
-        current_time = datetime.now()
+        current_time = datetime.now(timezone.utc)
 
         for job_id, job in _enhanced_manager.jobs.items():
             if job["status"] != "active":
@@ -564,7 +593,7 @@ class EnhancedRecurringScheduler:
                 if self._is_job_due(job, current_time):
                     await self._execute_job(job_id, job, current_time)
             except Exception as e:
-                print(f"Error executing recurring job {job_id}: {e}")
+                logger.error("Error executing recurring job %s: %s", job_id, e)
 
     def _is_job_due(self, job: Dict[str, Any], current_time: datetime) -> bool:
         """Check if a job is due to run"""
@@ -572,7 +601,7 @@ class EnhancedRecurringScheduler:
         if not next_run:
             return False
 
-        return current_time >= next_run
+        return current_time >= next_run  # type: ignore[no-any-return]
 
     async def _execute_job(
         self, job_id: str, job: Dict[str, Any], current_time: datetime
@@ -588,15 +617,6 @@ class EnhancedRecurringScheduler:
                 **job["job_kwargs"],
             )
 
-            # Update job statistics
-            _enhanced_manager.jobs[job_id].update(
-                {
-                    "last_run": current_time,
-                    "run_count": job["run_count"] + 1,
-                    "last_job_id": actual_job_id,
-                }
-            )
-
             # Calculate next run time
             next_run = _enhanced_manager._calculate_next_run(
                 job["schedule_type"], job["schedule_value"], current_time
@@ -604,27 +624,45 @@ class EnhancedRecurringScheduler:
             if next_run is None:
                 return
 
-            _enhanced_manager.jobs[job_id]["next_run"] = next_run
+            new_run_count = job["run_count"] + 1
+
+            # Persist to database FIRST — if this fails, in-memory state stays unchanged
             await _enhanced_manager._record_run(
                 job_id=job_id,
                 last_run=current_time,
                 next_run=next_run,
-                run_count=_enhanced_manager.jobs[job_id]["run_count"],
+                run_count=new_run_count,
                 last_job_id=actual_job_id,
             )
 
-            print(
-                f"Recurring job {job_id} enqueued as {actual_job_id}, next run: {next_run}"
+            # Update in-memory state only after DB write succeeds
+            _enhanced_manager.jobs[job_id].update(
+                {
+                    "last_run": current_time,
+                    "run_count": new_run_count,
+                    "last_job_id": actual_job_id,
+                    "next_run": next_run,
+                }
+            )
+
+            logger.info(
+                "Recurring job %s enqueued as %s, next run: %s",
+                job_id,
+                actual_job_id,
+                next_run,
             )
 
         except Exception as e:
-            print(f"Failed to execute recurring job {job_id}: {e}")
+            logger.error("Failed to execute recurring job %s: %s", job_id, e)
             # Don't update next_run on error - will retry
 
 
 # Global instances
 _enhanced_manager = EnhancedRecurringManager()
 _enhanced_scheduler = EnhancedRecurringScheduler()
+
+# Registry for @recurring decorated functions (avoids gc.get_objects() scan)
+_decorated_recurring_jobs: List[Callable] = []
 
 
 async def _ensure_scheduler_running():
@@ -704,23 +742,24 @@ def cron(expression: str) -> FluentRecurringScheduler:
         await cron("*/15 * * * *").schedule(every_15_min)         # Every 15 minutes
         await cron("0 9 * * 1-5").high_priority().schedule(task) # Weekdays 9 AM, high priority
     """
+    require_feature("scheduling_enabled", "Recurring scheduler")
     return FluentRecurringScheduler("cron", expression)
 
 
 # Priority convenience functions
-async def high_priority() -> FluentRecurringScheduler:
+def high_priority() -> FluentRecurringScheduler:
     """Create high priority job (convenience method)"""
     scheduler = FluentRecurringScheduler("interval", 0)  # Will be overridden
     return scheduler.high_priority()
 
 
-async def background() -> FluentRecurringScheduler:
+def background() -> FluentRecurringScheduler:
     """Create background priority job (convenience method)"""
     scheduler = FluentRecurringScheduler("interval", 0)  # Will be overridden
     return scheduler.background()
 
 
-async def urgent() -> FluentRecurringScheduler:
+def urgent() -> FluentRecurringScheduler:
     """Create urgent priority job (convenience method)"""
     scheduler = FluentRecurringScheduler("interval", 0)  # Will be overridden
     return scheduler.urgent()
@@ -748,29 +787,29 @@ def get_recurring_scheduler() -> EnhancedRecurringScheduler:
     return _enhanced_scheduler
 
 
-def list_recurring_jobs(status: Optional[str] = None) -> List[Dict[str, Any]]:
+async def list_recurring_jobs(status: Optional[str] = None) -> List[Dict[str, Any]]:
     """List all recurring jobs"""
-    return _enhanced_manager.list_jobs(status=status)
+    return await _enhanced_manager.list_jobs(status=status)
 
 
-def get_recurring_job(job_id: str) -> Optional[Dict[str, Any]]:
+async def get_recurring_job(job_id: str) -> Optional[Dict[str, Any]]:
     """Get details of a specific recurring job"""
-    return _enhanced_manager.get_job(job_id)
+    return await _enhanced_manager.get_job(job_id)
 
 
 async def remove_recurring_job(job_id: str) -> bool:
     """Remove a recurring job"""
-    return _enhanced_manager.remove_job(job_id)
+    return await _enhanced_manager.remove_job(job_id)
 
 
 async def pause_recurring_job(job_id: str) -> bool:
     """Pause a recurring job"""
-    return _enhanced_manager.pause_job(job_id)
+    return await _enhanced_manager.pause_job(job_id)
 
 
 async def resume_recurring_job(job_id: str) -> bool:
     """Resume a paused recurring job"""
-    return _enhanced_manager.resume_job(job_id)
+    return await _enhanced_manager.resume_job(job_id)
 
 
 def get_scheduler_status() -> Dict[str, Any]:
@@ -808,6 +847,9 @@ def recurring(schedule_expr: str, **config):
     """
 
     def decorator(func):
+        # Register for later scheduling via schedule_decorated_jobs()
+        _decorated_recurring_jobs.append(func)
+
         # Determine schedule type and create appropriate scheduler
         if " " in schedule_expr and len(schedule_expr.split()) == 5:
             # Cron expression
@@ -850,14 +892,11 @@ def recurring(schedule_expr: str, **config):
 
 async def schedule_decorated_jobs():
     """Schedule all functions decorated with @recurring"""
-    import gc
-
     scheduled_count = 0
-    for obj in gc.get_objects():
-        if hasattr(obj, "_recurring_config"):
-            config = obj._recurring_config
-            job_id = await config["scheduler"].schedule(obj)
-            print(f"Scheduled decorated job {obj.__name__} as {job_id}")
-            scheduled_count += 1
+    for func in _decorated_recurring_jobs:
+        config = func._recurring_config
+        job_id = await config["scheduler"].schedule(func)
+        logger.info("Scheduled decorated job %s as %s", func.__name__, job_id)
+        scheduled_count += 1
 
     return scheduled_count
