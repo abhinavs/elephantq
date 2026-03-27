@@ -139,7 +139,7 @@ async def test_retry_mechanism():
             "SELECT * FROM elephantq_jobs WHERE id = $1", uuid.UUID(actual_job_id_1)
         )
         assert job_record["status"] == "done"
-        assert job_record["attempts"] == 2  # 2 failed attempts, then success
+        assert job_record["attempts"] == 3  # 3 fetches (2 failures + 1 success)
 
     # Test job that exceeds max retries
     job_id_2 = str(uuid.uuid4())

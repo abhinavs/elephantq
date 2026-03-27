@@ -58,6 +58,14 @@ class DatabaseContext:
         """Create context from database URL directly."""
         return cls(database_url=database_url)
 
+    async def __aenter__(self):
+        pool = await self.get_pool()
+        return pool
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
+        return False
+
     async def get_pool(self) -> asyncpg.Pool:
         """
         Get database connection pool.

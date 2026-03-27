@@ -337,7 +337,7 @@ class ElephantQ:
         if connection is not None:
             if hasattr(self._backend, "create_job_transactional"):
                 return await self._backend.create_job_transactional(
-                    connection,
+                    connection=connection,
                     job_id=job_id,
                     job_name=job_name,
                     args=args_json,
