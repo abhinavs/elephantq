@@ -136,6 +136,7 @@ class MemoryBackend:
 
             job = candidates[0]
             job["status"] = "processing"
+            job["attempts"] += 1
             job["worker_id"] = worker_id
             job["updated_at"] = datetime.now(timezone.utc)
             return dict(job)

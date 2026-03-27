@@ -220,12 +220,13 @@ class SQLiteBackend:
 
             job_id = row["id"]
             await self._conn.execute(
-                "UPDATE elephantq_jobs SET status='processing', worker_id=?, updated_at=? WHERE id=?",
+                "UPDATE elephantq_jobs SET status='processing', attempts=attempts+1, worker_id=?, updated_at=? WHERE id=?",
                 (worker_id, _now_iso(), job_id),
             )
             await self._conn.commit()
-            # Return raw dict — processor expects args as JSON string
-            return dict(row)
+            result = dict(row)
+            result["attempts"] = result["attempts"] + 1
+            return result
 
     async def notify_new_job(self, queue: str) -> None:
         pass  # No push notification

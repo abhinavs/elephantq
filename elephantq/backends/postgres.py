@@ -389,7 +389,7 @@ class PostgresBackend:
                     await conn.execute(
                         """
                         UPDATE elephantq_jobs
-                        SET status = 'processing', worker_id = $2, updated_at = NOW()
+                        SET status = 'processing', attempts = attempts + 1, worker_id = $2, updated_at = NOW()
                         WHERE id = $1
                         """,
                         job_id,
@@ -399,13 +399,15 @@ class PostgresBackend:
                     await conn.execute(
                         """
                         UPDATE elephantq_jobs
-                        SET status = 'processing', updated_at = NOW()
+                        SET status = 'processing', attempts = attempts + 1, updated_at = NOW()
                         WHERE id = $1
                         """,
                         job_id,
                     )
 
-            return dict(job_record)
+            result = dict(job_record)
+            result["attempts"] = result["attempts"] + 1
+            return result
 
     # --- Job status transitions ---
 

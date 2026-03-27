@@ -133,8 +133,18 @@ async def process_job_via_backend(
 
     start_time = time.time()
     logger.info(
-        f"Processing job {job_id} ({job_name}) - attempt {attempts + 1}/{max_attempts}"
+        f"Processing job {job_id} ({job_name}) - attempt {attempts}/{max_attempts}"
     )
+
+    # Guard: if repeated crashes pushed attempts past max, dead-letter without executing
+    if attempts > max_attempts:
+        await backend.mark_job_dead_letter(
+            job_id,
+            attempts=attempts,
+            error="Max attempts exceeded (job crashed repeatedly)",
+        )
+        logger.error(f"Job {job_id} dead-lettered after {attempts} crash attempts")
+        return True
 
     job_meta = job_registry.get_job(job_name)
     if not job_meta:
@@ -164,31 +174,28 @@ async def process_job_via_backend(
         await backend.mark_job_done(job_id, result_ttl=settings.result_ttl)
         logger.info(f"Job {job_id} completed in {duration_ms}ms")
     else:
-        new_attempts = attempts + 1
-        if new_attempts >= max_attempts:
+        if attempts >= max_attempts:
             await backend.mark_job_dead_letter(
                 job_id,
-                attempts=new_attempts,
+                attempts=attempts,
                 error=f"Max retries exceeded: {job_error}",
             )
-            logger.error(
-                f"Job {job_id} moved to dead letter after {new_attempts} attempts"
-            )
+            logger.error(f"Job {job_id} moved to dead letter after {attempts} attempts")
         else:
             retry_delay = compute_retry_delay_seconds(
-                attempt=new_attempts,
+                attempt=attempts,
                 retry_delay=job_meta.get("retry_delay", 0),
                 retry_backoff=job_meta.get("retry_backoff", False),
                 retry_max_delay=job_meta.get("retry_max_delay"),
             )
             await backend.mark_job_failed(
                 job_id,
-                attempts=new_attempts,
+                attempts=attempts,
                 error=str(job_error),
                 retry_delay=retry_delay if retry_delay > 0 else None,
             )
             logger.warning(
-                f"Job {job_id} failed (attempt {new_attempts}), "
+                f"Job {job_id} failed (attempt {attempts}), "
                 + (
                     f"retrying in {retry_delay:.1f}s"
                     if retry_delay > 0
