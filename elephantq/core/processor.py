@@ -10,7 +10,7 @@ import logging
 import os
 import time
 import uuid
-from typing import Callable, List, Optional, Union
+from typing import Any, Callable, List, Optional, Union
 
 import asyncpg
 
@@ -479,3 +479,106 @@ async def process_jobs_with_registry(
         bool: True if a job was processed, False if no jobs available
     """
     return await _process_job_common(conn, job_registry.get_job, queue, heartbeat)
+
+
+async def process_job_via_backend(
+    backend: Any,
+    job_registry: JobRegistry,
+    queues: Optional[List[str]] = None,
+    worker_id: Optional[str] = None,
+) -> bool:
+    """
+    Process a single job using a StorageBackend.
+
+    This is the backend-aware processing path. It replaces the raw
+    asyncpg.Connection path for backends that implement StorageBackend.
+
+    Args:
+        backend: StorageBackend instance
+        job_registry: JobRegistry for job lookup
+        queues: Queue names to process from
+        worker_id: Worker ID for tracking
+
+    Returns:
+        True if a job was processed, False if no jobs available
+    """
+    from elephantq.settings import get_settings
+
+    job_record = await backend.fetch_and_lock_job(
+        queues=queues,
+        worker_id=worker_id,
+    )
+    if not job_record:
+        return False
+
+    job_id = str(job_record["id"])
+    job_name = job_record["job_name"]
+    max_attempts = job_record["max_attempts"]
+    attempts = job_record["attempts"]
+
+    start_time = time.time()
+    logger.info(
+        f"Processing job {job_id} ({job_name}) - attempt {attempts + 1}/{max_attempts}"
+    )
+
+    job_meta = job_registry.get_job(job_name)
+    if not job_meta:
+        await backend.mark_job_dead_letter(
+            job_id,
+            attempts=max_attempts,
+            error=f"Job {job_name} not registered.",
+        )
+        logger.error(f"Job {job_name} not registered - moved to dead letter queue")
+        return True
+
+    try:
+        job_success, job_error = await _execute_job_safely(job_record, job_meta)
+    except ValueError as corruption_error:
+        logger.error(f"Job {job_id} has corrupted data: {corruption_error}")
+        await backend.mark_job_dead_letter(
+            job_id,
+            attempts=max_attempts,
+            error=str(corruption_error),
+        )
+        return True
+
+    duration_ms = round((time.time() - start_time) * 1000, 2)
+
+    if job_success:
+        settings = get_settings()
+        await backend.mark_job_done(job_id, result_ttl=settings.result_ttl)
+        logger.info(f"Job {job_id} completed in {duration_ms}ms")
+    else:
+        new_attempts = attempts + 1
+        if new_attempts >= max_attempts:
+            await backend.mark_job_dead_letter(
+                job_id,
+                attempts=new_attempts,
+                error=f"Max retries exceeded: {job_error}",
+            )
+            logger.error(
+                f"Job {job_id} moved to dead letter after {new_attempts} attempts"
+            )
+        else:
+            retry_delay = compute_retry_delay_seconds(
+                attempt=new_attempts,
+                retry_delay=job_meta.get("retry_delay", 0),
+                retry_backoff=job_meta.get("retry_backoff", False),
+                retry_max_delay=job_meta.get("retry_max_delay"),
+            )
+            await backend.mark_job_failed(
+                job_id,
+                attempts=new_attempts,
+                error=str(job_error),
+                retry_delay=retry_delay if retry_delay > 0 else None,
+            )
+            logger.warning(
+                f"Job {job_id} failed (attempt {new_attempts}), "
+                + (
+                    f"retrying in {retry_delay:.1f}s"
+                    if retry_delay > 0
+                    else "retrying immediately"
+                )
+            )
+
+    return True

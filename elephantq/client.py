@@ -14,7 +14,6 @@ import asyncpg
 import asyncpg.exceptions
 
 from .core.registry import JobRegistry
-from .db.connection import _init_connection
 from .db.helpers import rows_affected as _rows_affected
 from .errors import ElephantQError
 from .settings import ElephantQSettings
@@ -50,6 +49,7 @@ class ElephantQ:
         self,
         database_url: Optional[str] = None,
         config_file: Optional[Path] = None,
+        backend: Optional[Any] = None,
         **settings_overrides,
     ):
         """
@@ -58,14 +58,25 @@ class ElephantQ:
         Args:
             database_url: PostgreSQL connection URL
             config_file: Optional configuration file path
+            backend: Optional StorageBackend instance. If not provided,
+                creates a PostgresBackend from the database_url.
             **settings_overrides: Override any ElephantQSettings field
         """
         # Core instance state
         self._initialized = False
         self._closed = False
 
+        # Resolve backend: explicit string name, auto-detect from URL, or None (lazy Postgres)
+        if isinstance(backend, str):
+            backend = self._resolve_backend_name(backend, database_url)
+        elif backend is None and database_url:
+            backend = self._auto_detect_backend(database_url)
+        self._backend = backend
+
         # Settings with overrides
-        if database_url:
+        # Only pass database_url to settings for postgres backend
+        # (SQLite and Memory backends use database_url as a file path, not a Postgres URL)
+        if database_url and self._backend is None:
             settings_overrides["database_url"] = database_url
 
         if config_file:
@@ -78,17 +89,56 @@ class ElephantQ:
         # Instance components (initialized lazily)
         self._pool: Optional[asyncpg.Pool] = None
         self._job_registry = JobRegistry()
-        from .errors import DatabaseConnectionError
 
-        logger.debug(
-            "Created ElephantQ instance with database: %s",
-            DatabaseConnectionError._mask_database_url(self._settings.database_url),
-        )
+        logger.debug("Created ElephantQ instance")
+
+    @staticmethod
+    def _auto_detect_backend(database_url: str) -> Any:
+        """Auto-detect backend from database URL format.
+
+        - postgresql:// or postgres:// → None (PostgresBackend created lazily)
+        - *.db or *.sqlite → SQLiteBackend
+        - anything else → None (assume Postgres, will fail at connect if wrong)
+        """
+        if database_url.startswith(("postgresql://", "postgres://")):
+            return None  # PostgresBackend created in _ensure_initialized
+
+        if database_url.endswith((".db", ".sqlite", ".sqlite3")):
+            from .backends.sqlite import SQLiteBackend
+
+            return SQLiteBackend(database_url)
+
+        return None  # Default to Postgres
+
+    @staticmethod
+    def _resolve_backend_name(name: str, database_url: Optional[str] = None) -> Any:
+        """Resolve a string backend name to a backend instance."""
+        if name == "memory":
+            from .backends.memory import MemoryBackend
+
+            return MemoryBackend()
+        elif name == "sqlite":
+            from .backends.sqlite import SQLiteBackend
+
+            path = database_url if database_url else "elephantq.db"
+            return SQLiteBackend(path)
+        elif name == "postgres":
+            # Will be created in _ensure_initialized with settings
+            return None
+        else:
+            raise ValueError(
+                f"Unknown backend: {name!r}. Use 'postgres', 'sqlite', or 'memory'."
+            )
 
     @property
     def settings(self) -> ElephantQSettings:
         """Get application settings."""
         return self._settings
+
+    @property
+    def backend(self):
+        """Access the storage backend."""
+        return self._backend
 
     @property
     def is_initialized(self) -> bool:
@@ -104,7 +154,7 @@ class ElephantQ:
         """
         Auto-initialize ElephantQ on first use.
 
-        Creates database connection pool.
+        Creates a PostgresBackend if no backend was provided, then initializes it.
         """
         if self._initialized:
             return
@@ -117,16 +167,21 @@ class ElephantQ:
         try:
             logger.debug("Auto-initializing ElephantQ application...")
 
-            # Create database connection pool
-            self._pool = await asyncpg.create_pool(
-                self._settings.database_url,
-                min_size=self._settings.db_pool_min_size,
-                max_size=self._settings.db_pool_max_size,
-                init=_init_connection,
-            )
-            logger.debug(
-                f"Created database pool (min: {self._settings.db_pool_min_size}, max: {self._settings.db_pool_max_size})"
-            )
+            # Create backend if not provided
+            if self._backend is None:
+                from .backends.postgres import PostgresBackend
+
+                self._backend = PostgresBackend(
+                    database_url=self._settings.database_url,
+                    pool_min_size=self._settings.db_pool_min_size,
+                    pool_max_size=self._settings.db_pool_max_size,
+                )
+
+            await self._backend.initialize()
+
+            # Keep _pool reference for backward compat with code that uses it directly
+            if hasattr(self._backend, "pool"):
+                self._pool = self._backend.pool
 
             self._initialized = True
             logger.debug("ElephantQ application initialized successfully")
@@ -166,11 +221,11 @@ class ElephantQ:
         logger.info("Closing ElephantQ application...")
 
         try:
-            # Close database pool
-            if self._pool:
-                await self._pool.close()
+            # Close backend (which closes its pool)
+            if self._backend:
+                await self._backend.close()
                 self._pool = None
-                logger.debug("Closed database pool")
+                logger.debug("Closed backend")
 
             self._closed = True
             self._initialized = False

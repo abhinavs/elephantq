@@ -7,13 +7,14 @@ import ast
 from pathlib import Path
 
 
-def test_instance_pool_has_init_callback():
-    """ElephantQ._ensure_initialized must pass init= to create_pool."""
-    client_path = Path(__file__).parent.parent.parent / "elephantq" / "client.py"
-    source = client_path.read_text()
+def test_postgres_backend_pool_has_init_callback():
+    """PostgresBackend must pass init= to create_pool."""
+    backend_path = (
+        Path(__file__).parent.parent.parent / "elephantq" / "backends" / "postgres.py"
+    )
+    source = backend_path.read_text()
     tree = ast.parse(source)
 
-    # Find the asyncpg.create_pool call in _ensure_initialized
     found_init = False
     for node in ast.walk(tree):
         if isinstance(node, ast.Call):
@@ -24,7 +25,7 @@ def test_instance_pool_has_init_callback():
                         break
 
     assert found_init, (
-        "asyncpg.create_pool() in client.py must include init= callback "
+        "asyncpg.create_pool() in postgres.py must include init= callback "
         "for connection-level UTC timezone initialization"
     )
 
