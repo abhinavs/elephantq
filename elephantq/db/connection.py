@@ -1,8 +1,10 @@
 """
-Database connection management with context support
+Database connection utilities.
+
+Pool access goes through the global ElephantQ app's backend.
+These functions exist for feature modules that need a raw asyncpg pool.
 """
 
-import asyncio
 import contextvars
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Optional
@@ -11,41 +13,27 @@ import asyncpg
 
 from elephantq.settings import get_settings
 
-# Global pool
-_pool: Optional[asyncpg.Pool] = None
-_pool_lock: asyncio.Lock = asyncio.Lock()
-
-# Context variable for thread-local pool managemen
+# Context variable for thread-local pool management (testing/CLI)
 _context_pool: contextvars.ContextVar[Optional[asyncpg.Pool]] = contextvars.ContextVar(
     "elephantq_pool", default=None
 )
 
 
-def _get_database_url() -> str:
-    """
-    Get database URL from settings.
-    """
-    return get_settings().database_url
-
-
 async def _init_connection(conn):
-    """Initialize connection with UTC timezone for consistent scheduled job handling"""
+    """Initialize connection with UTC timezone for consistent scheduled job handling."""
     await conn.execute("SET timezone = 'UTC'")
 
 
 async def get_pool() -> asyncpg.Pool:
     """
-    Get connection pool.
+    Get connection pool from the global app's backend.
 
-    Delegates to the global ElephantQ app's backend.
     Kept for feature modules that import from db.connection directly.
     """
-    # Check if we have a context-local pool first (testing/CLI)
     context_pool = _context_pool.get(None)
     if context_pool is not None:
         return context_pool
 
-    # Use global app's backend pool
     import elephantq
 
     app = elephantq._get_global_app()
@@ -55,22 +43,17 @@ async def get_pool() -> asyncpg.Pool:
     if hasattr(backend, "pool"):
         return backend.pool
 
-    # Fallback: create pool directly (should not normally reach here)
-    global _pool
-    if _pool is None:
-        async with _pool_lock:
-            if _pool is None:
-                database_url = _get_database_url()
-                _pool = await asyncpg.create_pool(database_url, init=_init_connection)
-    return _pool
+    raise RuntimeError(
+        "No connection pool available. " "This function requires a PostgreSQL backend."
+    )
 
 
 async def close_pool():
-    """Close the global connection pool"""
-    global _pool
-    if _pool is not None:
-        await _pool.close()
-        _pool = None
+    """Close the global app's backend pool."""
+    import elephantq
+
+    if elephantq._global_app is not None and elephantq._global_app.is_initialized:
+        await elephantq._global_app.close()
 
 
 @asynccontextmanager
@@ -78,59 +61,23 @@ async def connection_context(
     database_url: Optional[str] = None,
 ) -> AsyncIterator[asyncpg.Pool]:
     """
-    Context manager for database connections.
-
-    This provides better control over connection lifecycle for testing and integration.
+    Context manager that creates a temporary connection pool.
 
     Args:
-        database_url: Optional database URL. Uses settings.database_url if not provided.
-
-    Usage:
-        async with connection_context() as pool:
-            async with pool.acquire() as conn:
-                # Use connection
+        database_url: Optional database URL. Uses settings if not provided.
     """
-    db_url = database_url or _get_database_url()
+    db_url = database_url or get_settings().database_url
     pool = await asyncpg.create_pool(db_url, init=_init_connection)
 
-    # Set context-local pool
     token = _context_pool.set(pool)
-
     try:
         yield pool
     finally:
-        # Clean up context and close pool
         _context_pool.reset(token)
         await pool.close()
 
 
-class PoolContext:
-    """
-    Database context manager for applications that need explicit control.
-
-    This is the recommended approach for new applications and testing.
-    """
-
-    def __init__(self, database_url: Optional[str] = None):
-        self.database_url = database_url or _get_database_url()
-        self.pool: Optional[asyncpg.Pool] = None
-        self._token: Optional[contextvars.Token[Optional[asyncpg.Pool]]] = None
-
-    async def __aenter__(self) -> asyncpg.Pool:
-        """Enter the context and create pool"""
-        self.pool = await asyncpg.create_pool(self.database_url, init=_init_connection)
-        self._token = _context_pool.set(self.pool)
-        return self.pool
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Exit context and cleanup"""
-        if self._token:
-            _context_pool.reset(self._token)
-        if self.pool:
-            await self.pool.close()
-
-
 async def create_pool(database_url: Optional[str] = None) -> asyncpg.Pool:
-    """Create a new connection pool without affecting global state"""
-    db_url = database_url or _get_database_url()
+    """Create a new connection pool without affecting global state."""
+    db_url = database_url or get_settings().database_url
     return await asyncpg.create_pool(db_url, init=_init_connection)

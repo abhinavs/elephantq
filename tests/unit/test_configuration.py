@@ -66,18 +66,18 @@ class TestPydanticConfiguration:
         settings = get_settings()
 
         # Test default values
-        assert settings.database_url == "postgresql://postgres@localhost/postgres"
+        assert settings.database_url == "postgresql://postgres@localhost/elephantq"
         assert settings.jobs_module == "jobs"
         assert settings.jobs_modules == ""
-        assert settings.default_concurrency == 4
-        assert settings.default_queues == ["default"]
-        assert settings.default_max_retries == 3
-        assert settings.default_priority == 100
-        assert settings.worker_heartbeat_interval == 5.0
+        assert settings.concurrency == 4
+        assert settings.queues == ["default"]
+        assert settings.max_retries == 3
+        assert settings.priority == 100
+        assert settings.heartbeat_interval == 5.0
         assert settings.job_timeout == 300.0
-        assert settings.db_pool_min_size == 5
-        assert settings.db_pool_max_size == 20
-        assert settings.db_pool_safety_margin == 2
+        assert settings.pool_min_size == 5
+        assert settings.pool_max_size == 20
+        assert settings.pool_headroom == 2
         assert settings.log_level == "INFO"
         assert settings.log_format == "simple"
         assert settings.debug is False
@@ -89,15 +89,15 @@ class TestPydanticConfiguration:
         os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://test@localhost/test_db"
         os.environ["ELEPHANTQ_JOBS_MODULE"] = "myapp.jobs"
         os.environ["ELEPHANTQ_JOBS_MODULES"] = "myapp.tasks,myapp.other_tasks"
-        os.environ["ELEPHANTQ_DEFAULT_CONCURRENCY"] = "8"
-        os.environ["ELEPHANTQ_DEFAULT_QUEUES"] = "urgent,default,low"
-        os.environ["ELEPHANTQ_DEFAULT_MAX_RETRIES"] = "5"
-        os.environ["ELEPHANTQ_DEFAULT_PRIORITY"] = "200"
-        os.environ["ELEPHANTQ_WORKER_HEARTBEAT_INTERVAL"] = "10.0"
+        os.environ["ELEPHANTQ_CONCURRENCY"] = "8"
+        os.environ["ELEPHANTQ_QUEUES"] = "urgent,default,low"
+        os.environ["ELEPHANTQ_MAX_RETRIES"] = "5"
+        os.environ["ELEPHANTQ_PRIORITY"] = "200"
+        os.environ["ELEPHANTQ_HEARTBEAT_INTERVAL"] = "10.0"
         os.environ["ELEPHANTQ_JOB_TIMEOUT"] = "300.0"
-        os.environ["ELEPHANTQ_DB_POOL_MIN_SIZE"] = "10"
-        os.environ["ELEPHANTQ_DB_POOL_MAX_SIZE"] = "50"
-        os.environ["ELEPHANTQ_DB_POOL_SAFETY_MARGIN"] = "4"
+        os.environ["ELEPHANTQ_POOL_MIN_SIZE"] = "10"
+        os.environ["ELEPHANTQ_POOL_MAX_SIZE"] = "50"
+        os.environ["ELEPHANTQ_POOL_HEADROOM"] = "4"
         os.environ["ELEPHANTQ_LOG_LEVEL"] = "DEBUG"
         os.environ["ELEPHANTQ_LOG_FORMAT"] = "structured"
         os.environ["ELEPHANTQ_DEBUG"] = "true"
@@ -111,30 +111,29 @@ class TestPydanticConfiguration:
         assert settings.database_url == "postgresql://test@localhost/test_db"
         assert settings.jobs_module == "myapp.jobs"
         assert settings.jobs_modules == "myapp.tasks,myapp.other_tasks"
-        assert settings.default_concurrency == 8
-        assert settings.default_queues == ["urgent", "default", "low"]
-        assert settings.default_max_retries == 5
-        assert settings.default_priority == 200
-        assert settings.worker_heartbeat_interval == 10.0
+        assert settings.concurrency == 8
+        assert settings.queues == ["urgent", "default", "low"]
+        assert settings.max_retries == 5
+        assert settings.priority == 200
+        assert settings.heartbeat_interval == 10.0
         assert settings.job_timeout == 300.0
-        assert settings.db_pool_min_size == 10
-        assert settings.db_pool_max_size == 50
-        assert settings.db_pool_safety_margin == 4
+        assert settings.pool_min_size == 10
+        assert settings.pool_max_size == 50
+        assert settings.pool_headroom == 4
         assert settings.log_level == "DEBUG"
         assert settings.log_format == "structured"
         assert settings.debug is True
         assert settings.environment == "development"
 
-    def test_configuration_validation_invalid_database_url(self):
-        """Test configuration validation for invalid database URLs."""
-        os.environ["ELEPHANTQ_DATABASE_URL"] = "mysql://invalid@localhost/test"
+    def test_configuration_validation_empty_database_url(self):
+        """Test configuration validation rejects empty database URL."""
+        os.environ["ELEPHANTQ_DATABASE_URL"] = ""
 
         from elephantq.settings import get_settings
 
-        # Should raise validation error for non-PostgreSQL URL
         with pytest.raises(
             ValueError,
-            match=r"(?s)Invalid ElephantQ configuration.*database_url must be a PostgreSQL connection string",
+            match=r"(?s)Invalid ElephantQ configuration.*database_url must not be empty",
         ):
             get_settings(reload=True)
 
@@ -167,7 +166,7 @@ class TestPydanticConfiguration:
     def test_configuration_validation_numeric_ranges(self):
         """Test configuration validation for numeric range constraints."""
         # Test concurrency out of range
-        os.environ["ELEPHANTQ_DEFAULT_CONCURRENCY"] = "200"  # Max is 100
+        os.environ["ELEPHANTQ_CONCURRENCY"] = "200"  # Max is 100
 
         from elephantq.settings import get_settings
 
@@ -175,8 +174,8 @@ class TestPydanticConfiguration:
             get_settings(reload=True)
 
         # Reset and test minimum
-        del os.environ["ELEPHANTQ_DEFAULT_CONCURRENCY"]
-        os.environ["ELEPHANTQ_DEFAULT_MAX_RETRIES"] = "-1"  # Min is 0
+        del os.environ["ELEPHANTQ_CONCURRENCY"]
+        os.environ["ELEPHANTQ_MAX_RETRIES"] = "-1"  # Min is 0
 
         with pytest.raises(ValueError, match=r"(?s)Invalid ElephantQ configuration"):
             get_settings(reload=True)
@@ -197,7 +196,7 @@ class TestPydanticConfiguration:
         settings = get_settings(reload=True)
 
         # Should use default value, NOT the DATABASE_URL fallback
-        assert settings.database_url == "postgresql://postgres@localhost/postgres"
+        assert settings.database_url == "postgresql://postgres@localhost/elephantq"
         assert (
             settings.database_url
             != "postgresql://should_not_be_used@localhost/legacy_db"
@@ -227,7 +226,7 @@ class TestPydanticConfiguration:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".env", delete=False) as f:
             f.write("ELEPHANTQ_DATABASE_URL=postgresql://config@localhost/config_db\n")
             f.write("ELEPHANTQ_JOBS_MODULE=config.jobs\n")
-            f.write("ELEPHANTQ_DEFAULT_CONCURRENCY=12\n")
+            f.write("ELEPHANTQ_CONCURRENCY=12\n")
             f.write("ELEPHANTQ_LOG_LEVEL=WARNING\n")
             config_file = Path(f.name)
 
@@ -239,7 +238,7 @@ class TestPydanticConfiguration:
             # Should load from config file
             assert settings.database_url == "postgresql://config@localhost/config_db"
             assert settings.jobs_module == "config.jobs"
-            assert settings.default_concurrency == 12
+            assert settings.concurrency == 12
             assert settings.log_level == "WARNING"
 
         finally:
@@ -336,14 +335,14 @@ class TestPydanticConfiguration:
 
     def test_list_configuration_parsing(self):
         """Test parsing of comma-separated list configurations."""
-        os.environ["ELEPHANTQ_DEFAULT_QUEUES"] = "high,normal,low,bulk"
+        os.environ["ELEPHANTQ_QUEUES"] = "high,normal,low,bulk"
 
         from elephantq.settings import get_settings
 
         settings = get_settings(reload=True)
 
         # Should parse comma-separated values into list
-        assert settings.default_queues == ["high", "normal", "low", "bulk"]
+        assert settings.queues == ["high", "normal", "low", "bulk"]
 
     def test_boolean_configuration_parsing(self):
         """Test parsing of boolean configurations from strings."""
@@ -373,8 +372,8 @@ class TestPydanticConfiguration:
 
     def test_numeric_configuration_validation(self):
         """Test numeric configuration validation and type conversion."""
-        os.environ["ELEPHANTQ_DEFAULT_CONCURRENCY"] = "8"
-        os.environ["ELEPHANTQ_WORKER_HEARTBEAT_INTERVAL"] = "2.5"
+        os.environ["ELEPHANTQ_CONCURRENCY"] = "8"
+        os.environ["ELEPHANTQ_HEARTBEAT_INTERVAL"] = "2.5"
         os.environ["ELEPHANTQ_JOB_TIMEOUT"] = "600.0"
 
         from elephantq.settings import get_settings
@@ -382,10 +381,10 @@ class TestPydanticConfiguration:
         settings = get_settings(reload=True)
 
         # Should properly convert string values to correct types
-        assert isinstance(settings.default_concurrency, int)
-        assert settings.default_concurrency == 8
-        assert isinstance(settings.worker_heartbeat_interval, float)
-        assert settings.worker_heartbeat_interval == 2.5
+        assert isinstance(settings.concurrency, int)
+        assert settings.concurrency == 8
+        assert isinstance(settings.heartbeat_interval, float)
+        assert settings.heartbeat_interval == 2.5
         assert isinstance(settings.job_timeout, float)
         assert settings.job_timeout == 600.0
 

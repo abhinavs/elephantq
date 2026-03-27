@@ -58,7 +58,7 @@ class TestGlobalAPI:
         job_meta = app.get_job_registry().get_job(job_name)
 
         assert job_meta is not None
-        assert job_meta["retries"] == 3
+        assert job_meta["max_retries"] == 3
         assert job_meta["queue"] == "test"
 
     def test_job_decorator_returns_callable_function(self):
@@ -184,7 +184,7 @@ class TestGlobalAPI:
         # Configure global app
         test_config = {
             "database_url": "postgresql://persistent@localhost/persistent_db",
-            "default_concurrency": 8,
+            "concurrency": 8,
             "result_ttl": 600,
         }
         elephantq.configure(**test_config)
@@ -196,7 +196,7 @@ class TestGlobalAPI:
         # Should be same instance with same config
         assert app1 is app2
         assert app1.settings.database_url == test_config["database_url"]
-        assert app1.settings.default_concurrency == test_config["default_concurrency"]
+        assert app1.settings.concurrency == test_config["concurrency"]
         assert app1.settings.result_ttl == test_config["result_ttl"]
 
     def test_global_api_exports_correctly(self):

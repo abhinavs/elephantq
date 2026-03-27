@@ -15,7 +15,7 @@ def test_elephantq_has_reset_function():
 
 def test_elephantq_client_has_reset_method():
     """ElephantQ class should have a reset() method."""
-    from elephantq.client import ElephantQ
+    from elephantq.app import ElephantQ
 
     assert hasattr(ElephantQ, "reset")
 
@@ -25,7 +25,7 @@ async def test_reset_clears_jobs_via_memory_backend():
     """reset() should clear all jobs when using MemoryBackend."""
     import uuid
 
-    from elephantq.client import ElephantQ
+    from elephantq.app import ElephantQ
 
     app = ElephantQ(backend="memory")
     await app._ensure_initialized()
@@ -44,7 +44,7 @@ async def test_reset_clears_jobs_via_memory_backend():
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
 

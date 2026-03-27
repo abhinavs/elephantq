@@ -18,8 +18,6 @@ from pydantic import BaseModel
 
 import elephantq
 
-app = FastAPI(title="ElephantQ Transactional Enqueue Demo")
-
 DATABASE_URL = "postgresql://postgres@localhost/elephantq"
 
 
@@ -40,13 +38,15 @@ class CreateUserRequest(BaseModel):
     email: str
 
 
-@app.on_event("startup")
-async def startup():
+from contextlib import asynccontextmanager  # noqa: E402
+
+
+@asynccontextmanager
+async def lifespan(app):
     app.state.pool = await asyncpg.create_pool(DATABASE_URL)
     elephantq.configure(database_url=DATABASE_URL)
     await elephantq.setup()
 
-    # Create a simple users table for the demo
     async with app.state.pool.acquire() as conn:
         await conn.execute(
             """
@@ -58,10 +58,12 @@ async def startup():
         """
         )
 
+    yield
 
-@app.on_event("shutdown")
-async def shutdown():
     await app.state.pool.close()
+
+
+app = FastAPI(title="ElephantQ Transactional Enqueue Demo", lifespan=lifespan)
 
 
 @app.post("/users")

@@ -1,10 +1,22 @@
 """
-Job model and runtime context.
+Job model, status enum, and runtime context.
 """
 
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from typing import Optional
+
+
+class JobStatus(str, Enum):
+    """Job lifecycle statuses."""
+
+    QUEUED = "queued"
+    PROCESSING = "processing"
+    DONE = "done"
+    FAILED = "failed"
+    DEAD_LETTER = "dead_letter"
+    CANCELLED = "cancelled"
 
 
 @dataclass(frozen=True)

@@ -51,7 +51,7 @@ spec:
         imagePullPolicy: Always
         args: 
           - "elephantq"
-          - "worker"
+          - "start"
           - "--concurrency=4"
         env:
         - name: ELEPHANTQ_DATABASE_URL

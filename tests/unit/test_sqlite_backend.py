@@ -6,6 +6,8 @@ import uuid
 
 import pytest
 
+pytest.importorskip("aiosqlite")
+
 
 @pytest.mark.asyncio
 async def test_sqlite_backend_importable():
@@ -52,7 +54,7 @@ async def test_sqlite_create_and_get(tmp_path):
             priority=100,
             queue="default",
             unique=False,
-            queueing_lock=None,
+            dedup_key=None,
             scheduled_at=None,
         )
         assert result == job_id
@@ -84,7 +86,7 @@ async def test_sqlite_full_lifecycle(tmp_path):
             priority=100,
             queue="default",
             unique=False,
-            queueing_lock=None,
+            dedup_key=None,
             scheduled_at=None,
         )
 

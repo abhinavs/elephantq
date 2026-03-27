@@ -21,7 +21,7 @@ print("Jobs processed in the last hour:", metrics["jobs_processed"])
 - **What it does:** Captures per-job context (job id, queue, retries, errors) and emits structured events that you can route to your logging backend.
 
 ```python
-from elephantq.logging import setup, get_job_logger
+from elephantq.features.logging import setup_logging, get_job_logger
 
 setup(format="structured", level="INFO")
 logger = get_job_logger("my-job-id")

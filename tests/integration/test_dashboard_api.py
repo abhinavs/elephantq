@@ -6,9 +6,9 @@ from elephantq.settings import configure, get_settings
 
 @pytest.mark.skipif(not FASTAPI_AVAILABLE, reason="FastAPI not installed")
 @pytest.mark.asyncio
-async def test_dashboard_api_smoke():
+async def test_dashboard_api_smoke(monkeypatch):
     httpx = pytest.importorskip("httpx")
-    configure(dashboard_enabled=True)
+    monkeypatch.setenv("ELEPHANTQ_DASHBOARD_ENABLED", "true")
     get_settings(reload=True)
 
     app = create_dashboard_app()

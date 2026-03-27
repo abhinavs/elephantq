@@ -9,10 +9,7 @@ import logging
 from pathlib import Path
 from typing import Any, List, Optional
 
-import asyncpg
-
 from .core.registry import JobRegistry
-from .db.helpers import rows_affected as _rows_affected
 from .errors import ElephantQError
 from .settings import ElephantQSettings
 
@@ -34,7 +31,7 @@ class ElephantQ:
         # Custom configuration
         app = ElephantQ(
             database_url="postgresql://localhost/myapp",
-            default_concurrency=8,
+            concurrency=8,
             result_ttl=600
         )
 
@@ -85,8 +82,13 @@ class ElephantQ:
             self._settings = ElephantQSettings(**settings_overrides)
 
         # Instance components (initialized lazily)
-        self._pool: Optional[asyncpg.Pool] = None
+        self._pool: Optional[Any] = None
         self._job_registry = JobRegistry()
+        self._hooks: dict[str, list] = {
+            "before_job": [],
+            "after_job": [],
+            "on_error": [],
+        }
 
         logger.debug("Created ElephantQ instance")
 
@@ -171,8 +173,8 @@ class ElephantQ:
 
                 self._backend = PostgresBackend(
                     database_url=self._settings.database_url,
-                    pool_min_size=self._settings.db_pool_min_size,
-                    pool_max_size=self._settings.db_pool_max_size,
+                    pool_min_size=self._settings.pool_min_size,
+                    pool_max_size=self._settings.pool_max_size,
                 )
 
             await self._backend.initialize()
@@ -193,18 +195,26 @@ class ElephantQ:
 
     def _warn_if_pool_too_small(self, concurrency: int) -> None:
         """Warn when worker concurrency + headroom exceeds the configured pool max size."""
-        if not self._pool or self._settings.db_pool_max_size <= 0:
+        if not self._pool or self._settings.pool_max_size <= 0:
             return
 
-        required_connections = concurrency + self._settings.db_pool_safety_margin
-        if required_connections > self._settings.db_pool_max_size:
+        required_connections = concurrency + self._settings.pool_headroom
+        if required_connections > self._settings.pool_max_size:
             logger.warning(
-                "Worker concurrency (%s) + pool safety margin (%s) exceeds configured pool max (%s). "
-                "Increase ELEPHANTQ_DB_POOL_MAX_SIZE or reduce concurrency to prevent connection exhaustion.",
+                "Worker concurrency (%s) + pool headroom (%s) exceeds configured pool max (%s). "
+                "Increase ELEPHANTQ_POOL_MAX_SIZE or reduce concurrency to prevent connection exhaustion.",
                 concurrency,
-                self._settings.db_pool_safety_margin,
-                self._settings.db_pool_max_size,
+                self._settings.pool_headroom,
+                self._settings.pool_max_size,
             )
+
+    async def __aenter__(self):
+        await self._ensure_initialized()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
+        return False
 
     async def close(self):
         """
@@ -260,6 +270,21 @@ class ElephantQ:
 
         return decorator
 
+    def before_job(self, fn):
+        """Register a hook called before each job executes."""
+        self._hooks["before_job"].append(fn)
+        return fn
+
+    def after_job(self, fn):
+        """Register a hook called after each job completes successfully."""
+        self._hooks["after_job"].append(fn)
+        return fn
+
+    def on_error(self, fn):
+        """Register a hook called when a job fails."""
+        self._hooks["on_error"].append(fn)
+        return fn
+
     async def enqueue(self, job_func, connection=None, **kwargs):
         """
         Enqueue a job for processing.
@@ -267,19 +292,89 @@ class ElephantQ:
         Args:
             job_func: Job function to enqueue
             connection: Optional existing asyncpg connection for transactional enqueue
-            **kwargs: Job arguments and options
+            **kwargs: Job arguments and options (priority, queue, scheduled_at, unique, dedup_key)
 
         Returns:
             Job UUID
         """
         await self._ensure_initialized()
 
-        # Import here to avoid circular dependencies
-        from .core.queue import enqueue_job
+        import json
+        import uuid
 
-        return await enqueue_job(
-            self._pool, self._job_registry, job_func, connection=connection, **kwargs  # type: ignore[arg-type]
+        from .core.queue import _normalize_scheduled_time, _validate_job_arguments
+        from .utils.hashing import compute_args_hash
+
+        # Extract enqueue options from kwargs
+        priority = kwargs.pop("priority", None)
+        queue = kwargs.pop("queue", None)
+        scheduled_at = kwargs.pop("scheduled_at", None)
+        unique = kwargs.pop("unique", None)
+        dedup_key = kwargs.pop("dedup_key", None)
+
+        # Resolve job metadata from registry
+        job_name = f"{job_func.__module__}.{job_func.__name__}"
+        job_meta = self._job_registry.get_job(job_name)
+
+        if not job_meta:
+            raise ValueError(
+                f"Job '{job_name}' is not registered. "
+                "Did you forget @app.job() on the function?"
+            )
+
+        _validate_job_arguments(job_name, job_meta, kwargs)
+
+        final_priority = priority if priority is not None else job_meta["priority"]
+        final_queue = queue if queue is not None else job_meta["queue"]
+        final_unique = unique if unique is not None else job_meta["unique"]
+        scheduled_at = _normalize_scheduled_time(scheduled_at)
+
+        args_hash = compute_args_hash(kwargs) if final_unique else None
+        job_id = str(uuid.uuid4())
+        args_json = json.dumps(kwargs, default=str)
+
+        # Transactional enqueue via caller-provided connection (Postgres only)
+        if connection is not None:
+            if hasattr(self._backend, "create_job_transactional"):
+                return await self._backend.create_job_transactional(
+                    connection=connection,
+                    job_id=job_id,
+                    job_name=job_name,
+                    args=args_json,
+                    args_hash=args_hash,
+                    max_attempts=job_meta["max_retries"] + 1,
+                    priority=final_priority,
+                    queue=final_queue,
+                    unique=final_unique,
+                    dedup_key=dedup_key,
+                    scheduled_at=scheduled_at,
+                )
+            raise ValueError(
+                f"Transactional enqueue (connection=) is not supported by "
+                f"{type(self._backend).__name__}. Use PostgresBackend for this feature."
+            )
+
+        result_id = await self._backend.create_job(
+            job_id=job_id,
+            job_name=job_name,
+            args=args_json,
+            args_hash=args_hash,
+            max_attempts=job_meta["max_retries"] + 1,
+            priority=final_priority,
+            queue=final_queue,
+            unique=final_unique,
+            dedup_key=dedup_key,
+            scheduled_at=scheduled_at,
         )
+
+        # Notify workers if backend supports push notifications
+        if self._backend.supports_push_notify:
+            try:
+                await self._backend.notify_new_job(final_queue)
+            except Exception:
+                pass  # Non-critical — workers will poll
+
+        return result_id or job_id
 
     async def schedule(self, job_func, run_at, **kwargs):
         """
@@ -295,7 +390,7 @@ class ElephantQ:
         """
         return await self.enqueue(job_func, scheduled_at=run_at, **kwargs)
 
-    async def get_pool(self) -> asyncpg.Pool:
+    async def get_pool(self) -> Any:
         """Get database connection pool."""
         await self._ensure_initialized()
         return self._pool  # type: ignore[return-value]
@@ -332,6 +427,7 @@ class ElephantQ:
             backend=self._backend,
             registry=self._job_registry,
             settings=self._settings,
+            hooks=self._hooks,
         )
         return await worker.run(
             concurrency=concurrency,
@@ -352,41 +448,15 @@ class ElephantQ:
             Dict with job information or None if job not found
         """
         await self._ensure_initialized()
+        return await self._backend.get_job(job_id)  # type: ignore[union-attr]
 
-        import json
-        import uuid
-
-        async with self._pool.acquire() as conn:  # type: ignore[union-attr]
-            row = await conn.fetchrow(
-                """
-                SELECT id, job_name, args, status, attempts, max_attempts,
-                       queue, priority, scheduled_at, last_error,
-                       created_at, updated_at
-                FROM elephantq_jobs
-                WHERE id = $1
-            """,
-                uuid.UUID(job_id),
-            )
-
-            if not row:
-                return None
-
-            return {
-                "id": str(row["id"]),
-                "job_name": row["job_name"],
-                "args": json.loads(row["args"]),
-                "status": row["status"],
-                "attempts": row["attempts"],
-                "max_attempts": row["max_attempts"],
-                "queue": row["queue"],
-                "priority": row["priority"],
-                "scheduled_at": (
-                    row["scheduled_at"].isoformat() if row["scheduled_at"] else None
-                ),
-                "last_error": row["last_error"],
-                "created_at": row["created_at"].isoformat(),
-                "updated_at": row["updated_at"].isoformat(),
-            }
+    async def get_result(self, job_id: str):
+        """Get the return value of a completed job, or None."""
+        await self._ensure_initialized()
+        job = await self._backend.get_job(job_id)  # type: ignore[union-attr]
+        if job and job.get("status") == "done":
+            return job.get("result")
+        return None
 
     async def cancel_job(self, job_id: str):
         """
@@ -399,21 +469,7 @@ class ElephantQ:
             True if job was cancelled, False if job wasn't found or already processed
         """
         await self._ensure_initialized()
-
-        import uuid
-
-        async with self._pool.acquire() as conn:  # type: ignore[union-attr]
-            result = await conn.execute(
-                """
-                UPDATE elephantq_jobs
-                SET status = 'cancelled', updated_at = NOW()
-                WHERE id = $1 AND status = 'queued'
-            """,
-                uuid.UUID(job_id),
-            )
-
-            # Check if any rows were affected
-            return _rows_affected(result) == 1
+        return await self._backend.cancel_job(job_id)  # type: ignore[union-attr]
 
     async def retry_job(self, job_id: str):
         """
@@ -426,21 +482,7 @@ class ElephantQ:
             True if job was queued for retry, False if job wasn't found or can't be retried
         """
         await self._ensure_initialized()
-
-        import uuid
-
-        async with self._pool.acquire() as conn:  # type: ignore[union-attr]
-            result = await conn.execute(
-                """
-                UPDATE elephantq_jobs
-                SET status = 'queued', attempts = 0, last_error = NULL, updated_at = NOW()
-                WHERE id = $1 AND status IN ('dead_letter', 'failed')
-            """,
-                uuid.UUID(job_id),
-            )
-
-            # Check if any rows were affected
-            return _rows_affected(result) == 1
+        return await self._backend.retry_job(job_id)  # type: ignore[union-attr]
 
     async def delete_job(self, job_id: str):
         """
@@ -453,17 +495,7 @@ class ElephantQ:
             True if job was deleted, False if job wasn't found
         """
         await self._ensure_initialized()
-
-        import uuid
-
-        async with self._pool.acquire() as conn:  # type: ignore[union-attr]
-            result = await conn.execute(
-                "DELETE FROM elephantq_jobs WHERE id = $1",
-                uuid.UUID(job_id),
-            )
-
-            # Check if any rows were affected
-            return _rows_affected(result) == 1
+        return await self._backend.delete_job(job_id)  # type: ignore[union-attr]
 
     async def list_jobs(
         self,
@@ -485,66 +517,9 @@ class ElephantQ:
             List of job dictionaries
         """
         await self._ensure_initialized()
-
-        import json
-
-        # Build the query dynamically based on filters
-        conditions: list[str] = []
-        params: list[Any] = []
-        param_count = 0
-
-        if queue is not None:
-            param_count += 1
-            conditions.append(f"queue = ${param_count}")
-            params.append(queue)
-
-        if status is not None:
-            param_count += 1
-            conditions.append(f"status = ${param_count}")
-            params.append(status)
-
-        where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
-
-        param_count += 1
-        limit_param = f"${param_count}"
-        params.append(limit)
-
-        param_count += 1
-        offset_param = f"${param_count}"
-        params.append(offset)
-
-        query = f"""
-            SELECT id, job_name, args, status, attempts, max_attempts,
-                   queue, priority, scheduled_at, last_error,
-                   created_at, updated_at
-            FROM elephantq_jobs
-            {where_clause}
-            ORDER BY created_at DESC
-            LIMIT {limit_param} OFFSET {offset_param}
-        """
-
-        async with self._pool.acquire() as conn:  # type: ignore[union-attr]
-            rows = await conn.fetch(query, *params)
-
-            return [
-                {
-                    "id": str(row["id"]),
-                    "job_name": row["job_name"],
-                    "args": json.loads(row["args"]),
-                    "status": row["status"],
-                    "attempts": row["attempts"],
-                    "max_attempts": row["max_attempts"],
-                    "queue": row["queue"],
-                    "priority": row["priority"],
-                    "scheduled_at": (
-                        row["scheduled_at"].isoformat() if row["scheduled_at"] else None
-                    ),
-                    "last_error": row["last_error"],
-                    "created_at": row["created_at"].isoformat(),
-                    "updated_at": row["updated_at"].isoformat(),
-                }
-                for row in rows
-            ]
+        return await self._backend.list_jobs(  # type: ignore[union-attr]
+            queue=queue, status=status, limit=limit, offset=offset
+        )
 
     async def get_queue_stats(self):
         """
@@ -554,36 +529,7 @@ class ElephantQ:
             List of dictionaries with queue statistics
         """
         await self._ensure_initialized()
-
-        async with self._pool.acquire() as conn:  # type: ignore[union-attr]
-            rows = await conn.fetch(
-                """
-                SELECT
-                    queue,
-                    COUNT(*) as total,
-                    COUNT(*) FILTER (WHERE status = 'queued') as queued,
-                    COUNT(*) FILTER (WHERE status = 'processing') as processing,
-                    COUNT(*) FILTER (WHERE status = 'done') as done,
-                    COUNT(*) FILTER (WHERE status = 'dead_letter') as dead_letter,
-                    COUNT(*) FILTER (WHERE status = 'cancelled') as cancelled
-                FROM elephantq_jobs
-                GROUP BY queue
-                ORDER BY queue
-            """
-            )
-
-            return [
-                {
-                    "queue": row["queue"],
-                    "total": row["total"],
-                    "queued": row["queued"],
-                    "processing": row["processing"],
-                    "done": row["done"],
-                    "dead_letter": row["dead_letter"],
-                    "cancelled": row["cancelled"],
-                }
-                for row in rows
-            ]
+        return await self._backend.get_queue_stats()
 
     async def get_migration_status(self) -> dict:
         """

@@ -12,6 +12,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+pytest.importorskip("croniter")
+
 os.environ.setdefault("ELEPHANTQ_SCHEDULING_ENABLED", "true")
 
 

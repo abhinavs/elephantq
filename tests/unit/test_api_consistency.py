@@ -7,13 +7,13 @@ import inspect
 
 def test_list_jobs_default_limit_consistent():
     """
-    list_jobs default limit must be the same across all entry points.
+    list_jobs default limit must be the same across global and instance APIs.
     """
-    from elephantq.client import ElephantQ
-    from elephantq.core.queue import list_jobs as global_list_jobs
+    import elephantq
+    from elephantq.app import ElephantQ
 
     # Get default limit from global function
-    sig_global = inspect.signature(global_list_jobs)
+    sig_global = inspect.signature(elephantq.list_jobs)
     global_default = sig_global.parameters["limit"].default
 
     # Get default limit from instance method

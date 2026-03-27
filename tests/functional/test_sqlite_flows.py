@@ -11,8 +11,10 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from elephantq.core.processor import process_job_via_backend
-from elephantq.core.registry import JobRegistry
+pytest.importorskip("aiosqlite")
+
+from elephantq.core.processor import process_job_via_backend  # noqa: E402
+from elephantq.core.registry import JobRegistry  # noqa: E402
 
 
 @pytest.fixture
@@ -21,11 +23,15 @@ def registry():
 
 
 async def _create(backend, registry, func, args=None, **kw):
-    registry.register_job(func, **{k: v for k, v in kw.items() if k in ("retries",)})
+    registry.register_job(
+        func, **{k: v for k, v in kw.items() if k in ("max_retries",)}
+    )
     job_name = f"{func.__module__}.{func.__name__}"
     job_id = str(uuid.uuid4())
     job_meta = registry.get_job(job_name)
-    max_attempts = (kw.get("retries", job_meta["retries"]) if job_meta else 3) + 1
+    max_attempts = (
+        kw.get("max_retries", job_meta["max_retries"]) if job_meta else 3
+    ) + 1
 
     await backend.create_job(
         job_id=job_id,
@@ -36,7 +42,7 @@ async def _create(backend, registry, func, args=None, **kw):
         priority=kw.get("priority", 100),
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=kw.get("scheduled_at"),
     )
     return job_id
@@ -64,7 +70,7 @@ async def test_retry_on_failure(backend, registry):
     async def bad_task():
         raise RuntimeError("fail")
 
-    job_id = await _create(backend, registry, bad_task, retries=2)
+    job_id = await _create(backend, registry, bad_task, max_retries=2)
     await process_job_via_backend(
         backend=backend, job_registry=registry, queues=["default"]
     )
@@ -79,7 +85,7 @@ async def test_dead_letter_after_max(backend, registry):
     async def bad_task():
         raise RuntimeError("fail")
 
-    job_id = await _create(backend, registry, bad_task, retries=0)
+    job_id = await _create(backend, registry, bad_task, max_retries=0)
     await process_job_via_backend(
         backend=backend, job_registry=registry, queues=["default"]
     )

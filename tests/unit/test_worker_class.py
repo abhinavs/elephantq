@@ -37,9 +37,9 @@ def test_worker_has_run_once_method():
 
 
 def asyncio_iscoroutinefunction_safe(func):
-    import asyncio
+    import inspect
 
-    return asyncio.iscoroutinefunction(func)
+    return inspect.iscoroutinefunction(func)
 
 
 @pytest.mark.asyncio
@@ -70,7 +70,7 @@ async def test_worker_run_once_processes_job():
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
 

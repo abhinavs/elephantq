@@ -11,7 +11,7 @@ from typing import Optional
 
 import asyncpg
 
-from ..client import ElephantQ
+from ..app import ElephantQ
 from .connection import _init_connection
 from .connection import get_pool as get_global_pool
 
@@ -57,6 +57,14 @@ class DatabaseContext:
     def from_database_url(cls, database_url: str) -> "DatabaseContext":
         """Create context from database URL directly."""
         return cls(database_url=database_url)
+
+    async def __aenter__(self):
+        pool = await self.get_pool()
+        return pool
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
+        return False
 
     async def get_pool(self) -> asyncpg.Pool:
         """

@@ -39,7 +39,7 @@ async def clean_instance_api_state():
 async def clean_db():
     """Additional fixture for tests that need explicit clean database state - FAST VERSION."""
     # Just clear tables instead of recreating database
-    from elephantq.client import ElephantQ
+    from elephantq.app import ElephantQ
 
     app = ElephantQ(database_url=TEST_DATABASE_URL)
     pool = await app.get_pool()

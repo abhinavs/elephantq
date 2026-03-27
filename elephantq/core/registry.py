@@ -27,7 +27,9 @@ class JobRegistry:
         self,
         func: Callable[..., Any],
         retries: int = 3,
+        max_retries: Optional[int] = None,
         args_model: Optional[Type[BaseModel]] = None,
+        validate: Optional[Type[BaseModel]] = None,
         priority: int = 100,
         queue: str = "default",
         unique: bool = False,
@@ -43,7 +45,7 @@ class JobRegistry:
         Args:
             func: Job function to register
             retries: Number of retry attempts (default: 3)
-            args_model: Pydantic model for argument validation
+            args_model: Pydantic model for argument validation (alias: validate)
             priority: Job priority (lower = higher priority)
             queue: Queue name for job processing
             unique: Whether job should be deduplicated
@@ -63,11 +65,17 @@ class JobRegistry:
 
         job_name = f"{func.__module__}.{func.__name__}"
 
+        # validate is the preferred alias for args_model
+        effective_args_model = validate or args_model
+
+        # max_retries is preferred; retries is the backward-compat alias
+        effective_max_retries = max_retries if max_retries is not None else retries
+
         # Store job metadata
         job_config = {
             "func": wrapper,
-            "retries": retries,
-            "args_model": args_model,
+            "max_retries": effective_max_retries,
+            "args_model": effective_args_model,
             "priority": priority,
             "queue": queue,
             "unique": unique,
@@ -160,101 +168,33 @@ class JobRegistry:
         return name in self._registry
 
 
-# Global registry instance
-_global_registry = JobRegistry()
-
-
-def job(
-    retries: int = 3,
-    args_model: Optional[Type[BaseModel]] = None,
-    priority: int = 100,
-    queue: str = "default",
-    unique: bool = False,
-    retry_delay: Optional[Union[int, float, List[Union[int, float]]]] = 0,
-    retry_backoff: bool = False,
-    retry_max_delay: Optional[Union[int, float]] = None,
-    timeout: Optional[Union[int, float]] = None,
-    **kwargs,
-):
-    """
-    Global job decorator using the global registry instance.
-
-    Args:
-        retries: Number of retry attempts (default: 3)
-        args_model: Pydantic model for argument validation
-        priority: Job priority (lower = higher priority)
-        queue: Queue name for job processing
-        unique: Whether job should be deduplicated
-        retry_delay: Retry delay in seconds or list of delays per attempt
-        retry_backoff: Apply exponential backoff to retry_delay
-        retry_max_delay: Optional maximum delay cap in seconds
-        timeout: Per-job timeout in seconds (None = use global default)
-        **kwargs: Additional job configuration
-
-    Returns:
-        Job decorator function
-    """
-
-    def decorator(func: Callable[..., Any]):
-        return _global_registry.register_job(
-            func=func,
-            retries=retries,
-            args_model=args_model,
-            priority=priority,
-            queue=queue,
-            unique=unique,
-            retry_delay=retry_delay,
-            retry_backoff=retry_backoff,
-            retry_max_delay=retry_max_delay,
-            timeout=timeout,
-            **kwargs,
-        )
-
-    return decorator
-
-
 def get_job(name: str) -> Optional[Dict[str, Any]]:
     """
-    Get job from global registry.
-
-    For compatibility, this now delegates to the global ElephantQ app.
+    Get job configuration by name from the global app's registry.
 
     Args:
-        name: Job name
+        name: Fully qualified job name (module.function)
 
     Returns:
-        Job configuration or None
+        Job configuration dict or None
     """
-    # Try the new global app first
-    try:
-        import elephantq
+    import elephantq
 
-        global_app = elephantq._get_global_app()
-        result = global_app.get_job_registry().get_job(name)
-        if result is not None:
-            return result
-    except (ImportError, AttributeError):
-        pass
-
-    # Fallback to old global registry
-    return _global_registry.get_job(name)
-
-
-def get_all_jobs() -> List[str]:
-    """Get all registered job names from global registry."""
-    return _global_registry.get_all_jobs()
-
-
-def clear_registry():
-    """Clear global registry. Used for testing."""
-    _global_registry.clear()
+    return elephantq._get_global_app().get_job_registry().get_job(name)
 
 
 def get_global_registry() -> JobRegistry:
     """
-    Get the global job registry instance.
+    Get the global app's job registry.
 
     Returns:
-        Global JobRegistry instance
+        JobRegistry from the global ElephantQ instance
     """
-    return _global_registry
+    import elephantq
+
+    return elephantq._get_global_app().get_job_registry()
+
+
+def clear_registry():
+    """Clear global registry. Used for testing."""
+    get_global_registry().clear()

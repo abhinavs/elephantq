@@ -43,22 +43,15 @@ class TestRowsAffectedDeadLetter:
         assert result == 3
 
 
-class TestRowsAffectedClientAndQueue:
-    """Verify the correct implementations in client.py and core/queue.py still work."""
+class TestRowsAffectedSharedImport:
+    """Verify the shared helper in db/helpers.py works."""
 
-    def test_client_rows_affected(self):
-        from elephantq.client import _rows_affected
+    def test_helpers_rows_affected(self):
+        from elephantq.db.helpers import rows_affected
 
-        assert _rows_affected("DELETE 5") == 5
-        assert _rows_affected("UPDATE 0") == 0
-        assert _rows_affected("") == 0
-
-    def test_queue_rows_affected(self):
-        from elephantq.core.queue import _rows_affected
-
-        assert _rows_affected("DELETE 5") == 5
-        assert _rows_affected("UPDATE 0") == 0
-        assert _rows_affected("") == 0
+        assert rows_affected("DELETE 5") == 5
+        assert rows_affected("UPDATE 0") == 0
+        assert rows_affected("") == 0
 
 
 class TestRowsAffectedSharedHelper:

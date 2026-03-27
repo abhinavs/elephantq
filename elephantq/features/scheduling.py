@@ -171,7 +171,7 @@ class JobScheduleBuilder:
             _scheduler_metadata[job_id] = {
                 "tags": self._tags,
                 "timeout": self._timeout,
-                "retries": self._retries,
+                "max_retries": self._retries,
             }
 
         return job_id  # type: ignore[no-any-return]
@@ -185,7 +185,7 @@ class JobScheduleBuilder:
             ),
             "priority": self._priority,
             "queue": self._queue,
-            "retries": self._retries,
+            "max_retries": self._retries,
             "tags": self._tags,
             "timeout": self._timeout,
             "condition": "Custom condition" if self._condition else None,

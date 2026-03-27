@@ -84,7 +84,7 @@ class SQLiteBackend:
                 queue TEXT DEFAULT 'default',
                 priority INTEGER DEFAULT 100,
                 unique_job INTEGER DEFAULT 0,
-                queueing_lock TEXT,
+                dedup_key TEXT,
                 scheduled_at TEXT,
                 expires_at TEXT,
                 last_error TEXT,
@@ -126,7 +126,7 @@ class SQLiteBackend:
         priority: int,
         queue: str,
         unique: bool,
-        queueing_lock: Optional[str] = None,
+        dedup_key: Optional[str] = None,
         scheduled_at: Optional[datetime] = None,
     ) -> Optional[str]:
         assert self._conn is not None
@@ -146,10 +146,10 @@ class SQLiteBackend:
                     return str(row["id"])
 
         # Queueing lock dedup
-        if queueing_lock:
+        if dedup_key:
             async with self._conn.execute(
-                "SELECT id FROM elephantq_jobs WHERE queueing_lock = ? AND status = 'queued'",
-                (queueing_lock,),
+                "SELECT id FROM elephantq_jobs WHERE dedup_key = ? AND status = 'queued'",
+                (dedup_key,),
             ) as cursor:
                 row = await cursor.fetchone()
                 if row:
@@ -160,7 +160,7 @@ class SQLiteBackend:
             """
             INSERT INTO elephantq_jobs
                 (id, job_name, args, args_hash, max_attempts, priority, queue,
-                 unique_job, queueing_lock, scheduled_at, created_at, updated_at)
+                 unique_job, dedup_key, scheduled_at, created_at, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
@@ -172,7 +172,7 @@ class SQLiteBackend:
                 priority,
                 queue,
                 1 if unique else 0,
-                queueing_lock,
+                dedup_key,
                 sched,
                 now,
                 now,
@@ -220,12 +220,13 @@ class SQLiteBackend:
 
             job_id = row["id"]
             await self._conn.execute(
-                "UPDATE elephantq_jobs SET status='processing', worker_id=?, updated_at=? WHERE id=?",
+                "UPDATE elephantq_jobs SET status='processing', attempts=attempts+1, worker_id=?, updated_at=? WHERE id=?",
                 (worker_id, _now_iso(), job_id),
             )
             await self._conn.commit()
-            # Return raw dict — processor expects args as JSON string
-            return dict(row)
+            result = dict(row)
+            result["attempts"] = result["attempts"] + 1
+            return result
 
     async def notify_new_job(self, queue: str) -> None:
         pass  # No push notification
@@ -238,7 +239,7 @@ class SQLiteBackend:
     # --- Job status transitions ---
 
     async def mark_job_done(
-        self, job_id: str, *, result_ttl: Optional[int] = None
+        self, job_id: str, *, result_ttl: Optional[int] = None, result: Any = None
     ) -> None:
         assert self._conn is not None
         if result_ttl is not None and result_ttl == 0:

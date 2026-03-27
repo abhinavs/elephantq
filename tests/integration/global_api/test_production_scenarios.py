@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 import elephantq
-from elephantq.db.connection import PoolContext as DatabaseContext
+from elephantq.db.context import DatabaseContext
 from elephantq.settings import get_settings
 
 
@@ -436,15 +436,17 @@ if __name__ == "__main__":
                     job_ids.append(job_id)
 
                 # Process jobs with timing checks — wait for scheduled times
-                from elephantq.core.processor import process_jobs
+                from elephantq.worker import Worker
+
+                global_app = elephantq._get_global_app()
+                worker = Worker(global_app.backend, global_app.get_job_registry())
 
                 start_time = time.time()
                 processed_jobs = 0
                 while (
                     processed_jobs < 3 and time.time() - start_time < 10
                 ):  # 10-second timeout
-                    async with pool.acquire() as conn:
-                        processed = await process_jobs(conn, None)
+                    processed = await worker.run_once(queues=None, max_jobs=1)
                     if processed:
                         processed_jobs += 1
                     else:

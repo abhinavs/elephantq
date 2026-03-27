@@ -13,7 +13,7 @@ import pytest
 
 import elephantq
 from elephantq.core.heartbeat import cleanup_stale_workers
-from elephantq.core.processor import process_jobs_with_registry
+from elephantq.worker import Worker
 
 
 @elephantq.job()
@@ -92,6 +92,8 @@ async def test_recovered_job_is_processed_by_new_worker():
     app = elephantq._get_global_app()
     pool = await app.get_pool()
     registry = app.get_job_registry()
+    backend = app.backend
+    worker = Worker(backend, registry)
 
     # Enqueue a job, then manually set it to 'processing' with a stale worker
     job_id = await app.enqueue(recoverable_job, marker="crash-recovery-test")
@@ -125,13 +127,7 @@ async def test_recovered_job_is_processed_by_new_worker():
     await cleanup_stale_workers(pool, stale_threshold_seconds=60)
 
     # Now a new worker should pick up and process the job
-    async with pool.acquire() as conn:
-        processed = await process_jobs_with_registry(
-            conn=conn,
-            job_registry=registry,
-            queue=None,
-            heartbeat=None,
-        )
+    processed = await worker.run_once(queues=None, max_jobs=1)
 
     assert processed is True
 

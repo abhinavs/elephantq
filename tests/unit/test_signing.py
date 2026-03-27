@@ -7,6 +7,8 @@ import os
 
 import pytest
 
+pytest.importorskip("cryptography")
+
 
 @pytest.fixture(autouse=True)
 def set_secret_key(monkeypatch):

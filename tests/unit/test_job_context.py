@@ -30,7 +30,7 @@ def _make_job_meta(func):
     return {
         "func": func,
         "args_model": None,
-        "retries": 4,
+        "max_retries": 4,
         "retry_delay": 0,
         "retry_backoff": False,
         "retry_max_delay": None,
@@ -54,7 +54,7 @@ async def test_job_with_context_receives_metadata():
     job_record = _make_job_record({"msg": "hello"})
     job_meta = _make_job_meta(my_job)
 
-    success, error = await _execute_job_safely(job_record, job_meta)
+    success, error, _result = await _execute_job_safely(job_record, job_meta)
     assert success is True
     assert received["job_id"] == "12345678-1234-5678-1234-567812345678"
     assert received["attempt"] == 2
@@ -74,7 +74,7 @@ async def test_job_without_context_works_unchanged():
     job_record = _make_job_record({"x": 42})
     job_meta = _make_job_meta(simple_job)
 
-    success, error = await _execute_job_safely(job_record, job_meta)
+    success, error, _result = await _execute_job_safely(job_record, job_meta)
     assert success is True
     assert called is True
 

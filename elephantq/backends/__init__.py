@@ -59,14 +59,14 @@ class StorageBackend(Protocol):
         priority: int,
         queue: str,
         unique: bool,
-        queueing_lock: Optional[str],
+        dedup_key: Optional[str],
         scheduled_at: Optional[datetime],
     ) -> Optional[str]:
         """
         Insert a job. Return job_id on success.
 
         If unique=True and a duplicate queued job exists, return existing ID.
-        If queueing_lock is set and a locked queued job exists, return existing ID.
+        If dedup_key is set and a locked queued job exists, return existing ID.
         """
         ...
 
@@ -114,6 +114,7 @@ class StorageBackend(Protocol):
         job_id: str,
         *,
         result_ttl: Optional[int] = None,
+        result: Any = None,
     ) -> None:
         """Mark job as done. If result_ttl=0, delete immediately."""
         ...

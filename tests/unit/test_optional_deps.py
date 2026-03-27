@@ -4,12 +4,15 @@ Tests that optional dependency guards work correctly.
 Written to verify HIGH-03: optional deps produce clear error messages.
 """
 
+import pytest
+
 
 class TestOptionalDepGuards:
     """Verify import guards produce actionable error messages."""
 
     def test_recurring_has_croniter_guard(self):
         """recurring.py should have a _require_croniter guard function."""
+        pytest.importorskip("croniter")
         from elephantq.features.recurring import _require_croniter
 
         # Since croniter is installed in dev, this should not raise
@@ -17,6 +20,7 @@ class TestOptionalDepGuards:
 
     def test_webhooks_has_aiohttp_guard(self):
         """webhooks.py should have a _require_aiohttp guard function."""
+        pytest.importorskip("aiohttp")
         from elephantq.features.webhooks import _require_aiohttp
 
         # Since aiohttp is installed in dev, this should not raise
@@ -24,6 +28,7 @@ class TestOptionalDepGuards:
 
     def test_signing_has_cryptography_guard(self):
         """signing.py should have a _require_cryptography guard function."""
+        pytest.importorskip("cryptography")
         from elephantq.features.signing import _require_cryptography
 
         # Since cryptography is installed in dev, this should not raise

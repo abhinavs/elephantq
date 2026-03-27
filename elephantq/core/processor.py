@@ -1,174 +1,27 @@
 """
-Job processing engine with proper transaction handling
-Core functionality only
+Job processing engine.
+
+The backend-aware path: process_job_via_backend() is the only active
+processing function. It fetches, executes, and updates jobs through
+the StorageBackend abstraction.
 """
 
 import asyncio
 import inspect
 import json
 import logging
-import os
 import time
-import uuid
-from typing import Any, Callable, List, Optional, Union
+from typing import Any, List, Optional
 
-import asyncpg
-
-from elephantq.core.heartbeat import WorkerHeartbeat
-from elephantq.core.registry import JobRegistry, get_job
+from elephantq.core.registry import JobRegistry
 from elephantq.core.retry import compute_retry_delay_seconds
 
-# Basic logging for free edition
 logger = logging.getLogger(__name__)
-
-
-def _should_skip_update_lock() -> bool:
-    """
-    Check if row-level locking should be skipped.
-
-    Only honored in debug or testing mode to prevent accidental
-    duplicate job execution in production.
-    """
-    env_val = os.environ.get("ELEPHANTQ_SKIP_UPDATE_LOCK", "").lower()
-    if env_val not in {"1", "true", "yes", "on"}:
-        return False
-
-    from elephantq.settings import get_settings
-
-    settings = get_settings()
-    if settings.debug or settings.environment == "testing":
-        return True
-
-    logger.warning(
-        "ELEPHANTQ_SKIP_UPDATE_LOCK is set but ignored in production mode. "
-        "Set ELEPHANTQ_DEBUG=true or ELEPHANTQ_ENVIRONMENT=testing to enable."
-    )
-    return False
-
-
-async def _move_job_to_dead_letter(
-    conn: asyncpg.Connection, job_id: uuid.UUID, max_attempts: int, error_message: str
-) -> None:
-    """
-    Move a job to dead letter queue due to corruption or permanent failure.
-
-    Args:
-        conn: Database connection
-        job_id: Job ID to move
-        max_attempts: Maximum attempts for the job
-        error_message: Error description
-    """
-    async with conn.transaction():
-        await conn.execute(
-            """
-            UPDATE elephantq_jobs
-            SET status = 'dead_letter',
-                attempts = $2,
-                last_error = $3,
-                updated_at = NOW()
-            WHERE id = $1
-        """,
-            job_id,
-            max_attempts,
-            error_message,
-        )
-    logger.error(f"Job {job_id} moved to dead letter queue: {error_message}")
-
-
-async def _fetch_and_lock_job(
-    conn: asyncpg.Connection,
-    queue: Optional[Union[str, List[str]]],
-    heartbeat: Optional["WorkerHeartbeat"] = None,
-) -> Optional[dict]:
-    """
-    Fetch and lock a job from the queue in a transaction.
-
-    Args:
-        conn: Database connection
-        queue: Queue specification
-        heartbeat: Optional worker heartbeat for tracking
-
-    Returns:
-        Job record dict or None if no jobs available
-    """
-    lock_clause = "" if _should_skip_update_lock() else "FOR UPDATE SKIP LOCKED"
-    async with conn.transaction():
-        # Lock and fetch the next job (ordered by priority then scheduled time)
-        if queue is None:
-            # Process from ANY queue (no filtering)
-            job_record = await conn.fetchrow(
-                f"""
-                SELECT * FROM elephantq_jobs
-                WHERE status = 'queued'
-                AND (scheduled_at IS NULL OR scheduled_at <= NOW())
-                ORDER BY priority ASC, scheduled_at ASC NULLS FIRST, created_at ASC
-                {lock_clause}
-                LIMIT 1
-            """
-            )
-        elif isinstance(queue, list):
-            # Process from multiple specific queues efficiently
-            job_record = await conn.fetchrow(
-                f"""
-                SELECT * FROM elephantq_jobs
-                WHERE status = 'queued'
-                AND queue = ANY($1)
-                AND (scheduled_at IS NULL OR scheduled_at <= NOW())
-                ORDER BY priority ASC, scheduled_at ASC NULLS FIRST, created_at ASC
-                {lock_clause}
-                LIMIT 1
-            """,
-                queue,
-            )
-        else:
-            # Process from single specific queue
-            job_record = await conn.fetchrow(
-                f"""
-                SELECT * FROM elephantq_jobs
-                WHERE status = 'queued'
-                AND queue = $1
-                AND (scheduled_at IS NULL OR scheduled_at <= NOW())
-                ORDER BY priority ASC, scheduled_at ASC NULLS FIRST, created_at ASC
-                {lock_clause}
-                LIMIT 1
-            """,
-                queue,
-            )
-        if not job_record:
-            return None
-
-        # Mark job as processing to prevent other workers from picking it up
-        job_id = job_record["id"]
-        if heartbeat:
-            # Update job with worker tracking
-            await conn.execute(
-                """
-                UPDATE elephantq_jobs
-                SET status = 'processing',
-                    worker_id = $2,
-                    updated_at = NOW()
-                WHERE id = $1
-            """,
-                job_id,
-                heartbeat.worker_id,
-            )
-        else:
-            await conn.execute(
-                """
-                UPDATE elephantq_jobs
-                SET status = 'processing',
-                    updated_at = NOW()
-                WHERE id = $1
-            """,
-                job_id,
-            )
-
-    return dict(job_record)
 
 
 async def _execute_job_safely(
     job_record: dict, job_meta: dict
-) -> tuple[bool, Optional[str]]:
+) -> tuple[bool, Optional[str], Any]:
     """
     Execute a job function safely with proper error handling.
 
@@ -198,7 +51,6 @@ async def _execute_job_safely(
         try:
             validated_args = args_model(**args_data).model_dump()
         except (TypeError, ValueError, AttributeError) as validation_error:
-            # This will be handled by the caller
             raise ValueError(
                 f"Corrupted argument data: {str(validation_error)}"
             ) from validation_error
@@ -234,252 +86,28 @@ async def _execute_job_safely(
     # Execute the job function (outside transaction) with optional timeout
     try:
         if timeout:
-            await asyncio.wait_for(func(**validated_args), timeout=timeout)
+            result = await asyncio.wait_for(func(**validated_args), timeout=timeout)
         else:
-            await func(**validated_args)
-        return True, None
+            result = await func(**validated_args)
+        return True, None, result
     except asyncio.TimeoutError:
-        return False, f"Job timed out after {timeout}s"
+        return False, f"Job timed out after {timeout}s", None
     except Exception as e:
-        # All job execution errors are treated as retryable failures.
-        # Corruption is only detected at the data layer (JSON parse,
-        # Pydantic validation) above — never by inspecting error messages.
-        return False, str(e)
+        return False, str(e), None
 
 
-async def _update_job_status(
-    conn: asyncpg.Connection,
-    job_record: dict,
-    job_meta: dict,
-    success: bool,
-    error_message: Optional[str],
-    duration_ms: float,
-) -> None:
-    """
-    Update job status in database based on execution result.
+async def _call_hooks(hooks: dict, hook_name: str, *args) -> None:
+    """Call all registered hooks for an event, catching errors."""
+    for fn in hooks.get(hook_name, []):
+        try:
+            import inspect as _inspect
 
-    Args:
-        conn: Database connection
-        job_record: Original job record
-        success: Whether job execution succeeded
-        error_message: Error message if job failed
-        duration_ms: Job execution duration in milliseconds
-    """
-    job_id = job_record["id"]
-    attempts = job_record["attempts"]
-    max_attempts = job_record["max_attempts"]
-
-    async with conn.transaction():
-        if success:
-            # Handle job result TTL setting
-            from elephantq.settings import get_settings
-
-            settings = get_settings()
-
-            if settings.result_ttl == 0:
-                # Delete immediately (TTL = 0)
-                await conn.execute(
-                    """
-                    DELETE FROM elephantq_jobs
-                    WHERE id = $1
-                """,
-                    job_id,
-                )
-                logger.info(
-                    f"Job {job_id} completed successfully in {duration_ms}ms (deleted immediately)"
-                )
+            if _inspect.iscoroutinefunction(fn):
+                await fn(*args)
             else:
-                # Keep with status 'done' and set expires_at for TTL cleanup
-                await conn.execute(
-                    """
-                    UPDATE elephantq_jobs
-                    SET status = 'done',
-                        expires_at = NOW() + ($2 || ' seconds')::INTERVAL,
-                        updated_at = NOW()
-                    WHERE id = $1
-                """,
-                    job_id,
-                    str(settings.result_ttl),
-                )
-                logger.info(
-                    f"Job {job_id} completed successfully in {duration_ms}ms (expires in {settings.result_ttl}s)"
-                )
-        else:
-            # Job failed - increment attempts
-            new_attempts = attempts + 1
-            if new_attempts >= max_attempts:
-                # Permanently failed - move to dead letter queue
-                await conn.execute(
-                    """
-                    UPDATE elephantq_jobs
-                    SET status = 'dead_letter',
-                        attempts = $1,
-                        last_error = $2,
-                        updated_at = NOW()
-                    WHERE id = $3
-                """,
-                    new_attempts,
-                    f"Max retries exceeded: {error_message}",
-                    job_id,
-                )
-                logger.error(
-                    f"Job {job_id} moved to dead letter queue after {new_attempts} attempts"
-                )
-            else:
-                retry_delay = compute_retry_delay_seconds(
-                    attempt=new_attempts,
-                    retry_delay=job_meta.get("retry_delay", 0),
-                    retry_backoff=job_meta.get("retry_backoff", False),
-                    retry_max_delay=job_meta.get("retry_max_delay"),
-                )
-
-                # Use scheduled_at to delay retries without blocking workers.
-                if retry_delay > 0:
-                    await conn.execute(
-                        """
-                        UPDATE elephantq_jobs
-                        SET status = 'queued',
-                            attempts = $1,
-                            last_error = $2,
-                            scheduled_at = NOW() + ($3 || ' seconds')::INTERVAL,
-                            updated_at = NOW()
-                        WHERE id = $4
-                    """,
-                        new_attempts,
-                        error_message,
-                        str(retry_delay),
-                        job_id,
-                    )
-                    logger.warning(
-                        f"Job {job_id} will be retried in {retry_delay:.2f}s (attempt {new_attempts} failed)"
-                    )
-                else:
-                    # Retry immediately
-                    await conn.execute(
-                        """
-                        UPDATE elephantq_jobs
-                        SET status = 'queued',
-                            attempts = $1,
-                            last_error = $2,
-                            scheduled_at = NULL,
-                            updated_at = NOW()
-                        WHERE id = $3
-                    """,
-                        new_attempts,
-                        error_message,
-                        job_id,
-                    )
-                    logger.warning(
-                        f"Job {job_id} will be retried immediately (attempt {new_attempts} failed)"
-                    )
-
-
-async def _process_job_common(
-    conn: asyncpg.Connection,
-    job_lookup: Callable[[str], Optional[dict]],
-    queue: Optional[Union[str, List[str]]] = "default",
-    heartbeat: Optional["WorkerHeartbeat"] = None,
-) -> bool:
-    """
-    Shared job processing logic for both global and instance-based APIs.
-
-    Executes jobs OUTSIDE of database transactions to prevent long-running jobs
-    from holding database locks and causing deadlocks.
-
-    Args:
-        conn: Database connection
-        job_lookup: Callable that takes a job_name and returns job metadata or None
-        queue: Queue specification (None, str, or list of str)
-        heartbeat: Optional worker heartbeat tracker
-
-    Returns:
-        bool: True if a job was processed, False if no jobs available
-    """
-    job_record = await _fetch_and_lock_job(conn, queue, heartbeat)
-    if not job_record:
-        return False
-
-    job_id = job_record["id"]
-    job_name = job_record["job_name"]
-    max_attempts = job_record["max_attempts"]
-    attempts = job_record["attempts"]
-
-    start_time = time.time()
-    logger.info(
-        f"Processing job {job_id} ({job_name}) - attempt {attempts + 1}/{max_attempts}"
-    )
-
-    job_meta = job_lookup(job_name)
-    if not job_meta:
-        await conn.execute(
-            """
-            UPDATE elephantq_jobs
-            SET status = 'dead_letter',
-                attempts = max_attempts,
-                last_error = $1,
-                updated_at = NOW()
-            WHERE id = $2
-        """,
-            f"Job {job_name} not registered.",
-            job_id,
-        )
-        logger.error(f"Job {job_name} not registered - moved to dead letter queue")
-        return True
-
-    try:
-        job_success, job_error = await _execute_job_safely(job_record, job_meta)
-    except ValueError as corruption_error:
-        logger.error(f"Job {job_id} has corrupted data: {corruption_error}")
-        await _move_job_to_dead_letter(
-            conn, job_id, max_attempts, str(corruption_error)
-        )
-        return True
-
-    duration_ms = round((time.time() - start_time) * 1000, 2)
-    await _update_job_status(
-        conn, job_record, job_meta, job_success, job_error, duration_ms
-    )
-
-    return True
-
-
-async def process_jobs(
-    conn: asyncpg.Connection,
-    queue: Optional[Union[str, List[str]]] = "default",
-    heartbeat: Optional["WorkerHeartbeat"] = None,
-) -> bool:
-    """
-    Process a single job from the queue(s) using the global registry.
-
-    Args:
-        conn: Database connection
-        queue: Queue specification (None, str, or list of str)
-
-    Returns:
-        bool: True if a job was processed, False if no jobs available
-    """
-    return await _process_job_common(conn, get_job, queue, heartbeat)
-
-
-async def process_jobs_with_registry(
-    conn: asyncpg.Connection,
-    job_registry: JobRegistry,
-    queue: Optional[Union[str, List[str]]] = "default",
-    heartbeat: Optional["WorkerHeartbeat"] = None,
-) -> bool:
-    """
-    Instance-based job processing with explicit JobRegistry.
-
-    Args:
-        conn: Database connection
-        job_registry: JobRegistry instance to use for job lookup
-        queue: Queue specification (None, str, or list of str)
-        heartbeat: Optional worker heartbeat tracker
-
-    Returns:
-        bool: True if a job was processed, False if no jobs available
-    """
-    return await _process_job_common(conn, job_registry.get_job, queue, heartbeat)
+                fn(*args)
+        except Exception as e:
+            logger.warning(f"Hook {hook_name} failed: {e}")
 
 
 async def process_job_via_backend(
@@ -487,12 +115,13 @@ async def process_job_via_backend(
     job_registry: JobRegistry,
     queues: Optional[List[str]] = None,
     worker_id: Optional[str] = None,
+    hooks: Optional[dict] = None,
 ) -> bool:
     """
     Process a single job using a StorageBackend.
 
-    This is the backend-aware processing path. It replaces the raw
-    asyncpg.Connection path for backends that implement StorageBackend.
+    This is the primary processing path. It fetches, executes, and
+    updates jobs through the backend abstraction.
 
     Args:
         backend: StorageBackend instance
@@ -504,6 +133,8 @@ async def process_job_via_backend(
         True if a job was processed, False if no jobs available
     """
     from elephantq.settings import get_settings
+
+    _hooks = hooks or {}
 
     job_record = await backend.fetch_and_lock_job(
         queues=queues,
@@ -519,8 +150,18 @@ async def process_job_via_backend(
 
     start_time = time.time()
     logger.info(
-        f"Processing job {job_id} ({job_name}) - attempt {attempts + 1}/{max_attempts}"
+        f"Processing job {job_id} ({job_name}) - attempt {attempts}/{max_attempts}"
     )
+
+    # Guard: if repeated crashes pushed attempts past max, dead-letter without executing
+    if attempts > max_attempts:
+        await backend.mark_job_dead_letter(
+            job_id,
+            attempts=attempts,
+            error="Max attempts exceeded (job crashed repeatedly)",
+        )
+        logger.error(f"Job {job_id} dead-lettered after {attempts} crash attempts")
+        return True
 
     job_meta = job_registry.get_job(job_name)
     if not job_meta:
@@ -532,8 +173,12 @@ async def process_job_via_backend(
         logger.error(f"Job {job_name} not registered - moved to dead letter queue")
         return True
 
+    await _call_hooks(_hooks, "before_job", job_name, job_id, attempts)
+
     try:
-        job_success, job_error = await _execute_job_safely(job_record, job_meta)
+        job_success, job_error, job_result = await _execute_job_safely(
+            job_record, job_meta
+        )
     except ValueError as corruption_error:
         logger.error(f"Job {job_id} has corrupted data: {corruption_error}")
         await backend.mark_job_dead_letter(
@@ -547,34 +192,37 @@ async def process_job_via_backend(
 
     if job_success:
         settings = get_settings()
-        await backend.mark_job_done(job_id, result_ttl=settings.result_ttl)
+        await backend.mark_job_done(
+            job_id, result_ttl=settings.result_ttl, result=job_result
+        )
         logger.info(f"Job {job_id} completed in {duration_ms}ms")
+        await _call_hooks(_hooks, "after_job", job_name, job_id, duration_ms)
     else:
-        new_attempts = attempts + 1
-        if new_attempts >= max_attempts:
+        await _call_hooks(
+            _hooks, "on_error", job_name, job_id, str(job_error), attempts
+        )
+        if attempts >= max_attempts:
             await backend.mark_job_dead_letter(
                 job_id,
-                attempts=new_attempts,
+                attempts=attempts,
                 error=f"Max retries exceeded: {job_error}",
             )
-            logger.error(
-                f"Job {job_id} moved to dead letter after {new_attempts} attempts"
-            )
+            logger.error(f"Job {job_id} moved to dead letter after {attempts} attempts")
         else:
             retry_delay = compute_retry_delay_seconds(
-                attempt=new_attempts,
+                attempt=attempts,
                 retry_delay=job_meta.get("retry_delay", 0),
                 retry_backoff=job_meta.get("retry_backoff", False),
                 retry_max_delay=job_meta.get("retry_max_delay"),
             )
             await backend.mark_job_failed(
                 job_id,
-                attempts=new_attempts,
+                attempts=attempts,
                 error=str(job_error),
                 retry_delay=retry_delay if retry_delay > 0 else None,
             )
             logger.warning(
-                f"Job {job_id} failed (attempt {new_attempts}), "
+                f"Job {job_id} failed (attempt {attempts}), "
                 + (
                     f"retrying in {retry_delay:.1f}s"
                     if retry_delay > 0

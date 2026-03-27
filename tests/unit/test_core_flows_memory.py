@@ -32,7 +32,7 @@ async def _enqueue(backend, registry, func, args=None, **overrides):
         **{
             k: v
             for k, v in overrides.items()
-            if k in ("retries", "queue", "priority", "timeout")
+            if k in ("max_retries", "queue", "priority", "timeout")
         },
     )
     job_name = f"{func.__module__}.{func.__name__}"
@@ -43,7 +43,7 @@ async def _enqueue(backend, registry, func, args=None, **overrides):
     args_json = json.dumps(args_dict, default=str)
     job_meta = registry.get_job(job_name)
     max_attempts = (
-        overrides.get("retries", job_meta["retries"]) if job_meta else 3
+        overrides.get("max_retries", job_meta["max_retries"]) if job_meta else 3
     ) + 1
 
     await backend.create_job(
@@ -55,7 +55,7 @@ async def _enqueue(backend, registry, func, args=None, **overrides):
         priority=overrides.get("priority", 100),
         queue=overrides.get("queue", "default"),
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=overrides.get("scheduled_at"),
     )
     return job_id
@@ -108,7 +108,7 @@ async def test_failed_job_dead_letters_after_max_attempts(backend, registry):
     async def always_fails():
         raise RuntimeError("permanent")
 
-    job_id = await _enqueue(backend, registry, always_fails, retries=1)
+    job_id = await _enqueue(backend, registry, always_fails, max_retries=1)
 
     # Attempt 1 → retry
     await process_job_via_backend(
@@ -139,7 +139,7 @@ async def test_retry_dead_letter_job(backend, registry):
     async def always_fails():
         raise RuntimeError("boom")
 
-    job_id = await _enqueue(backend, registry, always_fails, retries=0)
+    job_id = await _enqueue(backend, registry, always_fails, max_retries=0)
     await process_job_via_backend(
         backend=backend, job_registry=registry, queues=["default"]
     )
@@ -185,7 +185,7 @@ async def test_unique_job_deduplication(backend, registry):
         priority=100,
         queue="default",
         unique=True,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
 
@@ -198,7 +198,7 @@ async def test_unique_job_deduplication(backend, registry):
         priority=100,
         queue="default",
         unique=True,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
 
@@ -225,7 +225,7 @@ async def test_priority_ordering(backend, registry):
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
     await backend.create_job(
@@ -237,7 +237,7 @@ async def test_priority_ordering(backend, registry):
         priority=1,
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
 

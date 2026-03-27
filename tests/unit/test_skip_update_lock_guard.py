@@ -2,6 +2,8 @@
 Tests that ELEPHANTQ_SKIP_UPDATE_LOCK is only honored in debug/test mode.
 """
 
+from elephantq.backends.postgres import PostgresBackend
+
 
 def test_skip_lock_ignored_in_production(monkeypatch):
     """ELEPHANTQ_SKIP_UPDATE_LOCK must be ignored when environment=production and debug=False."""
@@ -13,9 +15,7 @@ def test_skip_lock_ignored_in_production(monkeypatch):
     monkeypatch.setattr(settings, "debug", False)
     monkeypatch.setattr(settings, "environment", "production")
 
-    from elephantq.core.processor import _should_skip_update_lock
-
-    assert _should_skip_update_lock() is False
+    assert PostgresBackend._should_skip_lock() is False
 
 
 def test_skip_lock_honored_in_debug(monkeypatch):
@@ -28,9 +28,7 @@ def test_skip_lock_honored_in_debug(monkeypatch):
     monkeypatch.setattr(settings, "debug", True)
     monkeypatch.setattr(settings, "environment", "production")
 
-    from elephantq.core.processor import _should_skip_update_lock
-
-    assert _should_skip_update_lock() is True
+    assert PostgresBackend._should_skip_lock() is True
 
 
 def test_skip_lock_honored_in_testing(monkeypatch):
@@ -43,15 +41,11 @@ def test_skip_lock_honored_in_testing(monkeypatch):
     monkeypatch.setattr(settings, "debug", False)
     monkeypatch.setattr(settings, "environment", "testing")
 
-    from elephantq.core.processor import _should_skip_update_lock
-
-    assert _should_skip_update_lock() is True
+    assert PostgresBackend._should_skip_lock() is True
 
 
 def test_skip_lock_false_when_env_not_set(monkeypatch):
     """When ELEPHANTQ_SKIP_UPDATE_LOCK is not set, lock is always active."""
     monkeypatch.delenv("ELEPHANTQ_SKIP_UPDATE_LOCK", raising=False)
 
-    from elephantq.core.processor import _should_skip_update_lock
-
-    assert _should_skip_update_lock() is False
+    assert PostgresBackend._should_skip_lock() is False

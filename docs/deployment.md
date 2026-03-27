@@ -60,7 +60,7 @@ export ELEPHANTQ_DATABASE_URL="postgresql://elephantq:your_secure_password@local
 # export ELEPHANTQ_DATABASE_URL="postgresql://user:pass@your-db-host:5432/elephantq_prod"
 
 # 4. Initialize schema
-elephantq migrate
+elephantq setup
 ```
 
 ✅ **Database is ready!** ElephantQ will connect automatically.
@@ -281,25 +281,25 @@ kubectl top pods
 ### Health Checks
 
 ```bash
-# Basic health check
-elephantq health --verbose
+# System status (database connectivity, queue stats, worker summary)
+elephantq status --verbose
 
-# Readiness probe (for load balancers)
-elephantq ready
+# Show recent jobs too
+elephantq status --verbose --jobs
 ```
 
 ### Job Management
 
 ```bash
-# View job status
-elephantq jobs list --status failed --limit 20
-
-# Monitor queues
+# Monitor queues and system health
 elephantq status
 
-# Manual job operations
-elephantq jobs retry <job-id>
-elephantq jobs cancel <job-id>
+# View worker status
+elephantq workers
+
+# Dead letter queue management (requires ELEPHANTQ_DEAD_LETTER_QUEUE_ENABLED=true)
+elephantq dead-letter list --limit 20
+elephantq dead-letter resurrect <job-id>
 ```
 
 ### Database Monitoring
@@ -376,7 +376,7 @@ ELEPHANTQ_DB_POOL_MAX_SIZE = 50
 
 ```bash
 # Check database connectivity
-elephantq health --verbose
+elephantq status --verbose
 
 # Check for stuck jobs
 psql $ELEPHANTQ_DATABASE_URL -c "SELECT COUNT(*) FROM elephantq_jobs WHERE status='queued';"
@@ -389,7 +389,7 @@ sudo systemctl restart elephantq-worker
 
 ```bash
 # Reduce worker concurrency
-elephantq worker --concurrency 2
+elephantq start --concurrency 2
 
 # Check for memory leaks in job functions
 # Monitor with: htop or ps aux
@@ -423,9 +423,90 @@ docker-compose logs --since 1h elephantq-worker
 
 ---
 
+## Queue Routing
+
+When different queues have different throughput or latency needs, run separate worker processes per queue group. This lets you scale each group independently.
+
+### Supervisor (one program per queue group)
+
+```ini
+[program:elephantq_email_worker]
+command=/opt/elephantq/venv/bin/elephantq start --concurrency=4 --queues=emails,notifications
+autostart=true
+autorestart=true
+user=elephantq
+environment=ELEPHANTQ_DATABASE_URL="postgresql://elephantq:pass@localhost/elephantq_prod"
+
+[program:elephantq_media_worker]
+command=/opt/elephantq/venv/bin/elephantq start --concurrency=2 --queues=media,transcode
+autostart=true
+autorestart=true
+user=elephantq
+environment=ELEPHANTQ_DATABASE_URL="postgresql://elephantq:pass@localhost/elephantq_prod"
+```
+
+### Docker Compose (scale per queue)
+
+```yaml
+services:
+  worker_email:
+    build: { context: ., dockerfile: Dockerfile.worker }
+    command: ["elephantq", "start", "--concurrency=4", "--queues=emails,notifications"]
+    environment:
+      ELEPHANTQ_DATABASE_URL: postgresql://elephantq:pass@postgres/elephantq_prod
+    deploy:
+      replicas: 2   # scale email workers independently
+
+  worker_media:
+    build: { context: ., dockerfile: Dockerfile.worker }
+    command: ["elephantq", "start", "--concurrency=2", "--queues=media,transcode"]
+    environment:
+      ELEPHANTQ_DATABASE_URL: postgresql://elephantq:pass@postgres/elephantq_prod
+    deploy:
+      replicas: 1
+```
+
+### Kubernetes (separate deployments)
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elephantq-email-worker
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: worker
+          image: myapp:latest
+          command: ["elephantq", "start", "--concurrency=4", "--queues=emails,notifications"]
+          envFrom:
+            - secretRef: { name: elephantq-secrets }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elephantq-media-worker
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: worker
+          image: myapp:latest
+          command: ["elephantq", "start", "--concurrency=2", "--queues=media,transcode"]
+          envFrom:
+            - secretRef: { name: elephantq-secrets }
+```
+
+Each deployment scales independently via `kubectl scale` or an HPA.
+
+---
+
 ## 📞 Support
 
-- **Documentation**: [ElephantQ Docs](https://docs.elephantq.dev)
+- **Documentation**: [ElephantQ Docs](https://github.com/abhinavs/elephantq/tree/main/docs)
 - **Issues**: [GitHub Issues](https://github.com/abhinavs/elephantq/issues)
 - **Email**: abhinav@apiclabs.com
 

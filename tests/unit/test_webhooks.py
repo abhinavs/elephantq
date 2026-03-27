@@ -14,6 +14,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+pytest.importorskip("aiohttp")
+
 os.environ.setdefault("ELEPHANTQ_WEBHOOKS_ENABLED", "true")
 
 from elephantq.features.webhooks import (  # noqa: E402
