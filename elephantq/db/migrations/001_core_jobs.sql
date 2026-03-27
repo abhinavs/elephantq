@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS elephantq_jobs (
   queue TEXT DEFAULT 'default',
   priority INT DEFAULT 100,
   unique_job BOOLEAN DEFAULT FALSE,
-  queueing_lock TEXT,
+  dedup_key TEXT,
   scheduled_at TIMESTAMP WITH TIME ZONE,
   expires_at TIMESTAMP WITH TIME ZONE,
   last_error TEXT,
@@ -48,6 +48,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_elephantq_jobs_unique_queued
 CREATE INDEX IF NOT EXISTS idx_elephantq_jobs_args_hash
   ON elephantq_jobs (args_hash) WHERE unique_job = TRUE;
 
--- Queueing lock deduplication (only one job per lock value while queued)
-CREATE UNIQUE INDEX IF NOT EXISTS idx_elephantq_jobs_queueing_lock
-  ON elephantq_jobs (queueing_lock) WHERE status = 'queued' AND queueing_lock IS NOT NULL;
+-- Dedup key (only one job per key while queued)
+CREATE UNIQUE INDEX IF NOT EXISTS idx_elephantq_jobs_dedup_key
+  ON elephantq_jobs (dedup_key) WHERE status = 'queued' AND dedup_key IS NOT NULL;

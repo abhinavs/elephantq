@@ -10,7 +10,6 @@ import asyncio
 import inspect
 import json
 import logging
-import os
 import time
 from typing import Any, List, Optional
 
@@ -18,30 +17,6 @@ from elephantq.core.registry import JobRegistry
 from elephantq.core.retry import compute_retry_delay_seconds
 
 logger = logging.getLogger(__name__)
-
-
-def _should_skip_update_lock() -> bool:
-    """
-    Check if row-level locking should be skipped.
-
-    Only honored in debug or testing mode to prevent accidental
-    duplicate job execution in production.
-    """
-    env_val = os.environ.get("ELEPHANTQ_SKIP_UPDATE_LOCK", "").lower()
-    if env_val not in {"1", "true", "yes", "on"}:
-        return False
-
-    from elephantq.settings import get_settings
-
-    settings = get_settings()
-    if settings.debug or settings.environment == "testing":
-        return True
-
-    logger.warning(
-        "ELEPHANTQ_SKIP_UPDATE_LOCK is set but ignored in production mode. "
-        "Set ELEPHANTQ_DEBUG=true or ELEPHANTQ_ENVIRONMENT=testing to enable."
-    )
-    return False
 
 
 async def _execute_job_safely(
