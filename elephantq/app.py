@@ -203,6 +203,14 @@ class ElephantQ:
                 self._settings.pool_max_size,
             )
 
+    async def __aenter__(self):
+        await self._ensure_initialized()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
+        return False
+
     async def close(self):
         """
         Close the ElephantQ application and cleanup resources.
