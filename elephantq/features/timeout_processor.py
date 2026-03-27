@@ -242,15 +242,6 @@ async def process_jobs_with_timeout(
 
             logger.info(f"Job {job_id} completed successfully in {duration_ms}ms")
 
-            # Update any dependent jobs if dependency system is available
-            try:
-                from .dependencies import update_dependent_jobs
-
-                await update_dependent_jobs(str(job_id))
-            except ImportError:
-                # Dependencies system not available, skip
-                pass
-
             return True
 
         except JobTimeoutError as e:

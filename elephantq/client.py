@@ -804,6 +804,3 @@ class ElephantQ:
                 self._pool = None
         except Exception as e:
             logger.debug(f"Error during cleanup: {e}")
-
-
-# Backwards-compatible alias

@@ -4,6 +4,7 @@ Core functionality only
 """
 
 import asyncio
+import inspect
 import json
 import logging
 import os
@@ -203,6 +204,25 @@ async def _execute_job_safely(
     else:
         validated_args = args_data
 
+    # Inject JobContext if the function signature has it
+    from elephantq.job import JobContext
+
+    func = job_meta["func"]
+    sig = inspect.signature(func)
+    for param_name, param in sig.parameters.items():
+        if param.annotation is JobContext:
+            validated_args[param_name] = JobContext(
+                job_id=str(job_record["id"]),
+                job_name=job_record["job_name"],
+                attempt=job_record["attempts"],
+                max_attempts=job_record["max_attempts"],
+                queue=job_record.get("queue", "default"),
+                worker_id=str(job_record.get("worker_id", "")),
+                scheduled_at=job_record.get("scheduled_at"),
+                created_at=job_record.get("created_at"),
+            )
+            break
+
     # Determine timeout: per-job overrides global setting
     from elephantq.settings import get_settings
 
@@ -213,9 +233,9 @@ async def _execute_job_safely(
     # Execute the job function (outside transaction) with optional timeout
     try:
         if timeout:
-            await asyncio.wait_for(job_meta["func"](**validated_args), timeout=timeout)
+            await asyncio.wait_for(func(**validated_args), timeout=timeout)
         else:
-            await job_meta["func"](**validated_args)
+            await func(**validated_args)
         return True, None
     except asyncio.TimeoutError:
         return False, f"Job timed out after {timeout}s"

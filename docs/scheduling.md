@@ -43,13 +43,13 @@ import elephantq
 async def daily_report():
     pass
 
-await elephantq.features.recurring.cron("0 9 * * *").schedule(daily_report)
+await elephantq.cron("0 9 * * *").schedule(daily_report)
 ```
 
 ### Recurring (interval)
 
 ```python
-await elephantq.features.recurring.every(10).minutes().schedule(daily_report)
+await elephantq.every(10).minutes().schedule(daily_report)
 ```
 
 ## Fluent scheduling builders
@@ -59,7 +59,7 @@ When your workflow needs richer expressions, use the builders under `elephantq.f
 ### Fluent recurring builder
 
 ```python
-await elephantq.features.recurring.every(1).days().at("09:00").high_priority().schedule(daily_report)
+await elephantq.every(1).days().at("09:00").high_priority().schedule(daily_report)
 ```
 
 Behind the scenes the recurring builder builds cron/interval expressions and forwards them to `EnhancedRecurringManager.add_recurring_job()`. The same `ELEPHANTQ_SCHEDULING_ENABLED` flag gates the feature.
@@ -67,7 +67,7 @@ Behind the scenes the recurring builder builds cron/interval expressions and for
 ### JobScheduleBuilder (advanced workers)
 
 ```python
-builder = elephantq.features.scheduling.schedule_job(cleanup_task)
+builder = elephantq.scheduling.schedule_job(cleanup_task)
 await (
     builder.with_queue("maintenance")
     .with_priority(20)
@@ -89,12 +89,12 @@ await (
 | `.if_condition()` | Skip scheduling unless the provided predicate returns `True`. |
 | `.dry_run()` | Return the final configuration dict instead of enqueuing (useful for previews). |
 
-After calling `.enqueue()`, ElephantQ wires metadata, dependency tracking, and timeout propagation into the same transaction that writes the job row — so a worker cannot pick up a job before its dependencies or timeout are recorded. If you pass `connection=conn`, all writes join the caller's transaction. `_scheduler_metadata` retains extra information for Observability APIs such as `elephantq.features.scheduling.get_job_metadata()`.
+After calling `.enqueue()`, ElephantQ wires metadata, dependency tracking, and timeout propagation into the same transaction that writes the job row — so a worker cannot pick up a job before its dependencies or timeout are recorded. If you pass `connection=conn`, all writes join the caller's transaction. `_scheduler_metadata` retains extra information for Observability APIs such as `elephantq.scheduling.get_job_metadata()`.
 
 ### Batch scheduling
 
 ```python
-batch = elephantq.features.scheduling.create_batch()
+batch = elephantq.scheduling.create_batch()
 batch.add(job_a).with_priority(30)
 batch.add(job_b).with_queue("reports")
 await batch.enqueue_all(batch_priority=10)
@@ -104,7 +104,7 @@ await batch.enqueue_all(batch_priority=10)
 
 ### Unified `schedule()` helper
 
-For simple delays you can call `elephantq.features.scheduling.schedule(job_func, when)` with:
+For simple delays you can call `elephantq.scheduling.schedule(job_func, when)` with:
 
 - `when` as a `datetime` → schedules at the exact moment.
 - `when` as an `int`/`float` → schedules after that many seconds.

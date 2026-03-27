@@ -94,7 +94,7 @@ await elephantq.enqueue(send_welcome, to="team@example.com")
 ## Fluent scheduling
 
 ```python
-from elephantq.features.recurring import every
+from elephantq import every
 
 @elephantq.job()
 async def nightly_report():

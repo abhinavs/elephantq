@@ -1,8 +1,8 @@
 """
 Job Registry System
 
-Instance-based job registration replacing global state patterns.
-Supports both instance-based and backward-compatible global operations.
+Maps job names to their functions and configuration.
+Supports both instance-based and global operations.
 """
 
 import functools
@@ -160,7 +160,7 @@ class JobRegistry:
         return name in self._registry
 
 
-# Global registry for backward compatibility
+# Global registry instance
 _global_registry = JobRegistry()
 
 
@@ -177,10 +177,7 @@ def job(
     **kwargs,
 ):
     """
-    Global job decorator for backward compatibility.
-
-    Uses the global registry instance. For new code, prefer using
-    ElephantQApp.job() for better isolation and testability.
+    Global job decorator using the global registry instance.
 
     Args:
         retries: Number of retry attempts (default: 3)

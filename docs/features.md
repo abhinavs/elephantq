@@ -9,7 +9,7 @@ ElephantQ bundles a number of higher-level capabilities in the same package. The
 - **What it does:** Tracks job counts, queue depth, retry totals, and scheduler health. Metrics are exposed via Prometheus-friendly counters so you can scrape them alongside the rest of your stack.
 
 ```python
-from elephantq.features.metrics import get_system_metrics
+from elephantq.metrics import get_system_metrics
 metrics = await get_system_metrics(timeframe_hours=1)
 print("Jobs processed in the last hour:", metrics["jobs_processed"])
 ```
@@ -21,7 +21,7 @@ print("Jobs processed in the last hour:", metrics["jobs_processed"])
 - **What it does:** Captures per-job context (job id, queue, retries, errors) and emits structured events that you can route to your logging backend.
 
 ```python
-from elephantq.features.logging import setup, get_job_logger
+from elephantq.logging import setup, get_job_logger
 
 setup(format="structured", level="INFO")
 logger = get_job_logger("my-job-id")
@@ -70,7 +70,7 @@ The feature keeps delivery retries, headers, and metadata inside ElephantQ, so y
 Timeouts allow you to cancel jobs that run longer than expected:
 
 ```python
-from elephantq.features.scheduling import schedule_job
+from elephantq.scheduling import schedule_job
 
 builder = schedule_job(generate_report)
 await (

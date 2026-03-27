@@ -59,10 +59,9 @@ class TestSchedulingMigration:
         content = (MIGRATIONS_DIR / "003_scheduling.sql").read_text()
         assert "elephantq_recurring_jobs" in content
 
-    def test_dependencies(self):
+    def test_no_dependencies_table(self):
         content = (MIGRATIONS_DIR / "003_scheduling.sql").read_text()
-        assert "elephantq_job_dependencies" in content
-        assert "depends_on_job_id" in content
+        assert "elephantq_job_dependencies" not in content
 
     def test_timeouts(self):
         content = (MIGRATIONS_DIR / "003_scheduling.sql").read_text()

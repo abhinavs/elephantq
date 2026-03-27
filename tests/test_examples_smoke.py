@@ -81,6 +81,16 @@ def test_example_imports_resolve(example):
                 __import__(top)
 
 
+def test_examples_use_clean_imports():
+    """Examples should import from elephantq or elephantq.<module>, not elephantq.features."""
+    for example in EXAMPLES_DIR.glob("*.py"):
+        source = example.read_text()
+        assert "elephantq.features" not in source, (
+            f"{example.name} imports from elephantq.features — "
+            f"use elephantq or elephantq.<module> instead"
+        )
+
+
 def test_no_dead_documentation_urls():
     """No references to non-existent docs.elephantq.dev should exist in source code."""
     dead_url_files = []

@@ -22,7 +22,6 @@ class JobScheduleBuilder:
         self._queue: Optional[str] = None
         self._retries: Optional[int] = None
         self._tags: List[str] = []
-        self._dependencies: List[str] = []
         self._timeout: Optional[int] = None
         self._condition: Optional[Callable[[], bool]] = None
         self._dry_run: bool = False
@@ -97,25 +96,6 @@ class JobScheduleBuilder:
         self._tags.extend(tags)
         return self
 
-    def depends_on(self, *job_ids: str) -> "JobScheduleBuilder":
-        """Set job dependencies (jobs that must complete first).
-
-        .. warning::
-            Dependency metadata is stored but the worker does not yet enforce
-            execution order. Jobs will execute regardless of dependency status.
-            This feature is experimental.
-        """
-        import warnings
-
-        warnings.warn(
-            "depends_on() stores dependency metadata but the worker does not "
-            "yet enforce execution order. Jobs will run regardless of dependency "
-            "status. This feature is experimental.",
-            stacklevel=2,
-        )
-        self._dependencies.extend(job_ids)
-        return self
-
     def with_timeout(self, timeout_seconds: int) -> "JobScheduleBuilder":
         """Set job execution timeout"""
         self._timeout = timeout_seconds
@@ -149,22 +129,6 @@ class JobScheduleBuilder:
         if self._condition and not self._condition():
             raise RuntimeError("Job condition not satisfied")
 
-        # Check dependencies if any are specified
-        if self._dependencies:
-
-            # Validate that all dependency job IDs exist and are valid
-            valid_deps = []
-            for dep_id in self._dependencies:
-                try:
-                    import uuid
-
-                    uuid.UUID(dep_id)  # Validate UUID format
-                    valid_deps.append(dep_id)
-                except ValueError:
-                    raise ValueError(f"Invalid dependency job ID format: {dep_id}")
-
-            self._dependencies = valid_deps
-
         # Use custom enqueue parameters if specified, otherwise use job defaults
         enqueue_kwargs: Dict[str, Any] = {}
         if self._scheduled_at:
@@ -177,49 +141,29 @@ class JobScheduleBuilder:
         # Add job arguments
         enqueue_kwargs.update(kwargs)
 
-        has_metadata = bool(self._dependencies or self._timeout)
-
-        if has_metadata:
-            # Use a single transaction for job row + metadata to prevent
-            # race conditions where a worker picks up the job before deps
-            # or timeout are stored.
+        if self._timeout:
+            # Use a transaction for job row + timeout metadata
             from elephantq.db.context import get_context_pool
 
             pool = await get_context_pool()
 
             if connection is not None:
-                # Join the caller's transaction
                 job_id = await enqueue(
                     self.job_func, **enqueue_kwargs, connection=connection
                 )
-                if self._dependencies:
-                    from .dependencies import store_job_dependencies
+                from .timeout_processor import store_job_timeout
 
-                    await store_job_dependencies(
-                        job_id, self._dependencies, self._timeout, conn=connection
-                    )
-                if self._timeout:
-                    from .timeout_processor import store_job_timeout
-
-                    await store_job_timeout(job_id, self._timeout, connection)
+                await store_job_timeout(job_id, self._timeout, connection)
             else:
                 async with pool.acquire() as conn:
                     async with conn.transaction():
                         job_id = await enqueue(
                             self.job_func, **enqueue_kwargs, connection=conn
                         )
-                        if self._dependencies:
-                            from .dependencies import store_job_dependencies
+                        from .timeout_processor import store_job_timeout
 
-                            await store_job_dependencies(
-                                job_id, self._dependencies, self._timeout, conn=conn
-                            )
-                        if self._timeout:
-                            from .timeout_processor import store_job_timeout
-
-                            await store_job_timeout(job_id, self._timeout, conn)
+                        await store_job_timeout(job_id, self._timeout, conn)
         else:
-            # Simple path: no deps or timeout, no overhead
             job_id = await enqueue(self.job_func, **enqueue_kwargs)
 
         # Store additional metadata (tags, timeout, etc.)
@@ -228,7 +172,6 @@ class JobScheduleBuilder:
                 "tags": self._tags,
                 "timeout": self._timeout,
                 "retries": self._retries,
-                "dependencies": self._dependencies,
             }
 
         return job_id  # type: ignore[no-any-return]
@@ -244,7 +187,6 @@ class JobScheduleBuilder:
             "queue": self._queue,
             "retries": self._retries,
             "tags": self._tags,
-            "dependencies": self._dependencies,
             "timeout": self._timeout,
             "condition": "Custom condition" if self._condition else None,
             "arguments": kwargs,

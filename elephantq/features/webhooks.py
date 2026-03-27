@@ -808,7 +808,3 @@ async def get_delivery_stats(hours: int = 24) -> Dict[str, Any]:
 def verify_webhook_signature(payload: str, signature: str, secret: str) -> bool:
     """Verify webhook signature"""
     return WebhookSigner.verify_signature(payload, signature, secret)
-
-
-# Backward compatibility alias
-WebhookConfig = WebhookEndpoint

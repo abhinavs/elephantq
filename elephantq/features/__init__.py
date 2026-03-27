@@ -2,7 +2,6 @@
 
 from . import (
     dead_letter,
-    dependencies,
     logging,
     metrics,
     recurring,
@@ -18,7 +17,6 @@ __all__ = [
     "features",
     "recurring",
     "scheduling",
-    "dependencies",
     "timeout_processor",
     "dead_letter",
     "logging",

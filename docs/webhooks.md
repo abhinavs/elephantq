@@ -13,7 +13,7 @@ No extra install needed — `aiohttp` is included in the base package.
 ## Register an endpoint
 
 ```python
-from elephantq.features.webhooks import WebhookRegistry
+from elephantq.webhooks import WebhookRegistry
 
 registry = WebhookRegistry()
 await registry.register_endpoint(

@@ -161,11 +161,10 @@ async def get_context_pool() -> asyncpg.Pool:
     return await context.get_pool()
 
 
-# Backwards compatibility - optional features can use this directly
 async def get_database_pool() -> asyncpg.Pool:
     """
     Get database pool with context awareness.
 
-    Alias for get_context_pool() for better naming.
+    Alias for get_context_pool().
     """
     return await get_context_pool()

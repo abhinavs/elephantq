@@ -29,6 +29,7 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Optional, Union
 
 from .client import ElephantQ
+from .job import JobContext
 from .settings import configure as settings_configure
 
 try:
@@ -56,6 +57,10 @@ __all__ = [
     "delete_job",
     "list_jobs",
     "get_queue_stats",
+    "periodic",
+    "JobContext",
+    "every",
+    "cron",
     "features",
     "DASHBOARD_AVAILABLE",
 ]
@@ -162,6 +167,72 @@ def job(**kwargs):
     return decorator
 
 
+def periodic(
+    *,
+    cron: Optional[str] = None,
+    every_seconds: Optional[int] = None,
+    every_minutes: Optional[int] = None,
+    every_hours: Optional[int] = None,
+    **job_kwargs,
+):
+    """
+    Decorator that registers a function as a recurring job.
+
+    Declares both the job and its schedule at definition time.
+    The scheduler picks up all @periodic functions automatically.
+
+    Examples:
+        @elephantq.periodic(cron="0 9 * * *")
+        async def daily_report():
+            ...
+
+        @elephantq.periodic(every_minutes=10, queue="maintenance")
+        async def cleanup():
+            ...
+    """
+    # Determine schedule type and value
+    interval_args = [
+        ("seconds", every_seconds),
+        ("minutes", every_minutes),
+        ("hours", every_hours),
+    ]
+    interval_set = [(name, val) for name, val in interval_args if val is not None]
+
+    if cron and interval_set:
+        raise ValueError("Cannot specify both cron and every_* parameters")
+    if not cron and not interval_set:
+        raise ValueError(
+            "Must specify either cron='...' or one of every_seconds/every_minutes/every_hours"
+        )
+    if len(interval_set) > 1:
+        raise ValueError(
+            "Specify only one of every_seconds, every_minutes, every_hours"
+        )
+
+    if cron:
+        schedule_type = "cron"
+        schedule_value: Union[str, int] = cron
+    else:
+        name, val = interval_set[0]
+        schedule_type = "interval"
+        multipliers = {"seconds": 1, "minutes": 60, "hours": 3600}
+        schedule_value = val * multipliers[name]  # type: ignore[operator]
+
+    def decorator(func):
+        # Register as a job first
+        wrapped = job(**job_kwargs)(func)
+
+        # Store schedule metadata on the function
+        wrapped._elephantq_periodic = {  # type: ignore[attr-defined]
+            "type": schedule_type,
+            "value": schedule_value,
+        }
+
+        return wrapped
+
+    return decorator
+
+
 async def enqueue(job_func, connection=None, **kwargs):
     """Enqueue a job using the global ElephantQ instance."""
     app = _get_global_app()
@@ -259,3 +330,21 @@ async def get_queue_stats():
 
 # Feature namespace (advanced features live under elephantq.features)
 from . import features  # noqa: E402
+
+# Lazy imports for top-level scheduling functions to avoid circular import.
+# elephantq.features.recurring imports from elephantq at module level,
+# so we can't import from it at the top of this file.
+_LAZY_IMPORTS = {
+    "every": ("elephantq.features.recurring", "every"),
+    "cron": ("elephantq.features.recurring", "cron"),
+}
+
+
+def __getattr__(name: str):
+    if name in _LAZY_IMPORTS:
+        module_path, attr = _LAZY_IMPORTS[name]
+        import importlib
+
+        mod = importlib.import_module(module_path)
+        return getattr(mod, attr)
+    raise AttributeError(f"module 'elephantq' has no attribute {name!r}")
