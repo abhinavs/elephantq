@@ -130,7 +130,7 @@ async def test_notify_sent_verification(test_db, clean_app):
         await notification_conn.add_listener("elephantq_new_job", notification_callback)
 
         # Configure short poll interval for fast test feedback
-        app._settings.notification_timeout = 0.2
+        app._settings.poll_interval = 0.2
 
         # Start worker
         worker_task = asyncio.create_task(app.run_worker(concurrency=1, run_once=False))
@@ -199,7 +199,7 @@ async def test_queue_specific_notifications(test_db, clean_app):
         await notification_conn.add_listener("elephantq_new_job", notification_callback)
 
         # Configure short poll interval
-        app._settings.notification_timeout = 0.2
+        app._settings.poll_interval = 0.2
 
         worker_task = asyncio.create_task(
             app.run_worker(concurrency=1, queues=["high", "low"], run_once=False)

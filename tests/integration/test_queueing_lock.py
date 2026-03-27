@@ -1,5 +1,5 @@
 """
-Integration tests for queueing_lock — custom deduplication key.
+Integration tests for dedup_key — custom deduplication key.
 """
 
 import uuid
@@ -20,8 +20,8 @@ async def backend():
 
 
 @pytest.mark.asyncio
-async def test_queueing_lock_prevents_duplicate(backend):
-    """Two enqueues with same queueing_lock should return same ID."""
+async def test_dedup_key_prevents_duplicate(backend):
+    """Two enqueues with same dedup_key should return same ID."""
     id1 = await backend.create_job(
         job_id=str(uuid.uuid4()),
         job_name="test.locked_job",
@@ -31,7 +31,7 @@ async def test_queueing_lock_prevents_duplicate(backend):
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock="lock:user:42",
+        dedup_key="lock:user:42",
         scheduled_at=None,
     )
 
@@ -44,7 +44,7 @@ async def test_queueing_lock_prevents_duplicate(backend):
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock="lock:user:42",
+        dedup_key="lock:user:42",
         scheduled_at=None,
     )
 
@@ -52,7 +52,7 @@ async def test_queueing_lock_prevents_duplicate(backend):
 
 
 @pytest.mark.asyncio
-async def test_queueing_lock_allows_after_completion(backend):
+async def test_dedup_key_allows_after_completion(backend):
     """After a locked job completes, same lock can be re-enqueued."""
     id1 = await backend.create_job(
         job_id=str(uuid.uuid4()),
@@ -63,7 +63,7 @@ async def test_queueing_lock_allows_after_completion(backend):
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock="lock:report:daily",
+        dedup_key="lock:report:daily",
         scheduled_at=None,
     )
 
@@ -81,7 +81,7 @@ async def test_queueing_lock_allows_after_completion(backend):
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock="lock:report:daily",
+        dedup_key="lock:report:daily",
         scheduled_at=None,
     )
 
@@ -90,7 +90,7 @@ async def test_queueing_lock_allows_after_completion(backend):
 
 @pytest.mark.asyncio
 async def test_no_lock_allows_duplicates(backend):
-    """Without queueing_lock, duplicates are allowed."""
+    """Without dedup_key, duplicates are allowed."""
     id1 = await backend.create_job(
         job_id=str(uuid.uuid4()),
         job_name="test.unlocked",
@@ -100,7 +100,7 @@ async def test_no_lock_allows_duplicates(backend):
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
 
@@ -113,7 +113,7 @@ async def test_no_lock_allows_duplicates(backend):
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
 

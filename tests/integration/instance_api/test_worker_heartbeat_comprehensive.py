@@ -29,7 +29,7 @@ from elephantq.core.heartbeat import (  # noqa: E402
 async def clean_db():
     """Clean database before each test - FAST VERSION"""
     # Just clear worker records, database setup handled by conftest.py
-    from elephantq.client import ElephantQ
+    from elephantq.app import ElephantQ
 
     app = ElephantQ(database_url=TEST_DATABASE_URL)
     pool = await app.get_pool()

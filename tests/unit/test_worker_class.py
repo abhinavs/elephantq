@@ -70,7 +70,7 @@ async def test_worker_run_once_processes_job():
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
 

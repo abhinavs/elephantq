@@ -7,8 +7,8 @@ import uuid
 import pytest
 
 import elephantq
-from elephantq.core.processor import process_jobs_with_registry
 from elephantq.core.registry import JobRegistry
+from elephantq.worker import Worker
 
 
 @pytest.mark.asyncio
@@ -33,13 +33,9 @@ async def test_unregistered_job_dead_lettered():
 
     # Process with a clean registry (no jobs registered)
     empty_registry = JobRegistry()
-    async with pool.acquire() as conn:
-        processed = await process_jobs_with_registry(
-            conn=conn,
-            job_registry=empty_registry,
-            queue=None,
-            heartbeat=None,
-        )
+    backend = app.backend
+    worker = Worker(backend, empty_registry)
+    processed = await worker.run_once(queues=None, max_jobs=1)
 
     assert processed is True
 

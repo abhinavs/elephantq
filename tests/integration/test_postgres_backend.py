@@ -31,7 +31,7 @@ async def test_create_and_get_job(backend):
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
     assert result == job_id
@@ -55,7 +55,7 @@ async def test_fetch_and_lock_job(backend):
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
 
@@ -84,7 +84,7 @@ async def test_mark_job_done(backend):
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
     await backend.fetch_and_lock_job(queues=["default"], worker_id=None)
@@ -106,7 +106,7 @@ async def test_mark_job_failed_and_retry(backend):
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
     await backend.fetch_and_lock_job(queues=["default"], worker_id=None)
@@ -129,7 +129,7 @@ async def test_mark_job_dead_letter(backend):
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
     await backend.fetch_and_lock_job(queues=["default"], worker_id=None)
@@ -151,7 +151,7 @@ async def test_cancel_job(backend):
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
 
@@ -174,7 +174,7 @@ async def test_list_jobs_with_filters(backend):
             priority=100,
             queue="q1" if i < 2 else "q2",
             unique=False,
-            queueing_lock=None,
+            dedup_key=None,
             scheduled_at=None,
         )
 
@@ -199,7 +199,7 @@ async def test_queue_stats(backend):
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
 
@@ -220,7 +220,7 @@ async def test_reset_clears_everything(backend):
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
 

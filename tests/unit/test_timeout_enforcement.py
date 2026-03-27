@@ -29,7 +29,7 @@ def _make_job_meta(func, timeout=None):
     return {
         "func": func,
         "args_model": None,
-        "retries": 3,
+        "max_retries": 3,
         "retry_delay": 0,
         "retry_backoff": False,
         "retry_max_delay": None,

@@ -10,7 +10,6 @@ import asyncio
 import pytest
 
 import elephantq
-from elephantq.core.processor import _fetch_and_lock_job
 
 
 @elephantq.job(queue="race-test")
@@ -30,15 +29,14 @@ async def test_concurrent_dequeue_no_duplicates():
     exactly one should succeed, the rest should get None.
     """
     app = elephantq._get_global_app()
-    pool = await app.get_pool()
+    backend = app.backend
 
     # Enqueue exactly 1 job
     await app.enqueue(race_job, n=1)
 
-    # Launch 5 concurrent dequeue attempts
+    # Launch 5 concurrent dequeue attempts via backend
     async def try_dequeue():
-        async with pool.acquire() as conn:
-            return await _fetch_and_lock_job(conn, "race-test")
+        return await backend.fetch_and_lock_job(queues=["race-test"])
 
     results = await asyncio.gather(*[try_dequeue() for _ in range(5)])
 
@@ -56,7 +54,7 @@ async def test_concurrent_dequeue_distributes_jobs():
     10 jobs, 5 concurrent workers: all 10 should be claimed with zero duplicates.
     """
     app = elephantq._get_global_app()
-    pool = await app.get_pool()
+    backend = app.backend
 
     # Enqueue 10 jobs
     for i in range(10):
@@ -68,8 +66,7 @@ async def test_concurrent_dequeue_distributes_jobs():
 
     async def worker_loop():
         while True:
-            async with pool.acquire() as conn:
-                job = await _fetch_and_lock_job(conn, "race-test")
+            job = await backend.fetch_and_lock_job(queues=["race-test"])
             if job is None:
                 break
             async with lock:

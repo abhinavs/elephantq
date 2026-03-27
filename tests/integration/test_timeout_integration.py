@@ -7,7 +7,7 @@ import asyncio
 import pytest
 
 import elephantq
-from elephantq.core.processor import process_jobs_with_registry
+from elephantq.worker import Worker
 
 
 @elephantq.job(retries=1, timeout=0.1)
@@ -23,19 +23,14 @@ async def test_timed_out_job_retried_then_dead_lettered():
     and then moved to dead_letter.
     """
     app = elephantq._get_global_app()
-    pool = await app.get_pool()
     registry = app.get_job_registry()
+    backend = app.backend
+    worker = Worker(backend, registry)
 
     job_id = await app.enqueue(slow_timeout_job)
 
-    # First processing: job times out → failure (attempt 1)
-    async with pool.acquire() as conn:
-        processed = await process_jobs_with_registry(
-            conn=conn,
-            job_registry=registry,
-            queue=None,
-            heartbeat=None,
-        )
+    # First processing: job times out -> failure (attempt 1)
+    processed = await worker.run_once(queues=None, max_jobs=1)
     assert processed is True
 
     # Check: job should be back in 'queued' (retries=1 means max_attempts=2)
@@ -44,14 +39,8 @@ async def test_timed_out_job_retried_then_dead_lettered():
     assert status["attempts"] == 1
     assert "timed out" in status["last_error"].lower()
 
-    # Second processing: job times out again → dead_letter (attempt 2 of 2)
-    async with pool.acquire() as conn:
-        processed = await process_jobs_with_registry(
-            conn=conn,
-            job_registry=registry,
-            queue=None,
-            heartbeat=None,
-        )
+    # Second processing: job times out again -> dead_letter (attempt 2 of 2)
+    processed = await worker.run_once(queues=None, max_jobs=1)
     assert processed is True
 
     # Check: job should now be in dead_letter

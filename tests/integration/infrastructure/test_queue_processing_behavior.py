@@ -21,10 +21,9 @@ from tests.db_utils import TEST_DATABASE_URL
 # Ensure we're using test database
 os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
 
-from elephantq.core.processor import process_jobs  # noqa: E402
-from elephantq.core.queue import enqueue_job  # noqa: E402
+from elephantq import ElephantQ  # noqa: E402
 from elephantq.core.registry import clear_registry  # noqa: E402
-from elephantq.db.connection import get_pool  # noqa: E402
+from elephantq.worker import Worker  # noqa: E402
 from tests.db_utils import clear_table  # noqa: E402
 
 
@@ -36,18 +35,15 @@ async def write_to_file_job(message: str, result_file: str):
 
 
 @pytest.fixture
-async def clean_db():
-    """Clean database before each test"""
-    pool = await get_pool()
-    await clear_table(pool)
-
-    # Clear job registry to avoid cross-test pollution
-    clear_registry()
-
-    yield
-
+async def app():
+    """Create an ElephantQ app instance for testing"""
+    _app = ElephantQ(database_url=TEST_DATABASE_URL)
+    await _app._ensure_initialized()
+    pool = await _app.get_pool()
     await clear_table(pool)
     clear_registry()
+    yield _app
+    await clear_table(pool)
     clear_registry()
 
 
@@ -65,50 +61,30 @@ def result_file():
 
 
 @pytest.mark.asyncio
-async def test_process_jobs_all_queues(clean_db, result_file):
+async def test_process_jobs_all_queues(app, result_file):
     """Test that queue=None processes jobs from any queue"""
 
-    # Register the job in each test
-    from elephantq.core.registry import get_global_registry
-
-    registry = get_global_registry()
+    registry = app.get_job_registry()
     registry.register_job(write_to_file_job)
+    backend = app.backend
+    worker = Worker(backend, registry)
 
-    pool = await get_pool()
+    # Enqueue jobs in different queues
+    await app.enqueue(
+        write_to_file_job, queue="high", message="job1", result_file=result_file
+    )
+    await app.enqueue(
+        write_to_file_job, queue="normal", message="job2", result_file=result_file
+    )
+    await app.enqueue(
+        write_to_file_job, queue="low", message="job3", result_file=result_file
+    )
 
-    # Enqueue jobs in different queues using legacy API
-    async with pool.acquire() as conn:
-        await enqueue_job(
-            pool,
-            registry,
-            write_to_file_job,
-            queue="high",
-            message="job1",
-            result_file=result_file,
-        )
-        await enqueue_job(
-            pool,
-            registry,
-            write_to_file_job,
-            queue="normal",
-            message="job2",
-            result_file=result_file,
-        )
-        await enqueue_job(
-            pool,
-            registry,
-            write_to_file_job,
-            queue="low",
-            message="job3",
-            result_file=result_file,
-        )
-
-    # Process with queue=None should pick up any job
-    async with pool.acquire() as conn:
-        processed1 = await process_jobs(conn, None)
-        processed2 = await process_jobs(conn, None)
-        processed3 = await process_jobs(conn, None)
-        processed4 = await process_jobs(conn, None)  # Should be False
+    # Process with queues=None should pick up any job
+    processed1 = await worker.run_once(queues=None, max_jobs=1)
+    processed2 = await worker.run_once(queues=None, max_jobs=1)
+    processed3 = await worker.run_once(queues=None, max_jobs=1)
+    processed4 = await worker.run_once(queues=None, max_jobs=1)  # Should be False
 
     assert processed1 is True
     assert processed2 is True
@@ -127,40 +103,25 @@ async def test_process_jobs_all_queues(clean_db, result_file):
 
 
 @pytest.mark.asyncio
-async def test_process_jobs_single_queue(clean_db, result_file):
+async def test_process_jobs_single_queue(app, result_file):
     """Test that queue="name" processes only from that queue"""
 
-    # Register the job in each test
-    from elephantq.core.registry import get_global_registry
-
-    registry = get_global_registry()
+    registry = app.get_job_registry()
     registry.register_job(write_to_file_job)
+    backend = app.backend
+    worker = Worker(backend, registry)
 
-    pool = await get_pool()
-
-    # Enqueue jobs in different queues using legacy API
-    async with pool.acquire() as conn:
-        await enqueue_job(
-            pool,
-            registry,
-            write_to_file_job,
-            queue="target",
-            message="target_job",
-            result_file=result_file,
-        )
-        await enqueue_job(
-            pool,
-            registry,
-            write_to_file_job,
-            queue="other",
-            message="other_job",
-            result_file=result_file,
-        )
+    # Enqueue jobs in different queues
+    await app.enqueue(
+        write_to_file_job, queue="target", message="target_job", result_file=result_file
+    )
+    await app.enqueue(
+        write_to_file_job, queue="other", message="other_job", result_file=result_file
+    )
 
     # Process only from "target" queue
-    async with pool.acquire() as conn:
-        processed1 = await process_jobs(conn, "target")
-        processed2 = await process_jobs(conn, "target")  # Should be False
+    processed1 = await worker.run_once(queues=["target"], max_jobs=1)
+    processed2 = await worker.run_once(queues=["target"], max_jobs=1)  # Should be False
 
     assert processed1 is True
     assert processed2 is False
@@ -174,48 +135,31 @@ async def test_process_jobs_single_queue(clean_db, result_file):
 
 
 @pytest.mark.asyncio
-async def test_process_jobs_multiple_queues(clean_db, result_file):
+async def test_process_jobs_multiple_queues(app, result_file):
     """Test that queue=["q1", "q2"] processes from specified queues efficiently"""
 
-    # Register the job in each test
-    from elephantq.core.registry import get_global_registry
-
-    registry = get_global_registry()
+    registry = app.get_job_registry()
     registry.register_job(write_to_file_job)
+    backend = app.backend
+    worker = Worker(backend, registry)
 
-    pool = await get_pool()
-
-    # Enqueue jobs in different queues using legacy API
-    await enqueue_job(
-        pool,
-        registry,
-        write_to_file_job,
-        queue="queue1",
-        message="job1",
-        result_file=result_file,
+    # Enqueue jobs in different queues
+    await app.enqueue(
+        write_to_file_job, queue="queue1", message="job1", result_file=result_file
     )
-    await enqueue_job(
-        pool,
-        registry,
-        write_to_file_job,
-        queue="queue2",
-        message="job2",
-        result_file=result_file,
+    await app.enqueue(
+        write_to_file_job, queue="queue2", message="job2", result_file=result_file
     )
-    await enqueue_job(
-        pool,
-        registry,
-        write_to_file_job,
-        queue="excluded",
-        message="job3",
-        result_file=result_file,
+    await app.enqueue(
+        write_to_file_job, queue="excluded", message="job3", result_file=result_file
     )
 
     # Process only from specified queues
-    async with pool.acquire() as conn:
-        processed1 = await process_jobs(conn, ["queue1", "queue2"])
-        processed2 = await process_jobs(conn, ["queue1", "queue2"])
-        processed3 = await process_jobs(conn, ["queue1", "queue2"])  # Should be False
+    processed1 = await worker.run_once(queues=["queue1", "queue2"], max_jobs=1)
+    processed2 = await worker.run_once(queues=["queue1", "queue2"], max_jobs=1)
+    processed3 = await worker.run_once(
+        queues=["queue1", "queue2"], max_jobs=1
+    )  # Should be False
 
     assert processed1 is True
     assert processed2 is True
@@ -231,49 +175,38 @@ async def test_process_jobs_multiple_queues(clean_db, result_file):
 
 
 @pytest.mark.asyncio
-async def test_priority_ordering_across_queues(clean_db, result_file):
+async def test_priority_ordering_across_queues(app, result_file):
     """Test that priority ordering works correctly across different queues"""
 
-    # Register the job in each test
-    from elephantq.core.registry import get_global_registry
-
-    registry = get_global_registry()
+    registry = app.get_job_registry()
     registry.register_job(write_to_file_job)
+    backend = app.backend
+    worker = Worker(backend, registry)
 
-    pool = await get_pool()
-
-    # Enqueue jobs with different priorities across different queues using legacy API
+    # Enqueue jobs with different priorities across different queues
     # Lower priority number = higher priority
-    await enqueue_job(
-        pool,
-        registry,
+    await app.enqueue(
         write_to_file_job,
         queue="queueA",
         priority=100,
         message="medium_A",
         result_file=result_file,
     )
-    await enqueue_job(
-        pool,
-        registry,
+    await app.enqueue(
         write_to_file_job,
         queue="queueB",
         priority=50,
         message="high_B",
         result_file=result_file,
     )
-    await enqueue_job(
-        pool,
-        registry,
+    await app.enqueue(
         write_to_file_job,
         queue="queueA",
         priority=200,
         message="low_A",
         result_file=result_file,
     )
-    await enqueue_job(
-        pool,
-        registry,
+    await app.enqueue(
         write_to_file_job,
         queue="queueC",
         priority=25,
@@ -281,15 +214,22 @@ async def test_priority_ordering_across_queues(clean_db, result_file):
         result_file=result_file,
     )
 
-    # Process all jobs in order to verify priority ordering
-    async with pool.acquire() as conn:
-        processed1 = await process_jobs(conn, ["queueA", "queueB", "queueC"])
-        processed2 = await process_jobs(conn, ["queueA", "queueB", "queueC"])
-        processed3 = await process_jobs(conn, ["queueA", "queueB", "queueC"])
-        processed4 = await process_jobs(conn, ["queueA", "queueB", "queueC"])
-        processed5 = await process_jobs(
-            conn, ["queueA", "queueB", "queueC"]
-        )  # Should be False
+    # Process all jobs one at a time to verify priority ordering
+    processed1 = await worker.run_once(
+        queues=["queueA", "queueB", "queueC"], max_jobs=1
+    )
+    processed2 = await worker.run_once(
+        queues=["queueA", "queueB", "queueC"], max_jobs=1
+    )
+    processed3 = await worker.run_once(
+        queues=["queueA", "queueB", "queueC"], max_jobs=1
+    )
+    processed4 = await worker.run_once(
+        queues=["queueA", "queueB", "queueC"], max_jobs=1
+    )
+    processed5 = await worker.run_once(
+        queues=["queueA", "queueB", "queueC"], max_jobs=1
+    )  # Should be False
 
     assert processed1 is True
     assert processed2 is True
@@ -307,31 +247,25 @@ async def test_priority_ordering_across_queues(clean_db, result_file):
 
 
 @pytest.mark.asyncio
-async def test_scheduled_jobs_across_queues(clean_db, result_file):
+async def test_scheduled_jobs_across_queues(app, result_file):
     """Test that scheduled jobs work correctly across different queues"""
 
-    # Register the job in each test
-    from elephantq.core.registry import get_global_registry
-
-    registry = get_global_registry()
+    registry = app.get_job_registry()
     registry.register_job(write_to_file_job)
+    backend = app.backend
+    worker = Worker(backend, registry)
 
-    pool = await get_pool()
     future_time = datetime.now() + timedelta(seconds=1)
 
-    # Schedule jobs in different queues using legacy API
-    await enqueue_job(
-        pool,
-        registry,
+    # Schedule jobs in different queues
+    await app.enqueue(
         write_to_file_job,
         queue="queue1",
         scheduled_at=future_time,
         message="scheduled1",
         result_file=result_file,
     )
-    await enqueue_job(
-        pool,
-        registry,
+    await app.enqueue(
         write_to_file_job,
         queue="queue2",
         scheduled_at=future_time,
@@ -340,18 +274,16 @@ async def test_scheduled_jobs_across_queues(clean_db, result_file):
     )
 
     # Check that scheduled jobs are not processed before time
-    async with pool.acquire() as conn:
-        processed1 = await process_jobs(conn, None)
-        assert processed1 is False, "No jobs should be processed before scheduled time"
+    processed1 = await worker.run_once(queues=None, max_jobs=1)
+    assert processed1 is False, "No jobs should be processed before scheduled time"
 
     # Wait for scheduled time (extra margin for system load)
     await asyncio.sleep(2.0)
 
     # Should now process scheduled jobs
-    async with pool.acquire() as conn:
-        processed2 = await process_jobs(conn, None)
-        processed3 = await process_jobs(conn, None)
-        processed4 = await process_jobs(conn, None)  # Should be False
+    processed2 = await worker.run_once(queues=None, max_jobs=1)
+    processed3 = await worker.run_once(queues=None, max_jobs=1)
+    processed4 = await worker.run_once(queues=None, max_jobs=1)  # Should be False
 
     assert processed2 is True
     assert processed3 is True
@@ -368,29 +300,20 @@ async def test_scheduled_jobs_across_queues(clean_db, result_file):
 
 
 @pytest.mark.asyncio
-async def test_empty_queue_list(clean_db, result_file):
+async def test_empty_queue_list(app, result_file):
     """Test that empty queue list behaves correctly"""
 
-    # Register the job in each test
-    from elephantq.core.registry import get_global_registry
-
-    registry = get_global_registry()
+    registry = app.get_job_registry()
     registry.register_job(write_to_file_job)
+    backend = app.backend
+    worker = Worker(backend, registry)
 
-    pool = await get_pool()
-
-    await enqueue_job(
-        pool,
-        registry,
-        write_to_file_job,
-        queue="some_queue",
-        message="job1",
-        result_file=result_file,
+    await app.enqueue(
+        write_to_file_job, queue="some_queue", message="job1", result_file=result_file
     )
 
     # Empty queue list should not process any jobs
-    async with pool.acquire() as conn:
-        processed = await process_jobs(conn, [])
+    processed = await worker.run_once(queues=[], max_jobs=1)
 
     assert processed is False
 
@@ -402,22 +325,17 @@ async def test_empty_queue_list(clean_db, result_file):
 
 
 @pytest.mark.asyncio
-async def test_queue_efficiency_single_query(clean_db):
+async def test_queue_efficiency_single_query(app):
     """Test that multiple queues use single efficient query"""
 
-    # Register the job in each test
-    from elephantq.core.registry import get_global_registry
-
-    registry = get_global_registry()
+    registry = app.get_job_registry()
     registry.register_job(write_to_file_job)
-
-    pool = await get_pool()
+    backend = app.backend
+    worker = Worker(backend, registry)
 
     # Enqueue jobs in multiple queues
     for i in range(3):
-        await enqueue_job(
-            pool,
-            registry,
+        await app.enqueue(
             write_to_file_job,
             queue=f"queue{i}",
             message=f"job{i}",
@@ -425,8 +343,7 @@ async def test_queue_efficiency_single_query(clean_db):
         )
 
     # This should use a single query with WHERE queue = ANY([...])
-    async with pool.acquire() as conn:
-        processed = await process_jobs(conn, ["queue0", "queue1", "queue2"])
+    processed = await worker.run_once(queues=["queue0", "queue1", "queue2"], max_jobs=1)
 
     assert processed is True  # At least one job was processed
 

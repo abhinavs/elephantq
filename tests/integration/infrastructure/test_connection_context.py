@@ -374,39 +374,40 @@ async def test_elephantq_integration_with_contexts():
 
     await create_test_database()
 
-    from elephantq.core.processor import process_jobs
-    from elephantq.core.queue import enqueue_job
-    from elephantq.core.registry import get_global_registry
+    from elephantq import ElephantQ
+    from elephantq.worker import Worker
 
-    registry = get_global_registry()
+    # Reset global state
+    await close_pool()
+
+    # Use an ElephantQ instance with the test database
+    app = ElephantQ(database_url=TEST_DATABASE_URL)
+    await app._ensure_initialized()
+
+    registry = app.get_job_registry()
 
     async def test_context_job(value: int):
         return value * 2
 
     registry.register_job(test_context_job)
 
-    # Reset global state
-    await close_pool()
+    pool = await app.get_pool()
+    await clear_table(pool)
 
-    async with connection_context() as pool:
-        # Clear any existing jobs
-        await clear_table(pool)
+    # Enqueue a job via the app API
+    job_id = await app.enqueue(test_context_job, value=21)
 
-        # Enqueue a job using the context pool directly (not via global app)
-        async with pool.acquire() as conn:
-            job_id = await enqueue_job(pool, registry, test_context_job, value=21)
+    # Process the job using Worker + backend
+    worker = Worker(app.backend, registry)
+    processed = await worker.run_once(queues=["default"], max_jobs=1)
+    assert processed is True
 
-        # Process the job using the context pool connection
-        async with pool.acquire() as conn:
-            processed = await process_jobs(conn, queue="default")
-            assert processed is True
-
-        # Verify job was processed
-        async with pool.acquire() as conn:
-            result = await conn.fetchrow(
-                "SELECT status FROM elephantq_jobs WHERE id = $1", job_id
-            )
-            assert result["status"] == "done"
+    # Verify job was processed
+    async with pool.acquire() as conn:
+        result = await conn.fetchrow(
+            "SELECT status FROM elephantq_jobs WHERE id = $1", job_id
+        )
+        assert result["status"] == "done"
 
     # Clean up
     await close_pool()

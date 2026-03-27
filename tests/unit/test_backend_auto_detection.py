@@ -5,7 +5,7 @@ Tests for automatic backend detection based on database_url.
 
 def test_postgres_url_selects_postgres_backend():
     """postgresql:// URLs should auto-select PostgresBackend."""
-    from elephantq.client import ElephantQ
+    from elephantq.app import ElephantQ
 
     app = ElephantQ(database_url="postgresql://localhost/myapp")
     # Backend is None at construction — PostgresBackend created lazily in _ensure_initialized
@@ -16,8 +16,8 @@ def test_postgres_url_selects_postgres_backend():
 
 def test_sqlite_file_url_selects_sqlite_backend(tmp_path):
     """A .db file path should auto-select SQLiteBackend."""
+    from elephantq.app import ElephantQ
     from elephantq.backends.sqlite import SQLiteBackend
-    from elephantq.client import ElephantQ
 
     db_path = str(tmp_path / "myapp.db")
     app = ElephantQ(database_url=db_path)
@@ -26,8 +26,8 @@ def test_sqlite_file_url_selects_sqlite_backend(tmp_path):
 
 def test_sqlite_extension_detected(tmp_path):
     """.sqlite extension should also auto-select SQLiteBackend."""
+    from elephantq.app import ElephantQ
     from elephantq.backends.sqlite import SQLiteBackend
-    from elephantq.client import ElephantQ
 
     db_path = str(tmp_path / "myapp.sqlite")
     app = ElephantQ(database_url=db_path)
@@ -39,8 +39,8 @@ def test_no_config_defaults_to_sqlite():
     # Override the env to avoid picking up test config
     import os
 
+    from elephantq.app import ElephantQ
     from elephantq.backends.sqlite import SQLiteBackend
-    from elephantq.client import ElephantQ
 
     old = os.environ.pop("ELEPHANTQ_DATABASE_URL", None)
     try:
@@ -53,8 +53,8 @@ def test_no_config_defaults_to_sqlite():
 
 def test_explicit_backend_overrides_auto_detection():
     """Explicit backend= param should override URL-based detection."""
+    from elephantq.app import ElephantQ
     from elephantq.backends.memory import MemoryBackend
-    from elephantq.client import ElephantQ
 
     app = ElephantQ(backend="memory")
     assert isinstance(app.backend, MemoryBackend)

@@ -35,7 +35,7 @@ def test_feature_managers_require_flags():
     _disable_all_feature_flags()
     _reset_settings_cache()
 
-    from elephantq.features.features import ElephantQFeatures
+    from elephantq.features.managers import ElephantQFeatures
 
     features = ElephantQFeatures()
 
@@ -60,7 +60,7 @@ def test_feature_managers_enabled():
     os.environ["ELEPHANTQ_SIGNING_ENABLED"] = "true"
     _reset_settings_cache()
 
-    from elephantq.features.features import ElephantQFeatures
+    from elephantq.features.managers import ElephantQFeatures
 
     features = ElephantQFeatures()
 

@@ -1,78 +1,7 @@
 import logging
-import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
-
-class TestCreateJobRecordUsesParameterizedNotify:
-    """Verify _create_job_record sends pg_notify via parameterized SELECT, not an f-string NOTIFY."""
-
-    @pytest.mark.asyncio
-    async def test_non_unique_job_uses_pg_notify_params(self):
-        from elephantq.core.queue import _create_job_record
-
-        conn = AsyncMock()
-        conn.execute = AsyncMock(return_value="INSERT 0 1")
-
-        job_id = str(uuid.uuid4())
-        job_meta = {"retries": 3}
-
-        result = await _create_job_record(
-            conn,
-            job_id=job_id,
-            job_name="mymodule.my_task",
-            job_meta=job_meta,
-            args_json='{"x": 1}',
-            args_hash=None,
-            final_priority=10,
-            final_queue="default",
-            final_unique=False,
-            scheduled_at=None,
-        )
-
-        assert result == job_id
-
-        # The second execute call should be the pg_notify
-        notify_call = conn.execute.call_args_list[-1]
-        sql = notify_call.args[0]
-        assert "pg_notify" in sql
-        assert "$1" in sql and "$2" in sql
-        # Should NOT contain NOTIFY as a raw SQL command
-        assert "NOTIFY" not in sql.upper().replace("PG_NOTIFY", "")
-        # Verify the channel and queue were passed as parameters
-        assert notify_call.args[1] == "elephantq_new_job"
-        assert notify_call.args[2] == "default"
-
-    @pytest.mark.asyncio
-    async def test_unique_job_uses_pg_notify_params(self):
-        from elephantq.core.queue import _create_job_record
-
-        conn = AsyncMock()
-        row = {"id": uuid.uuid4()}
-        conn.fetchrow = AsyncMock(return_value=row)
-        conn.execute = AsyncMock(return_value="SELECT 1")
-
-        job_id = str(uuid.uuid4())
-        job_meta = {"retries": 2}
-
-        await _create_job_record(
-            conn,
-            job_id=job_id,
-            job_name="mymodule.unique_task",
-            job_meta=job_meta,
-            args_json='{"y": 2}',
-            args_hash="abc123",
-            final_priority=5,
-            final_queue="critical",
-            final_unique=True,
-            scheduled_at=None,
-        )
-
-        # The execute call after fetchrow should be pg_notify
-        notify_call = conn.execute.call_args_list[-1]
-        sql = notify_call.args[0]
-        assert "pg_notify($1, $2)" in sql
 
 
 class TestCleanupStaleWorkersParameterized:
@@ -179,6 +108,6 @@ class TestRowsAffectedHelper:
         ],
     )
     def test_rows_affected(self, status_string, expected):
-        from elephantq.core.queue import _rows_affected
+        from elephantq.db.helpers import rows_affected
 
-        assert _rows_affected(status_string) == expected
+        assert rows_affected(status_string) == expected

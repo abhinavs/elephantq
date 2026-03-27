@@ -40,7 +40,7 @@ async def test_create_and_get_job():
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
     assert result == job_id
@@ -68,7 +68,7 @@ async def test_fetch_and_lock_job():
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
 
@@ -103,7 +103,7 @@ async def test_mark_done_and_failed():
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
     await backend.fetch_and_lock_job(queues=["default"], worker_id=None)
@@ -121,7 +121,7 @@ async def test_mark_done_and_failed():
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
     await backend.fetch_and_lock_job(queues=["default"], worker_id=None)
@@ -146,7 +146,7 @@ async def test_dead_letter():
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
     await backend.fetch_and_lock_job(queues=["default"], worker_id=None)
@@ -171,7 +171,7 @@ async def test_cancel_and_retry():
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
     assert await backend.cancel_job(j) is True
@@ -197,7 +197,7 @@ async def test_reset():
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
 

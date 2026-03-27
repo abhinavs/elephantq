@@ -88,11 +88,11 @@ def test_storage_backend_has_capability_properties():
     assert "supports_transactional_enqueue" in members
 
 
-def test_create_job_accepts_queueing_lock():
+def test_create_job_accepts_dedup_key():
     from elephantq.backends import StorageBackend
 
     sig = inspect.signature(StorageBackend.create_job)
-    assert "queueing_lock" in sig.parameters
+    assert "dedup_key" in sig.parameters
 
 
 def test_structural_typing_works():

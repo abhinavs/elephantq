@@ -41,7 +41,7 @@ async def test_process_via_backend_runs_job():
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
 
@@ -96,7 +96,7 @@ async def test_process_via_backend_handles_failure_with_retry():
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
 
@@ -134,7 +134,7 @@ async def test_process_via_backend_dead_letters_after_max_attempts():
         priority=100,
         queue="default",
         unique=False,
-        queueing_lock=None,
+        dedup_key=None,
         scheduled_at=None,
     )
 

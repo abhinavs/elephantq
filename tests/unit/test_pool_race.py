@@ -13,7 +13,7 @@ async def test_concurrent_access_all_get_same_backend():
     Multiple concurrent _ensure_initialized() calls should all
     end up with the same backend instance.
     """
-    from elephantq.client import ElephantQ
+    from elephantq.app import ElephantQ
 
     app = ElephantQ(backend="memory")
 

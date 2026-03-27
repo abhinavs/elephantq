@@ -58,11 +58,12 @@ async def test_corrupted_json_data(clean_db):
     This test verifies that if args somehow contain invalid data,
     the job is dead-lettered via the old conn-based processor path.
     """
-    from elephantq.core.processor import _process_job_common
-    from elephantq.core.registry import get_job
+    from elephantq.worker import Worker
 
     global_app = elephantq._get_global_app()
     app_pool = await global_app.get_pool()
+    registry = global_app.get_job_registry()
+    backend = global_app.backend
 
     # Insert a job with valid JSON args
     job_id = uuid.uuid4()
@@ -77,9 +78,9 @@ async def test_corrupted_json_data(clean_db):
             json.dumps({"message": "test"}),
         )
 
-    # Process via old path (conn-based, still used by some integration tests)
-    async with app_pool.acquire() as conn:
-        processed = await _process_job_common(conn, get_job, queue="test")
+    # Process via backend-aware path
+    worker = Worker(backend, registry)
+    processed = await worker.run_once(queues=["test"], max_jobs=1)
 
     assert processed
 
