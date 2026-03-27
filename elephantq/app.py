@@ -84,6 +84,11 @@ class ElephantQ:
         # Instance components (initialized lazily)
         self._pool: Optional[Any] = None
         self._job_registry = JobRegistry()
+        self._hooks: dict[str, list] = {
+            "before_job": [],
+            "after_job": [],
+            "on_error": [],
+        }
 
         logger.debug("Created ElephantQ instance")
 
@@ -265,6 +270,21 @@ class ElephantQ:
 
         return decorator
 
+    def before_job(self, fn):
+        """Register a hook called before each job executes."""
+        self._hooks["before_job"].append(fn)
+        return fn
+
+    def after_job(self, fn):
+        """Register a hook called after each job completes successfully."""
+        self._hooks["after_job"].append(fn)
+        return fn
+
+    def on_error(self, fn):
+        """Register a hook called when a job fails."""
+        self._hooks["on_error"].append(fn)
+        return fn
+
     async def enqueue(self, job_func, connection=None, **kwargs):
         """
         Enqueue a job for processing.
@@ -407,6 +427,7 @@ class ElephantQ:
             backend=self._backend,
             registry=self._job_registry,
             settings=self._settings,
+            hooks=self._hooks,
         )
         return await worker.run(
             concurrency=concurrency,

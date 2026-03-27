@@ -31,11 +31,13 @@ class Worker:
         backend: Any,
         registry: JobRegistry,
         settings: Optional[ElephantQSettings] = None,
+        hooks: Optional[dict] = None,
     ):
         self._backend = backend
         self._registry = registry
         self._settings = settings or get_settings()
         self._last_cleanup = 0.0
+        self._hooks = hooks or {}
 
     async def run(
         self,
@@ -89,6 +91,7 @@ class Worker:
                 backend=self._backend,
                 job_registry=self._registry,
                 queues=queues,
+                hooks=self._hooks,
             )
 
             if processed:
@@ -150,6 +153,7 @@ class Worker:
                         job_registry=self._registry,
                         queues=queues,
                         worker_id=worker_id,
+                        hooks=self._hooks,
                     )
 
                     if not processed:

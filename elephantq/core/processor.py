@@ -96,11 +96,26 @@ async def _execute_job_safely(
         return False, str(e)
 
 
+async def _call_hooks(hooks: dict, hook_name: str, *args) -> None:
+    """Call all registered hooks for an event, catching errors."""
+    for fn in hooks.get(hook_name, []):
+        try:
+            import asyncio
+
+            if asyncio.iscoroutinefunction(fn):
+                await fn(*args)
+            else:
+                fn(*args)
+        except Exception as e:
+            logger.warning(f"Hook {hook_name} failed: {e}")
+
+
 async def process_job_via_backend(
     backend: Any,
     job_registry: JobRegistry,
     queues: Optional[List[str]] = None,
     worker_id: Optional[str] = None,
+    hooks: Optional[dict] = None,
 ) -> bool:
     """
     Process a single job using a StorageBackend.
@@ -118,6 +133,8 @@ async def process_job_via_backend(
         True if a job was processed, False if no jobs available
     """
     from elephantq.settings import get_settings
+
+    _hooks = hooks or {}
 
     job_record = await backend.fetch_and_lock_job(
         queues=queues,
@@ -156,6 +173,8 @@ async def process_job_via_backend(
         logger.error(f"Job {job_name} not registered - moved to dead letter queue")
         return True
 
+    await _call_hooks(_hooks, "before_job", job_name, job_id, attempts)
+
     try:
         job_success, job_error = await _execute_job_safely(job_record, job_meta)
     except ValueError as corruption_error:
@@ -173,7 +192,11 @@ async def process_job_via_backend(
         settings = get_settings()
         await backend.mark_job_done(job_id, result_ttl=settings.result_ttl)
         logger.info(f"Job {job_id} completed in {duration_ms}ms")
+        await _call_hooks(_hooks, "after_job", job_name, job_id, duration_ms)
     else:
+        await _call_hooks(
+            _hooks, "on_error", job_name, job_id, str(job_error), attempts
+        )
         if attempts >= max_attempts:
             await backend.mark_job_dead_letter(
                 job_id,
