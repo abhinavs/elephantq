@@ -239,7 +239,7 @@ class SQLiteBackend:
     # --- Job status transitions ---
 
     async def mark_job_done(
-        self, job_id: str, *, result_ttl: Optional[int] = None
+        self, job_id: str, *, result_ttl: Optional[int] = None, result: Any = None
     ) -> None:
         assert self._conn is not None
         if result_ttl is not None and result_ttl == 0:

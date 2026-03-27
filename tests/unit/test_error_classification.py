@@ -54,7 +54,7 @@ async def test_typeerror_with_parameter_in_message_is_retried():
     job_meta = _make_job_meta(bad_job)
 
     # This should return (False, error_message) for retry, NOT raise ValueError
-    success, error_msg = await _execute_job_safely(job_record, job_meta)
+    success, error_msg, _result = await _execute_job_safely(job_record, job_meta)
     assert success is False
     assert "parameter_count" in error_msg
 
@@ -72,7 +72,7 @@ async def test_attributeerror_with_argument_in_message_is_retried():
     job_record = _make_job_record()
     job_meta = _make_job_meta(bad_job)
 
-    success, error_msg = await _execute_job_safely(job_record, job_meta)
+    success, error_msg, _result = await _execute_job_safely(job_record, job_meta)
     assert success is False
     assert "argument_parser" in error_msg
 
@@ -87,7 +87,7 @@ async def test_regular_typeerror_from_job_is_retried():
     job_record = _make_job_record()
     job_meta = _make_job_meta(bad_job)
 
-    success, error_msg = await _execute_job_safely(job_record, job_meta)
+    success, error_msg, _result = await _execute_job_safely(job_record, job_meta)
     assert success is False
     assert "unsupported operand" in error_msg
 
@@ -143,7 +143,7 @@ async def test_successful_job_returns_true():
     job_record = _make_job_record({"msg": "hello"})
     job_meta = _make_job_meta(good_job)
 
-    success, error_msg = await _execute_job_safely(job_record, job_meta)
+    success, error_msg, _result = await _execute_job_safely(job_record, job_meta)
     assert success is True
     assert error_msg is None
 
@@ -158,6 +158,6 @@ async def test_generic_exception_from_job_is_retried():
     job_record = _make_job_record()
     job_meta = _make_job_meta(bad_job)
 
-    success, error_msg = await _execute_job_safely(job_record, job_meta)
+    success, error_msg, _result = await _execute_job_safely(job_record, job_meta)
     assert success is False
     assert "external service unavailable" in error_msg

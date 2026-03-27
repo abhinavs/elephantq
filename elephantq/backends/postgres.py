@@ -416,6 +416,7 @@ class PostgresBackend:
         job_id: str,
         *,
         result_ttl: Optional[int] = None,
+        result: Any = None,
     ) -> None:
         uid = uuid.UUID(job_id)
         async with self.pool.acquire() as conn:

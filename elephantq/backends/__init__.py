@@ -114,6 +114,7 @@ class StorageBackend(Protocol):
         job_id: str,
         *,
         result_ttl: Optional[int] = None,
+        result: Any = None,
     ) -> None:
         """Mark job as done. If result_ttl=0, delete immediately."""
         ...

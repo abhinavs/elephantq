@@ -94,6 +94,7 @@ class MemoryBackend:
                 "dedup_key": dedup_key,
                 "scheduled_at": scheduled_at,
                 "expires_at": None,
+                "result": None,
                 "last_error": None,
                 "worker_id": None,
                 "created_at": now,
@@ -158,6 +159,7 @@ class MemoryBackend:
         job_id: str,
         *,
         result_ttl: Optional[int] = None,
+        result: Any = None,
     ) -> None:
         async with self._lock:
             job = self._jobs.get(job_id)
@@ -167,6 +169,7 @@ class MemoryBackend:
                 del self._jobs[job_id]
             else:
                 job["status"] = "done"
+                job["result"] = result
                 job["updated_at"] = datetime.now(timezone.utc)
                 if result_ttl is not None and result_ttl > 0:
                     from datetime import timedelta

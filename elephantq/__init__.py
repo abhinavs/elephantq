@@ -312,6 +312,12 @@ async def get_job(job_id: str):
 get_job_status = get_job
 
 
+async def get_result(job_id: str):
+    """Get the return value of a completed job, or None."""
+    app = _get_global_app()
+    return await app.get_result(job_id)
+
+
 async def cancel_job(job_id: str):
     """Cancel a queued job."""
     app = _get_global_app()

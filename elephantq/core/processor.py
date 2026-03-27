@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 async def _execute_job_safely(
     job_record: dict, job_meta: dict
-) -> tuple[bool, Optional[str]]:
+) -> tuple[bool, Optional[str], Any]:
     """
     Execute a job function safely with proper error handling.
 
@@ -86,14 +86,14 @@ async def _execute_job_safely(
     # Execute the job function (outside transaction) with optional timeout
     try:
         if timeout:
-            await asyncio.wait_for(func(**validated_args), timeout=timeout)
+            result = await asyncio.wait_for(func(**validated_args), timeout=timeout)
         else:
-            await func(**validated_args)
-        return True, None
+            result = await func(**validated_args)
+        return True, None, result
     except asyncio.TimeoutError:
-        return False, f"Job timed out after {timeout}s"
+        return False, f"Job timed out after {timeout}s", None
     except Exception as e:
-        return False, str(e)
+        return False, str(e), None
 
 
 async def _call_hooks(hooks: dict, hook_name: str, *args) -> None:
@@ -176,7 +176,9 @@ async def process_job_via_backend(
     await _call_hooks(_hooks, "before_job", job_name, job_id, attempts)
 
     try:
-        job_success, job_error = await _execute_job_safely(job_record, job_meta)
+        job_success, job_error, job_result = await _execute_job_safely(
+            job_record, job_meta
+        )
     except ValueError as corruption_error:
         logger.error(f"Job {job_id} has corrupted data: {corruption_error}")
         await backend.mark_job_dead_letter(
@@ -190,7 +192,9 @@ async def process_job_via_backend(
 
     if job_success:
         settings = get_settings()
-        await backend.mark_job_done(job_id, result_ttl=settings.result_ttl)
+        await backend.mark_job_done(
+            job_id, result_ttl=settings.result_ttl, result=job_result
+        )
         logger.info(f"Job {job_id} completed in {duration_ms}ms")
         await _call_hooks(_hooks, "after_job", job_name, job_id, duration_ms)
     else:

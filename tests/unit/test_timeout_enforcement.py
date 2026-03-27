@@ -47,7 +47,7 @@ async def test_job_exceeding_timeout_is_failed():
     job_record = _make_job_record()
     job_meta = _make_job_meta(slow_job, timeout=0.1)
 
-    success, error_msg = await _execute_job_safely(job_record, job_meta)
+    success, error_msg, _result = await _execute_job_safely(job_record, job_meta)
     assert success is False
     assert "timed out" in error_msg.lower()
 
@@ -62,7 +62,7 @@ async def test_job_within_timeout_succeeds():
     job_record = _make_job_record()
     job_meta = _make_job_meta(fast_job, timeout=5.0)
 
-    success, error_msg = await _execute_job_safely(job_record, job_meta)
+    success, error_msg, _result = await _execute_job_safely(job_record, job_meta)
     assert success is True
     assert error_msg is None
 
@@ -86,7 +86,7 @@ async def test_per_job_timeout_overrides_global(monkeypatch):
         # Per-job timeout is very short — should trigger
         job_meta = _make_job_meta(slow_job, timeout=0.1)
 
-        success, error_msg = await _execute_job_safely(job_record, job_meta)
+        success, error_msg, _result = await _execute_job_safely(job_record, job_meta)
         assert success is False
         assert "timed out" in error_msg.lower()
     finally:
@@ -106,6 +106,6 @@ async def test_no_timeout_when_set_to_none():
     job_record = _make_job_record()
     job_meta = _make_job_meta(quick_job, timeout=None)
 
-    success, error_msg = await _execute_job_safely(job_record, job_meta)
+    success, error_msg, _result = await _execute_job_safely(job_record, job_meta)
     assert success is True
     assert completed is True

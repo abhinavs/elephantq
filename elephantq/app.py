@@ -450,6 +450,14 @@ class ElephantQ:
         await self._ensure_initialized()
         return await self._backend.get_job(job_id)  # type: ignore[union-attr]
 
+    async def get_result(self, job_id: str):
+        """Get the return value of a completed job, or None."""
+        await self._ensure_initialized()
+        job = await self._backend.get_job(job_id)  # type: ignore[union-attr]
+        if job and job.get("status") == "done":
+            return job.get("result")
+        return None
+
     async def cancel_job(self, job_id: str):
         """
         Cancel a queued job.
