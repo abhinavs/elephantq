@@ -79,11 +79,11 @@ export ELEPHANTQ_DASHBOARD_ENABLED=true
 
 Reference configurations:
 
-- `deployment/README.md`
-- `deployment/elephantq-worker.service`
-- `deployment/elephantq-dashboard.service`
-- `deployment/kubernetes.yaml`
-- `deployment/docker-compose.yml`
+- [Deployment guide](deployment.md)
+- [elephantq-worker.service](../deployment/elephantq-worker.service)
+- [elephantq-dashboard.service](../deployment/elephantq-dashboard.service)
+- [kubernetes.yaml](../deployment/kubernetes.yaml)
+- [docker-compose.yml](../deployment/docker-compose.yml)
 
 ## 9. Production Defaults (Suggested)
 

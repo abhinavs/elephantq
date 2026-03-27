@@ -423,9 +423,90 @@ docker-compose logs --since 1h elephantq-worker
 
 ---
 
+## Queue Routing
+
+When different queues have different throughput or latency needs, run separate worker processes per queue group. This lets you scale each group independently.
+
+### Supervisor (one program per queue group)
+
+```ini
+[program:elephantq_email_worker]
+command=/opt/elephantq/venv/bin/elephantq start --concurrency=4 --queues=emails,notifications
+autostart=true
+autorestart=true
+user=elephantq
+environment=ELEPHANTQ_DATABASE_URL="postgresql://elephantq:pass@localhost/elephantq_prod"
+
+[program:elephantq_media_worker]
+command=/opt/elephantq/venv/bin/elephantq start --concurrency=2 --queues=media,transcode
+autostart=true
+autorestart=true
+user=elephantq
+environment=ELEPHANTQ_DATABASE_URL="postgresql://elephantq:pass@localhost/elephantq_prod"
+```
+
+### Docker Compose (scale per queue)
+
+```yaml
+services:
+  worker_email:
+    build: { context: ., dockerfile: Dockerfile.worker }
+    command: ["elephantq", "start", "--concurrency=4", "--queues=emails,notifications"]
+    environment:
+      ELEPHANTQ_DATABASE_URL: postgresql://elephantq:pass@postgres/elephantq_prod
+    deploy:
+      replicas: 2   # scale email workers independently
+
+  worker_media:
+    build: { context: ., dockerfile: Dockerfile.worker }
+    command: ["elephantq", "start", "--concurrency=2", "--queues=media,transcode"]
+    environment:
+      ELEPHANTQ_DATABASE_URL: postgresql://elephantq:pass@postgres/elephantq_prod
+    deploy:
+      replicas: 1
+```
+
+### Kubernetes (separate deployments)
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elephantq-email-worker
+spec:
+  replicas: 3
+  template:
+    spec:
+      containers:
+        - name: worker
+          image: myapp:latest
+          command: ["elephantq", "start", "--concurrency=4", "--queues=emails,notifications"]
+          envFrom:
+            - secretRef: { name: elephantq-secrets }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: elephantq-media-worker
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: worker
+          image: myapp:latest
+          command: ["elephantq", "start", "--concurrency=2", "--queues=media,transcode"]
+          envFrom:
+            - secretRef: { name: elephantq-secrets }
+```
+
+Each deployment scales independently via `kubectl scale` or an HPA.
+
+---
+
 ## 📞 Support
 
-- **Documentation**: [ElephantQ Docs](https://docs.elephantq.dev)
+- **Documentation**: [ElephantQ Docs](https://github.com/abhinavs/elephantq/tree/main/docs)
 - **Issues**: [GitHub Issues](https://github.com/abhinavs/elephantq/issues)
 - **Email**: abhinav@apiclabs.com
 

@@ -126,25 +126,6 @@ services:
     networks:
       - elephantq_network
 
-  # Optional: Redis for caching
-  redis:
-    image: redis:7-alpine
-    container_name: elephantq_redis
-    restart: always
-    volumes:
-      - redis_data:/data
-    ports:
-      - "6379:6379"
-    profiles:
-      - cache # Optional service - enable with --profile cache
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-    networks:
-      - elephantq_network
-
   # Optional: Nginx reverse proxy
   nginx:
     image: nginx:alpine
@@ -166,8 +147,6 @@ services:
 
 volumes:
   postgres_data:
-    driver: local
-  redis_data:
     driver: local
 
 networks:

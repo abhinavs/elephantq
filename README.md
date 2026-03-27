@@ -1,30 +1,52 @@
 # ElephantQ
 
-Async-native background job queue — zero setup to start, PostgreSQL for production.
+Background jobs for Python. Powered by the Postgres you already have.
 
-## Quick start — no database server needed
+## Quick start (30 seconds, no database server)
 
 ```bash
 pip install elephantq
 ```
 
 ```python
+# quickstart.py
+import asyncio
 import elephantq
 
-# SQLite backend — auto-detected from .db extension
-elephantq.configure(database_url="jobs.db")
+app = elephantq.ElephantQ(database_url="jobs.db")
 
-@elephantq.job(retries=3)
+@app.job(retries=3)
 async def send_welcome(to: str):
-    print(f"sending welcome to {to}")
+    print(f"Sending welcome to {to}")
 
-await elephantq.enqueue(send_welcome, to="team@example.com")
-await elephantq.run_worker(run_once=True)
+async def main():
+    await app.setup()
+    await app.enqueue(send_welcome, to="team@example.com")
+    await app.run_worker(run_once=True)
+
+asyncio.run(main())
 ```
 
-No PostgreSQL, no Redis, no Docker. Just `pip install` and go.
+```bash
+$ python quickstart.py
+Sending welcome to team@example.com
+```
 
-## Move to production — switch to PostgreSQL
+One file. Copy, paste, run. No database server, no configuration.
+
+## The killer feature: transactional enqueue
+
+Insert a row and enqueue a job in the same database transaction. If the transaction rolls back, the job never existed. No Redis can give you this.
+
+```python
+async with pool.acquire() as conn:
+    async with conn.transaction():
+        await conn.execute("INSERT INTO orders ...")
+        await elephantq.enqueue(send_invoice, connection=conn, order_id=order_id)
+        # Both commit atomically, or neither does
+```
+
+## Move to production
 
 ```bash
 export ELEPHANTQ_DATABASE_URL="postgresql://postgres@localhost/elephantq"
@@ -34,113 +56,71 @@ elephantq start --concurrency 4 --queues default,emails
 
 Your code stays the same. ElephantQ auto-detects PostgreSQL from the URL and unlocks concurrent workers, push notifications (`pg_notify`), and transactional enqueue.
 
-## Transactional enqueue
-
-Enqueue a job inside your application’s database transaction. If the transaction rolls back, the job never enters the queue.
-
-```python
-async with pool.acquire() as conn:
-    async with conn.transaction():
-        await conn.execute("INSERT INTO orders ...")
-        await elephantq.enqueue(send_invoice, connection=conn, order_id=order_id)
-        # If this transaction fails, the job is never enqueued
-```
-
-This is the core guarantee: your data and your job are committed atomically. Works only with PostgreSQL — on other backends, `connection=` is silently ignored.
-
 ## Why ElephantQ
 
-- **Zero-setup local dev**: SQLite backend, no database server needed
-- **Async from the ground up**: coroutine workers fit modern Python (FastAPI, Starlette)
-- **PostgreSQL-native in production**: `FOR UPDATE SKIP LOCKED`, `pg_notify`, `JSONB`, transactional enqueue
-- **One library**: queue, worker, scheduler, dead letter, dashboard — single dependency
-- **Fast to adopt**: `pip install`, define a job, enqueue, run a worker
+**No Redis. No RabbitMQ. No extra infrastructure.**
+
+Most Python job queues force you to run Redis or RabbitMQ alongside your database. That's another service to deploy, monitor, back up, and debug when things go wrong at 3am.
+
+ElephantQ uses your existing PostgreSQL database as the job queue. One dependency. One place your data lives. One thing to back up.
+
+- **Transactional enqueue**: insert a row and enqueue a job atomically. No eventual consistency.
+- **Zero-setup dev**: SQLite backend for local development. No servers needed.
+- **Production-ready**: `FOR UPDATE SKIP LOCKED` for safe concurrent workers, `pg_notify` for instant job pickup, retries with backoff, dead-letter queue.
+- **Async-native**: built for FastAPI and modern Python. `@job`, `await enqueue`, done.
 
 ## How it compares
 
 | Feature             | ElephantQ | Celery         | RQ     | Dramatiq       | Arq    |
 | ------------------- | --------- | -------------- | ------ | -------------- | ------ |
-| No Redis dependency | ✅        | ❌             | ❌     | ❌             | ❌     |
-| Async native        | ✅        | ⚠️             | ❌     | ⚠️             | ✅     |
+| No Redis dependency | yes       | no             | no     | no             | no     |
+| Async native        | yes       | partial        | no     | partial        | yes    |
+| Transactional enq.  | yes       | no             | no     | no             | no     |
 | Setup complexity    | Low       | High           | Medium | Medium         | Medium |
 | Infra dependencies  | Postgres  | Redis/RabbitMQ | Redis  | Redis/RabbitMQ | Redis  |
-| Learning curve      | Low       | High           | Medium | Medium         | Medium |
 
-## Features
+## When things go wrong
 
-**Core strengths**
+- **Retries with backoff**: failed jobs are retried automatically with configurable delay and exponential backoff.
+- **Dead-letter queue**: after max retries, jobs move to dead-letter for inspection and manual retry.
+- **Dashboard**: monitor queues, workers, and job status in a built-in web UI.
+- **CLI**: `elephantq status` shows queue health at a glance.
 
-- Async-first API: `@job`, `await enqueue`, fluent scheduling.
-- Postgres-only design: one dependable backend for storage and coordination.
-- Simple developer experience: minimal flags, sensible defaults, runnable examples.
+## Works great for
 
-**Operational benefits**
+- Sending emails after user signup
+- Processing file uploads in the background
+- Running nightly reports and data syncs
+- Webhook delivery with retry logic
 
-- Easy local development: only Postgres required.
-- Minimal infrastructure: no brokers or side services to maintain.
-- Predictable reliability: retries, dead-letter queue, and scheduling are first-class.
+## Deploy to production
 
-**Developer experience**
+Ready-to-use configs for systemd, supervisor, Docker Compose, and Kubernetes:
 
-- Clean API surface; fluent builders like `every(10).minutes().schedule(...)`.
-- Low configuration: env vars + a few CLI commands.
-- Fast onboarding: `examples/` and `tests/` mirror real scenarios.
-
-## Use cases
-
-- Background tasks in async web apps (FastAPI, Starlette).
-- Teams that want job processing without adding Redis.
-- Small to medium production workloads centered on Postgres.
-- Internal tools and dashboards that benefit from a built-in queue UI.
-
-## Fluent scheduling
-
-```python
-from elephantq import every
-
-@elephantq.job()
-async def nightly_report():
-    ...
-
-await every(10).minutes().schedule(nightly_report)
-```
-
-For more control, use `elephantq.features.scheduling.schedule_job(...)` and chain `.with_priority()`, `.depends_on(...)`, `.with_timeout(...)`, or batch multiple jobs.
-
-## Built for Production
-
-- Architecture: Postgres-backed jobs, `LISTEN/NOTIFY` for wakeups, `SKIP LOCKED` for safe concurrency.
-- Reliability: retries with backoff, dead-letter queue, persistent scheduling, at-least-once processing semantics.
-- Operational tooling: CLI for workers/scheduler/dashboard, health checks, connection pool safety warnings.
-
-## Dashboard
-
-Monitor queues, workers, retries, and system health.
-
-![ElephantQ Dashboard](docs/assets/elephantq_dashboard.png)
+[Deployment guide](docs/deployment.md) — systemd, supervisor, Docker Compose, Kubernetes configs
 
 ## Optional extras
 
 ```bash
-pip install elephantq[dashboard]    # dashboard
-pip install elephantq[monitoring]   # Prometheus metrics and process-level stats
-pip install elephantq[all]          # everything above
+pip install elephantq[sqlite]       # SQLite backend
+pip install elephantq[scheduling]   # cron-based recurring jobs
+pip install elephantq[webhooks]     # webhook delivery
+pip install elephantq[dashboard]    # web dashboard
+pip install elephantq[monitoring]   # Prometheus metrics
 ```
-
-## Not for you if
-
-- You already run Celery and are happy with it.
-- You need 10k+ jobs/sec throughput (Redis-backed queues are faster at that scale).
-- Your stack doesn't include PostgreSQL.
-- You need cross-language producers or consumers.
 
 ## Documentation
 
-- [docs/getting-started.md](docs/getting-started.md)
-- [docs/scheduling.md](docs/scheduling.md)
-- [docs/features.md](docs/features.md)
-- [docs/production.md](docs/production.md)
-- `examples/` and `tests/`
+- [Getting started](docs/getting-started.md)
+- [Architecture](docs/architecture.md)
+- [Scheduling](docs/scheduling.md)
+- [Testing](docs/testing.md)
+- [Production guide](docs/production.md)
+- [Deployment](docs/deployment.md)
+- [Backends](docs/backends.md)
+- [Feature flags](docs/feature-flags.md)
+
+**Note:** if you need 10k+ jobs/sec or cross-language consumers, a Redis-backed queue is a better fit.
 
 ## License
 
