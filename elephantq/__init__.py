@@ -282,10 +282,9 @@ async def run_worker(
 
 
 async def setup() -> int:
-    """Create/upgrade ElephantQ tables via migrations (global API)."""
-    from elephantq.db.migrations import run_migrations
-
-    return await run_migrations()
+    """Set up ElephantQ — create database (if needed) and run migrations."""
+    app = _get_global_app()
+    return await app.setup()
 
 
 async def reset() -> None:

@@ -167,36 +167,8 @@ class DatabaseLogHandler(logging.Handler):
         self._background_task = None
 
     async def setup_database(self):
-        """Create logs table if it doesn't exist"""
-        pool = await get_pool()
-        async with pool.acquire() as conn:
-            await conn.execute(
-                f"""
-                CREATE TABLE IF NOT EXISTS {self.table_name} (
-                    id SERIAL PRIMARY KEY,
-                    timestamp TIMESTAMP WITH TIME ZONE NOT NULL,
-                    level TEXT NOT NULL,
-                    message TEXT NOT NULL,
-                    logger_name TEXT NOT NULL,
-                    module TEXT,
-                    function TEXT,
-                    line_number INTEGER,
-                    request_id TEXT,
-                    job_id TEXT,
-                    job_name TEXT,
-                    queue TEXT,
-                    extra_data JSONB,
-                    exception_data JSONB,
-                    performance_data JSONB,
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-                );
-
-                CREATE INDEX IF NOT EXISTS idx_{self.table_name}_timestamp ON {self.table_name}(timestamp);
-                CREATE INDEX IF NOT EXISTS idx_{self.table_name}_job_id ON {self.table_name}(job_id);
-                CREATE INDEX IF NOT EXISTS idx_{self.table_name}_level ON {self.table_name}(level);
-                CREATE INDEX IF NOT EXISTS idx_{self.table_name}_request_id ON {self.table_name}(request_id);
-            """
-            )
+        """Tables are created by migrations. No-op."""
+        pass
 
     def emit(self, record: logging.LogRecord):
         """Add log record to buffer"""

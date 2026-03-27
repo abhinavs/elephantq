@@ -621,8 +621,59 @@ class ElephantQ:
             return await migration_runner._run_migrations_with_connection(conn)
 
     async def setup(self) -> int:
-        """Create/upgrade ElephantQ tables via migrations (instance API)."""
+        """
+        Set up ElephantQ — create database (if needed) and run migrations.
+
+        - PostgreSQL: creates the database if it doesn't exist, then runs migrations
+        - SQLite: tables created automatically by SQLiteBackend.initialize()
+        - Memory: no-op
+
+        Returns:
+            Number of migrations applied (0 for SQLite/Memory)
+        """
+        await self._ensure_initialized()
+
+        # SQLite and Memory backends create tables on initialize() — nothing to migrate
+        if not hasattr(self._backend, "pool"):
+            return 0
+
+        # PostgreSQL: attempt to create the database, then run migrations
+        await self._ensure_postgres_database_exists()
         return await self.run_migrations()
+
+    async def _ensure_postgres_database_exists(self) -> None:
+        """Create the PostgreSQL database if it doesn't exist."""
+        import asyncpg as _asyncpg
+
+        url = self._settings.database_url
+        # Parse database name from URL
+        # postgresql://user:pass@host:port/dbname
+        if "/" not in url.split("@")[-1]:
+            return  # No database name in URL
+
+        parts = url.rsplit("/", 1)
+        if len(parts) != 2:
+            return
+
+        server_url = parts[0] + "/postgres"  # Connect to default 'postgres' db
+        db_name = parts[1].split("?")[0]  # Strip query params
+
+        try:
+            conn = await _asyncpg.connect(server_url)
+            try:
+                exists = await conn.fetchval(
+                    "SELECT 1 FROM pg_database WHERE datname = $1", db_name
+                )
+                if not exists:
+                    # Can't use parameterized query for CREATE DATABASE
+                    await conn.execute(f'CREATE DATABASE "{db_name}"')
+                    logger.info(f"Created database: {db_name}")
+            finally:
+                await conn.close()
+        except Exception as e:
+            # Database might already exist, or we might not have permissions
+            # Either way, we'll find out when migrations run
+            logger.debug(f"Could not auto-create database: {e}")
 
     async def _cleanup_on_error(self):
         """Cleanup resources after initialization error."""

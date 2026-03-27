@@ -279,43 +279,8 @@ class WebhookRegistry:
             logger.error(f"Failed to load webhook endpoints: {e}")
 
     async def _ensure_webhook_tables(self, conn: asyncpg.Connection):
-        """Ensure webhook tables exist"""
-        await conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS elephantq_webhook_endpoints (
-                id TEXT PRIMARY KEY,
-                url TEXT NOT NULL,
-                secret TEXT,
-                events JSONB,
-                active BOOLEAN DEFAULT true,
-                max_retries INTEGER DEFAULT 3,
-                timeout_seconds INTEGER DEFAULT 30,
-                headers JSONB,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-            );
-            CREATE TABLE IF NOT EXISTS elephantq_webhook_deliveries (
-                id TEXT PRIMARY KEY,
-                endpoint_id TEXT NOT NULL,
-                event TEXT NOT NULL,
-                payload JSONB NOT NULL,
-                status TEXT NOT NULL DEFAULT 'pending',
-                attempts INTEGER DEFAULT 0,
-                max_attempts INTEGER DEFAULT 3,
-                next_retry_at TIMESTAMP WITH TIME ZONE,
-                last_error TEXT,
-                response_status INTEGER,
-                response_body TEXT,
-                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-                delivered_at TIMESTAMP WITH TIME ZONE,
-                FOREIGN KEY (endpoint_id) REFERENCES elephantq_webhook_endpoints(id) ON DELETE CASCADE
-            );
-
-            CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_status ON elephantq_webhook_deliveries(status);
-            CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_next_retry ON elephantq_webhook_deliveries(next_retry_at);
-            CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_endpoint ON elephantq_webhook_deliveries(endpoint_id);
-        """
-        )
+        """Tables are created by migrations. No-op."""
+        pass
 
 
 class WebhookDispatcher:

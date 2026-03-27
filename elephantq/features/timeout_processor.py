@@ -72,19 +72,7 @@ async def store_job_timeout(
         True if stored successfully
     """
     try:
-        # Create timeout metadata table if it doesn't exist
-        await conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS elephantq_job_timeouts (
-                job_id UUID PRIMARY KEY REFERENCES elephantq_jobs(id) ON DELETE CASCADE,
-                timeout_seconds INTEGER NOT NULL,
-                created_at TIMESTAMP DEFAULT NOW(),
-                updated_at TIMESTAMP DEFAULT NOW()
-            )
-        """
-        )
-
-        # Store timeout configuration
+        # Table created by migrations — just store the timeout
         await conn.execute(
             """
             INSERT INTO elephantq_job_timeouts (job_id, timeout_seconds)
@@ -553,18 +541,7 @@ class TimeoutConfiguration:
 
         try:
             async with pool.acquire() as conn:
-                # Create global timeout configuration table
-                await conn.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS elephantq_config (
-                        key TEXT PRIMARY KEY,
-                        value TEXT NOT NULL,
-                        updated_at TIMESTAMP DEFAULT NOW()
-                    )
-                """
-                )
-
-                # Store global timeout
+                # Table created by migrations — just store the config
                 await conn.execute(
                     """
                     INSERT INTO elephantq_config (key, value)

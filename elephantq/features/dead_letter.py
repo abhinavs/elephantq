@@ -158,36 +158,8 @@ class DeadLetterManager:
         self.table_name = table_name
 
     async def setup_database(self):
-        """Create dead letter table if it doesn't exist"""
-        pool = await get_context_pool()
-        async with pool.acquire() as conn:
-            await conn.execute(
-                f"""
-                CREATE TABLE IF NOT EXISTS {self.table_name} (
-                    id UUID PRIMARY KEY,
-                    job_name TEXT NOT NULL,
-                    args JSONB NOT NULL,
-                    queue TEXT NOT NULL,
-                    priority INTEGER NOT NULL,
-                    max_attempts INTEGER NOT NULL,
-                    attempts INTEGER NOT NULL,
-                    last_error TEXT,
-                    dead_letter_reason TEXT NOT NULL,
-                    original_created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-                    moved_to_dead_letter_at TIMESTAMP WITH TIME ZONE NOT NULL,
-                    resurrection_count INTEGER DEFAULT 0,
-                    last_resurrection_at TIMESTAMP WITH TIME ZONE,
-                    tags JSONB,
-                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-                );
-
-                CREATE INDEX IF NOT EXISTS idx_{self.table_name}_job_name ON {self.table_name}(job_name);
-                CREATE INDEX IF NOT EXISTS idx_{self.table_name}_queue ON {self.table_name}(queue);
-                CREATE INDEX IF NOT EXISTS idx_{self.table_name}_reason ON {self.table_name}(dead_letter_reason);
-                CREATE INDEX IF NOT EXISTS idx_{self.table_name}_moved_at ON {self.table_name}(moved_to_dead_letter_at);
-                CREATE INDEX IF NOT EXISTS idx_{self.table_name}_resurrection ON {self.table_name}(resurrection_count);
-            """
-            )
+        """Verify dead letter table exists. Tables are created by migrations."""
+        pass  # Tables created by elephantq setup / migrations
 
     async def move_job_to_dead_letter(
         self,
