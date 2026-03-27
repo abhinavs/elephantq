@@ -50,6 +50,7 @@ __all__ = [
     "schedule",
     "run_worker",
     "setup",
+    "reset",
     "configure",
     "get_job_status",
     "cancel_job",
@@ -285,6 +286,12 @@ async def setup() -> int:
     from elephantq.db.migrations import run_migrations
 
     return await run_migrations()
+
+
+async def reset() -> None:
+    """Delete all jobs and workers. Used in test fixtures."""
+    app = _get_global_app()
+    return await app.reset()
 
 
 async def get_job_status(job_id: str):
