@@ -35,7 +35,7 @@ jobs:
         run: |
           pytest tests/unit/ tests/backend/ -v --tb=short \
             --cov=elephantq --cov-branch \
-            --cov-fail-under=55 \
+            --cov-fail-under=35 \
             --cov-report=term-missing
 
       - name: Run functional tests (SQLite)

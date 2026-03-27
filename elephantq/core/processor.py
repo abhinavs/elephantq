@@ -100,9 +100,9 @@ async def _call_hooks(hooks: dict, hook_name: str, *args) -> None:
     """Call all registered hooks for an event, catching errors."""
     for fn in hooks.get(hook_name, []):
         try:
-            import asyncio
+            import inspect as _inspect
 
-            if asyncio.iscoroutinefunction(fn):
+            if _inspect.iscoroutinefunction(fn):
                 await fn(*args)
             else:
                 fn(*args)

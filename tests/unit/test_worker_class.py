@@ -37,9 +37,9 @@ def test_worker_has_run_once_method():
 
 
 def asyncio_iscoroutinefunction_safe(func):
-    import asyncio
+    import inspect
 
-    return asyncio.iscoroutinefunction(func)
+    return inspect.iscoroutinefunction(func)
 
 
 @pytest.mark.asyncio
