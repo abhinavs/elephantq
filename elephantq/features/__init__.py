@@ -10,7 +10,7 @@ from . import (
     timeout_processor,
     webhooks,
 )
-from .features import ElephantQFeatures, features
+from .managers import ElephantQFeatures, features
 
 __all__ = [
     "ElephantQFeatures",

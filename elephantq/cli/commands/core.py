@@ -434,9 +434,9 @@ async def handle_status_command(args):
 
     # 2. Queue Statistics
     try:
-        from elephantq.core.queue import get_queue_stats
+        import elephantq
 
-        queues = await get_queue_stats()
+        queues = await elephantq.get_queue_stats()
         if queues:
             total_jobs = sum(q["total_jobs"] for q in queues)
             total_queued = sum(q["queued"] for q in queues)

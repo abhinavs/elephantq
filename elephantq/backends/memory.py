@@ -55,7 +55,7 @@ class MemoryBackend:
         priority: int,
         queue: str,
         unique: bool,
-        queueing_lock: Optional[str] = None,
+        dedup_key: Optional[str] = None,
         scheduled_at: Optional[datetime] = None,
     ) -> Optional[str]:
         async with self._lock:
@@ -71,10 +71,10 @@ class MemoryBackend:
                         return str(existing["id"])
 
             # Queueing lock dedup
-            if queueing_lock:
+            if dedup_key:
                 for existing in self._jobs.values():
                     if (
-                        existing.get("queueing_lock") == queueing_lock
+                        existing.get("dedup_key") == dedup_key
                         and existing["status"] == "queued"
                     ):
                         return str(existing["id"])
@@ -91,7 +91,7 @@ class MemoryBackend:
                 "priority": priority,
                 "queue": queue,
                 "unique_job": unique,
-                "queueing_lock": queueing_lock,
+                "dedup_key": dedup_key,
                 "scheduled_at": scheduled_at,
                 "expires_at": None,
                 "last_error": None,
@@ -167,6 +167,12 @@ class MemoryBackend:
             else:
                 job["status"] = "done"
                 job["updated_at"] = datetime.now(timezone.utc)
+                if result_ttl is not None and result_ttl > 0:
+                    from datetime import timedelta
+
+                    job["expires_at"] = datetime.now(timezone.utc) + timedelta(
+                        seconds=result_ttl
+                    )
 
     async def mark_job_failed(
         self,

@@ -4,6 +4,7 @@ Extends base processor functionality with execution timeouts.
 """
 
 import asyncio
+import importlib
 import json
 import logging
 import os
@@ -12,11 +13,17 @@ from typing import Any, Dict, List, Optional
 
 import asyncpg
 
-from elephantq.core.processor import process_jobs as base_process_jobs
 from elephantq.core.registry import get_job
 from elephantq.core.retry import compute_retry_delay_seconds
 
 from .flags import require_feature
+
+base_process_jobs = None  # type: ignore[assignment]
+try:
+    _proc = importlib.import_module("elephantq.core.processor")
+    base_process_jobs = getattr(_proc, "process_jobs", None)  # type: ignore[assignment]
+except (ImportError, AttributeError):
+    pass
 
 logger = logging.getLogger(__name__)
 

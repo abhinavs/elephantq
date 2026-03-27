@@ -35,6 +35,7 @@ class Worker:
         self._backend = backend
         self._registry = registry
         self._settings = settings or get_settings()
+        self._last_cleanup = 0.0
 
     async def run(
         self,
@@ -162,12 +163,13 @@ class Worker:
 
                             done, _ = await asyncio.wait(
                                 [asyncio.create_task(t) for t in wait_tasks],
-                                timeout=self._settings.notification_timeout,
+                                timeout=self._settings.poll_interval,
                                 return_when=asyncio.FIRST_COMPLETED,
                             )
-                            # Cancel pending wait tasks
+                            # Cancel and await pending wait tasks
                             for t in _:
                                 t.cancel()
+                            await asyncio.gather(*_, return_exceptions=True)
                         except asyncio.TimeoutError:
                             pass  # Normal — check for jobs again
 
@@ -243,7 +245,7 @@ class Worker:
         self, worker_id: str, shutdown_event: asyncio.Event
     ) -> None:
         """Send periodic heartbeat updates."""
-        interval = self._settings.worker_heartbeat_interval
+        interval = self._settings.heartbeat_interval
         while not shutdown_event.is_set():
             try:
                 await self._backend.update_heartbeat(worker_id)
@@ -254,8 +256,6 @@ class Worker:
                 logger.warning(f"Heartbeat failed: {e}")
                 await asyncio.sleep(interval)
 
-    _last_cleanup = 0.0
-
     async def _maybe_cleanup(self) -> None:
         """Run periodic cleanup if enough time has passed."""
         current = time.time()
@@ -265,7 +265,7 @@ class Worker:
         try:
             await self._backend.delete_expired_jobs()
             await self._backend.cleanup_stale_workers(
-                stale_threshold_seconds=int(self._settings.stale_worker_threshold),
+                stale_threshold_seconds=int(self._settings.heartbeat_timeout),
             )
             self._last_cleanup = current
         except Exception as e:

@@ -11,7 +11,7 @@ from typing import Optional
 
 import asyncpg
 
-from ..client import ElephantQ
+from ..app import ElephantQ
 from .connection import _init_connection
 from .connection import get_pool as get_global_pool
 

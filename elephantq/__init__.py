@@ -28,8 +28,8 @@ from datetime import datetime, timedelta, timezone
 from importlib.metadata import PackageNotFoundError, version
 from typing import Optional, Union
 
-from .client import ElephantQ
-from .job import JobContext
+from .app import ElephantQ
+from .job import JobContext, JobStatus
 from .settings import configure as settings_configure
 
 try:
@@ -60,6 +60,7 @@ __all__ = [
     "get_queue_stats",
     "periodic",
     "JobContext",
+    "JobStatus",
     "every",
     "cron",
     "features",
@@ -93,44 +94,52 @@ def _get_global_app() -> ElephantQ:
     return _global_app
 
 
-def configure(**kwargs):
+def configure(
+    *,
+    database_url: Optional[str] = None,
+    concurrency: Optional[int] = None,
+    max_retries: Optional[int] = None,
+    queues: Optional[list] = None,
+    pool_min_size: Optional[int] = None,
+    pool_max_size: Optional[int] = None,
+    result_ttl: Optional[int] = None,
+    debug: Optional[bool] = None,
+    environment: Optional[str] = None,
+    **extra,
+):
     """
-    Configure ElephantQ with enhanced validation and better developer experience.
+    Configure the global ElephantQ instance.
 
     Args:
-        **kwargs: Configuration options
-
-    Examples:
-        import elephantq
-
-        elephantq.configure(
-            database_url="postgresql://localhost/myapp",
-            worker_concurrency=8,
-            pool_size=30,
-        )
-
-        @elephantq.job()
-        async def my_job():
-            pass
+        database_url: Database connection URL
+        concurrency: Worker concurrency (1-100)
+        max_retries: Default max retry attempts (0-10)
+        queues: Default queues to process
+        pool_min_size: Minimum connection pool size
+        pool_max_size: Maximum connection pool size
+        result_ttl: Seconds to keep completed job results
+        debug: Enable debug mode
+        environment: Environment name (development, testing, production)
+        **extra: Additional ElephantQSettings fields
     """
     global _global_app
 
     settings_kwargs = {}
-    enhanced_to_elephantq = {
-        "worker_concurrency": "default_concurrency",
-        "max_retries": "default_max_retries",
-        "default_queue": "default_queues",
-        "pool_size": "db_pool_max_size",
+    explicit = {
+        "database_url": database_url,
+        "concurrency": concurrency,
+        "max_retries": max_retries,
+        "queues": queues,
+        "pool_min_size": pool_min_size,
+        "pool_max_size": pool_max_size,
+        "result_ttl": result_ttl,
+        "debug": debug,
+        "environment": environment,
     }
-
-    for key, value in kwargs.items():
-        elephantq_key = enhanced_to_elephantq.get(key, key)
-        if key == "default_queue":
-            settings_kwargs[elephantq_key] = (
-                [value] if isinstance(value, str) else value
-            )
-        else:
-            settings_kwargs[elephantq_key] = value
+    for key, value in explicit.items():
+        if value is not None:
+            settings_kwargs[key] = value
+    settings_kwargs.update(extra)
 
     if settings_kwargs:
         settings_configure(**settings_kwargs)
@@ -146,7 +155,7 @@ def configure(**kwargs):
         _global_app._closed = True
         _global_app._initialized = False
 
-    _global_app = ElephantQ(**settings_kwargs)
+    _global_app = ElephantQ(**settings_kwargs)  # type: ignore[arg-type]
 
     for job_func, job_kwargs in _global_job_registry:
         _global_app.job(**job_kwargs)(job_func)
@@ -293,10 +302,14 @@ async def reset() -> None:
     return await app.reset()
 
 
-async def get_job_status(job_id: str):
-    """Get status information for a specific job."""
+async def get_job(job_id: str):
+    """Get information for a specific job."""
     app = _get_global_app()
     return await app.get_job_status(job_id)
+
+
+# Backward-compatible alias
+get_job_status = get_job
 
 
 async def cancel_job(job_id: str):

@@ -95,7 +95,7 @@ class WorkerHeartbeat:
             return  # Already started
 
         settings = get_settings()
-        interval = settings.worker_heartbeat_interval
+        interval = settings.heartbeat_interval
 
         self.heartbeat_task = asyncio.create_task(self._heartbeat_loop(interval))
         logger.debug(f"Started heartbeat with {interval}s interval")
@@ -153,7 +153,7 @@ class WorkerHeartbeat:
                 from elephantq.settings import get_settings
 
                 await asyncio.sleep(
-                    min(interval, get_settings().stale_worker_threshold / 10)
+                    min(interval, get_settings().heartbeat_timeout / 10)
                 )  # Backoff but don't wait too long
 
     async def _send_heartbeat(self) -> None:
@@ -226,7 +226,7 @@ async def cleanup_stale_workers(
     if stale_threshold_seconds is None:
         from elephantq.settings import get_settings
 
-        stale_threshold_seconds = get_settings().stale_worker_threshold
+        stale_threshold_seconds = get_settings().heartbeat_timeout
 
     try:
         async with pool.acquire() as conn:

@@ -5,7 +5,6 @@ Uses Pydantic v2 BaseSettings for robust, type-safe configuration with support f
 environment variables, config files, and validation.
 """
 
-import os
 from pathlib import Path
 from typing import Any, List, Optional
 
@@ -21,7 +20,7 @@ class CustomEnvSource(EnvSettingsSource):
         self, field_name: str, field: Any, value: Any, value_is_complex: bool
     ) -> Any:
         """Override to handle comma-separated lists for specific fields."""
-        if field_name == "default_queues" and isinstance(value, str):
+        if field_name == "queues" and isinstance(value, str):
             # Handle comma-separated queues without JSON parsing
             return [q.strip() for q in value.split(",") if q.strip()]
         return super().prepare_field_value(field_name, field, value, value_is_complex)
@@ -63,7 +62,7 @@ class ElephantQSettings(BaseSettings):
 
     # Database Configuration
     database_url: str = Field(
-        default="postgresql://postgres@localhost/postgres",
+        default="postgresql://postgres@localhost/elephantq",
         description="PostgreSQL database URL for ElephantQ",
     )
 
@@ -80,24 +79,24 @@ class ElephantQSettings(BaseSettings):
     )
 
     # Worker Configuration
-    default_concurrency: int = Field(
+    concurrency: int = Field(
         default=4, ge=1, le=100, description="Default number of concurrent workers"
     )
 
-    default_queues: List[str] = Field(
+    queues: List[str] = Field(
         default=["default"],
         description="Default queues to process (when not using dynamic discovery)",
     )
 
     # Job Processing Settings
-    default_max_retries: int = Field(
+    max_retries: int = Field(
         default=3,
         ge=0,
         le=10,
         description="Default maximum retry attempts for failed jobs",
     )
 
-    default_priority: int = Field(
+    priority: int = Field(
         default=100,
         ge=1,
         le=1000,
@@ -135,7 +134,7 @@ class ElephantQSettings(BaseSettings):
     )
 
     # Timeouts and Intervals
-    worker_heartbeat_interval: float = Field(
+    heartbeat_interval: float = Field(
         default=5.0,
         ge=0.1,
         le=60.0,
@@ -156,14 +155,14 @@ class ElephantQSettings(BaseSettings):
         description="Interval for cleaning up expired jobs and stale workers (seconds)",
     )
 
-    stale_worker_threshold: float = Field(
+    heartbeat_timeout: float = Field(
         default=300.0,
         ge=60.0,
         le=7200.0,
         description="Time after which workers are considered stale (seconds)",
     )
 
-    notification_timeout: float = Field(
+    poll_interval: float = Field(
         default=5.0,
         ge=0.1,
         le=60.0,
@@ -236,7 +235,7 @@ class ElephantQSettings(BaseSettings):
     )
 
     # CLI and Display Settings
-    default_job_display_limit: int = Field(
+    display_limit: int = Field(
         default=10,
         ge=1,
         le=1000,
@@ -252,15 +251,15 @@ class ElephantQSettings(BaseSettings):
         return v
 
     # Connection Pool Settings
-    db_pool_min_size: int = Field(
+    pool_min_size: int = Field(
         default=5, ge=1, le=100, description="Minimum database connection pool size"
     )
 
-    db_pool_max_size: int = Field(
+    pool_max_size: int = Field(
         default=20, ge=1, le=200, description="Maximum database connection pool size"
     )
 
-    db_pool_safety_margin: int = Field(
+    pool_headroom: int = Field(
         default=2,
         ge=0,
         le=50,
@@ -322,8 +321,8 @@ class ElephantQSettings(BaseSettings):
     @field_validator("database_url")
     @classmethod
     def validate_database_url(cls, v):
-        if not v.startswith(("postgresql://", "postgres://")):
-            raise ValueError("database_url must be a PostgreSQL connection string")
+        if not v:
+            raise ValueError("database_url must not be empty")
         return v
 
 
@@ -370,9 +369,11 @@ def configure(**kwargs) -> ElephantQSettings:
     """
     Configure ElephantQ settings programmatically.
 
-    This validates provided settings, applies them to environment variables,
-    and reloads the settings cache.
+    Creates a new settings instance directly with kwargs.
+    Does not modify os.environ.
     """
+    global _settings
+
     if not kwargs:
         return get_settings()
 
@@ -380,24 +381,8 @@ def configure(**kwargs) -> ElephantQSettings:
     if unknown:
         raise ValueError(f"Unknown ElephantQ settings: {', '.join(unknown)}")
 
-    # Validate settings upfront
-    ElephantQSettings(**kwargs)
-
-    for key, value in kwargs.items():
-        env_key = f"ELEPHANTQ_{key.upper()}"
-        if value is None:
-            os.environ.pop(env_key, None)
-            continue
-        if isinstance(value, list):
-            os.environ[env_key] = ",".join([str(item) for item in value])
-        else:
-            os.environ[env_key] = str(value)
-
-    return get_settings(reload=True)
-
-
-# Create settings instance
-settings = get_settings()
+    _settings = ElephantQSettings(**kwargs)
+    return _settings
 
 
 def __getattr__(name: str):

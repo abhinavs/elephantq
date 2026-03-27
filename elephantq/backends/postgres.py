@@ -84,6 +84,20 @@ class PostgresBackend:
         self._pool_max = pool_max_size
         self._pool: Optional[asyncpg.Pool] = None
 
+    @staticmethod
+    def _should_skip_lock() -> bool:
+        """Check if row-level locking should be skipped (debug/testing only)."""
+        import os
+
+        env_val = os.environ.get("ELEPHANTQ_SKIP_UPDATE_LOCK", "").lower()
+        if env_val not in {"1", "true", "yes", "on"}:
+            return False
+
+        from elephantq.settings import get_settings
+
+        settings = get_settings()
+        return settings.debug or settings.environment == "testing"
+
     # --- Capabilities ---
 
     @property
@@ -132,7 +146,7 @@ class PostgresBackend:
         priority: int,
         queue: str,
         unique: bool,
-        queueing_lock: Optional[str] = None,
+        dedup_key: Optional[str] = None,
         scheduled_at: Optional[datetime] = None,
     ) -> Optional[str]:
         async with self.pool.acquire() as conn:
@@ -146,7 +160,7 @@ class PostgresBackend:
                 priority=priority,
                 queue=queue,
                 unique=unique,
-                queueing_lock=queueing_lock,
+                dedup_key=dedup_key,
                 scheduled_at=scheduled_at,
             )
 
@@ -162,7 +176,7 @@ class PostgresBackend:
         priority: int,
         queue: str,
         unique: bool,
-        queueing_lock: Optional[str] = None,
+        dedup_key: Optional[str] = None,
         scheduled_at: Optional[datetime] = None,
     ) -> Optional[str]:
         """Enqueue within a caller-provided transaction. PostgreSQL only."""
@@ -176,7 +190,7 @@ class PostgresBackend:
             priority=priority,
             queue=queue,
             unique=unique,
-            queueing_lock=queueing_lock,
+            dedup_key=dedup_key,
             scheduled_at=scheduled_at,
         )
 
@@ -192,22 +206,22 @@ class PostgresBackend:
         priority: int,
         queue: str,
         unique: bool,
-        queueing_lock: Optional[str],
+        dedup_key: Optional[str],
         scheduled_at: Optional[datetime],
     ) -> Optional[str]:
         """Shared implementation for both regular and transactional enqueue."""
         uid = uuid.UUID(job_id)
 
         # Queueing lock dedup — more flexible than unique, uses custom key
-        if queueing_lock:
+        if dedup_key:
             row = await conn.fetchrow(
                 """
                 INSERT INTO elephantq_jobs
                     (id, job_name, args, args_hash, max_attempts, priority, queue,
-                     unique_job, queueing_lock, scheduled_at)
+                     unique_job, dedup_key, scheduled_at)
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-                ON CONFLICT (queueing_lock)
-                    WHERE status = 'queued' AND queueing_lock IS NOT NULL
+                ON CONFLICT (dedup_key)
+                    WHERE status = 'queued' AND dedup_key IS NOT NULL
                 DO NOTHING
                 RETURNING id
                 """,
@@ -219,13 +233,13 @@ class PostgresBackend:
                 priority,
                 queue,
                 unique,
-                queueing_lock,
+                dedup_key,
                 scheduled_at,
             )
             if row is None:
                 existing = await conn.fetchrow(
-                    "SELECT id FROM elephantq_jobs WHERE queueing_lock = $1 AND status = 'queued'",
-                    queueing_lock,
+                    "SELECT id FROM elephantq_jobs WHERE dedup_key = $1 AND status = 'queued'",
+                    dedup_key,
                 )
                 return str(existing["id"]) if existing else job_id
             await conn.execute(
@@ -323,9 +337,7 @@ class PostgresBackend:
         queues: Optional[list[str]] = None,
         worker_id: Optional[str] = None,
     ) -> Optional[dict]:
-        from ..core.processor import _should_skip_update_lock
-
-        skip_lock = _should_skip_update_lock()
+        skip_lock = self._should_skip_lock()
 
         lock_clause = "" if skip_lock else "FOR UPDATE SKIP LOCKED"
 
