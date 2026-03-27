@@ -17,7 +17,7 @@ Example usage for better test isolation:
     # Tests could interfere with each other
 
     # New approach (isolated contexts)
-    async with PoolContext() as pool:
+    async with connection_context() as pool:
         await enqueue(some_job)  # Uses isolated pool
         # Each test gets its own database context
 """
@@ -29,9 +29,7 @@ import asyncpg
 import pytest
 
 import elephantq.settings
-from elephantq.db.connection import _pool  # noqa: F401
 from elephantq.db.connection import (
-    PoolContext,
     _context_pool,
     close_pool,
     connection_context,
@@ -137,13 +135,13 @@ async def test_context_local_pools_take_precedence():
 
 @pytest.mark.asyncio
 async def test_database_context_class():
-    """Test that the PoolContext class works correctly"""
+    """Test that the connection_context class works correctly"""
     await create_test_database()
 
     # Reset global state
     await close_pool()
 
-    async with PoolContext() as pool:
+    async with connection_context() as pool:
         assert isinstance(pool, asyncpg.Pool)
 
         # Should be able to use the pool
@@ -165,12 +163,12 @@ async def test_database_context_class():
 
 @pytest.mark.asyncio
 async def test_database_context_with_custom_url():
-    """Test PoolContext with custom database URL"""
+    """Test connection_context with custom database URL"""
     await create_test_database()
 
     custom_url = TEST_DATABASE_URL
 
-    async with PoolContext(custom_url) as pool:
+    async with connection_context(custom_url) as pool:
         # Should work with custom URL
         async with pool.acquire() as conn:
             result = await conn.fetchval("SELECT 4")
@@ -290,10 +288,7 @@ async def test_create_pool_utility_function():
     # Create a standalone pool
     standalone_pool = await create_pool()
 
-    # Global pool should still be None
-    assert _pool is None
-
-    # get_pool() should create a new global pool, different from standalone
+    # get_pool() should return a pool different from standalone
     global_pool = await get_pool()
     assert global_pool is not standalone_pool
 
@@ -339,14 +334,14 @@ async def test_context_var_token_management():
 
 @pytest.mark.asyncio
 async def test_database_context_exception_handling():
-    """Test that PoolContext properly handles exceptions"""
+    """Test that connection_context properly handles exceptions"""
     await create_test_database()
 
     # Reset global state
     await close_pool()
 
     try:
-        async with PoolContext():
+        async with connection_context():
             # Simulate an exception
             raise ValueError("Test exception")
     except ValueError:

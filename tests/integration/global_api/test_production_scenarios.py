@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 import elephantq
-from elephantq.db.connection import PoolContext as DatabaseContext
+from elephantq.db.context import DatabaseContext
 from elephantq.settings import get_settings
 
 
