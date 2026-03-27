@@ -60,7 +60,7 @@ export ELEPHANTQ_DATABASE_URL="postgresql://elephantq:your_secure_password@local
 # export ELEPHANTQ_DATABASE_URL="postgresql://user:pass@your-db-host:5432/elephantq_prod"
 
 # 4. Initialize schema
-elephantq migrate
+elephantq setup
 ```
 
 ✅ **Database is ready!** ElephantQ will connect automatically.
@@ -281,25 +281,25 @@ kubectl top pods
 ### Health Checks
 
 ```bash
-# Basic health check
-elephantq health --verbose
+# System status (database connectivity, queue stats, worker summary)
+elephantq status --verbose
 
-# Readiness probe (for load balancers)
-elephantq ready
+# Show recent jobs too
+elephantq status --verbose --jobs
 ```
 
 ### Job Management
 
 ```bash
-# View job status
-elephantq jobs list --status failed --limit 20
-
-# Monitor queues
+# Monitor queues and system health
 elephantq status
 
-# Manual job operations
-elephantq jobs retry <job-id>
-elephantq jobs cancel <job-id>
+# View worker status
+elephantq workers
+
+# Dead letter queue management (requires ELEPHANTQ_DEAD_LETTER_QUEUE_ENABLED=true)
+elephantq dead-letter list --limit 20
+elephantq dead-letter resurrect <job-id>
 ```
 
 ### Database Monitoring
@@ -376,7 +376,7 @@ ELEPHANTQ_DB_POOL_MAX_SIZE = 50
 
 ```bash
 # Check database connectivity
-elephantq health --verbose
+elephantq status --verbose
 
 # Check for stuck jobs
 psql $ELEPHANTQ_DATABASE_URL -c "SELECT COUNT(*) FROM elephantq_jobs WHERE status='queued';"
@@ -389,7 +389,7 @@ sudo systemctl restart elephantq-worker
 
 ```bash
 # Reduce worker concurrency
-elephantq worker --concurrency 2
+elephantq start --concurrency 2
 
 # Check for memory leaks in job functions
 # Monitor with: htop or ps aux
