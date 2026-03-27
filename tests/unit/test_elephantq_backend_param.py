@@ -4,6 +4,8 @@ Tests that ElephantQ accepts a backend parameter.
 
 import inspect
 
+import pytest
+
 
 def test_elephantq_init_accepts_backend():
     """ElephantQ.__init__ should accept a backend parameter."""
@@ -31,6 +33,7 @@ def test_elephantq_resolves_memory_backend_string():
 
 def test_elephantq_resolves_sqlite_backend_string(tmp_path):
     """ElephantQ(backend='sqlite') should create a SQLiteBackend."""
+    pytest.importorskip("aiosqlite")
     from elephantq.app import ElephantQ
     from elephantq.backends.sqlite import SQLiteBackend
 

@@ -76,6 +76,7 @@ class TestSecretKeyNotLogged:
     """Verify that the auto-generated secret key value does not appear in log output."""
 
     def test_generated_key_not_in_logs(self, caplog, monkeypatch):
+        pytest.importorskip("cryptography")
         # Remove any existing key so the manager generates one
         monkeypatch.delenv("ELEPHANTQ_SECRET_KEY", raising=False)
 

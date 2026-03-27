@@ -2,6 +2,8 @@
 Tests for automatic backend detection based on database_url.
 """
 
+import pytest
+
 
 def test_postgres_url_selects_postgres_backend():
     """postgresql:// URLs should auto-select PostgresBackend."""
@@ -16,6 +18,7 @@ def test_postgres_url_selects_postgres_backend():
 
 def test_sqlite_file_url_selects_sqlite_backend(tmp_path):
     """A .db file path should auto-select SQLiteBackend."""
+    pytest.importorskip("aiosqlite")
     from elephantq.app import ElephantQ
     from elephantq.backends.sqlite import SQLiteBackend
 
@@ -26,6 +29,7 @@ def test_sqlite_file_url_selects_sqlite_backend(tmp_path):
 
 def test_sqlite_extension_detected(tmp_path):
     """.sqlite extension should also auto-select SQLiteBackend."""
+    pytest.importorskip("aiosqlite")
     from elephantq.app import ElephantQ
     from elephantq.backends.sqlite import SQLiteBackend
 
@@ -36,6 +40,7 @@ def test_sqlite_extension_detected(tmp_path):
 
 def test_no_config_defaults_to_sqlite():
     """No database_url at all should default to SQLiteBackend (zero-setup)."""
+    pytest.importorskip("aiosqlite")
     # Override the env to avoid picking up test config
     import os
 

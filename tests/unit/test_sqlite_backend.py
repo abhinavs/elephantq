@@ -6,6 +6,8 @@ import uuid
 
 import pytest
 
+pytest.importorskip("aiosqlite")
+
 
 @pytest.mark.asyncio
 async def test_sqlite_backend_importable():

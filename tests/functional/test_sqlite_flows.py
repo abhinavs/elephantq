@@ -11,8 +11,10 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from elephantq.core.processor import process_job_via_backend
-from elephantq.core.registry import JobRegistry
+pytest.importorskip("aiosqlite")
+
+from elephantq.core.processor import process_job_via_backend  # noqa: E402
+from elephantq.core.registry import JobRegistry  # noqa: E402
 
 
 @pytest.fixture
