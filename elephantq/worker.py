@@ -104,8 +104,22 @@ class Worker:
         from .utils.signals import GracefulSignalHandler
 
         shutdown_event = asyncio.Event()
+        notification_event = asyncio.Event()
         signal_handler = GracefulSignalHandler()
         signal_handler.setup_signal_handlers(shutdown_event)
+
+        # Set up LISTEN/NOTIFY if backend supports push notifications
+        listen_handle = None
+        if self._backend.supports_push_notify:
+
+            def on_notification(connection, pid, channel, payload):
+                logger.debug(f"Received notification on {channel}: {payload}")
+                notification_event.set()
+
+            try:
+                listen_handle = await self._backend.listen_for_jobs(on_notification)
+            except Exception as e:
+                logger.warning(f"Failed to set up LISTEN/NOTIFY: {e}")
 
         # Start heartbeat if backend supports worker tracking
         heartbeat_task = None
@@ -138,12 +152,22 @@ class Worker:
                     )
 
                     if not processed:
-                        # No jobs — poll with timeout
+                        # No jobs — wait for notification or timeout
+                        notification_event.clear()
                         try:
-                            await asyncio.wait_for(
-                                shutdown_event.wait(),
+                            # Wait for either shutdown, notification, or timeout
+                            wait_tasks = [shutdown_event.wait()]
+                            if self._backend.supports_push_notify:
+                                wait_tasks.append(notification_event.wait())
+
+                            done, _ = await asyncio.wait(
+                                [asyncio.create_task(t) for t in wait_tasks],
                                 timeout=self._settings.notification_timeout,
+                                return_when=asyncio.FIRST_COMPLETED,
                             )
+                            # Cancel pending wait tasks
+                            for t in _:
+                                t.cancel()
                         except asyncio.TimeoutError:
                             pass  # Normal — check for jobs again
 
@@ -196,6 +220,20 @@ class Worker:
             if worker_id and hasattr(self._backend, "mark_worker_stopped"):
                 try:
                     await self._backend.mark_worker_stopped(worker_id)
+                except Exception:
+                    pass
+
+            # Clean up LISTEN connection
+            if listen_handle is not None:
+                try:
+                    await listen_handle.remove_listener(
+                        "elephantq_new_job", on_notification
+                    )
+                except Exception:
+                    pass
+                try:
+                    if hasattr(self._backend, "pool"):
+                        await self._backend.pool.release(listen_handle)
                 except Exception:
                     pass
 

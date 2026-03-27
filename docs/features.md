@@ -51,7 +51,7 @@ Webhooks and custom metrics can react to dead-letter activity to keep your opera
 - **What it does:** Register webhook endpoints that receive job lifecycle events such as `job.succeeded`, `job.failed`, or `job.dead_letter`.
 
 ```python
-await elephantq.features.webhooks.register_endpoint(
+await elephantq.webhooks.register_endpoint(
     url="https://hooks.example.com/elephantq",
     events=["job.failed", "job.dead_letter"],
     secret="supersecret",
@@ -95,7 +95,7 @@ Dependencies store their own table (`elephantq_job_dependencies`). Enforcement i
 | `ELEPHANTQ_DASHBOARD_WRITE_ENABLED` | Adds retry/delete/cancel buttons in the UI (use in trusted environments). |
 | `ELEPHANTQ_METRICS_ENABLED` | Switches on metrics counters and Prometheus blanks. |
 | `ELEPHANTQ_LOGGING_ENABLED` | Wires `structlog` to job-aware logging. |
-| `ELEPHANTQ_SCHEDULING_ENABLED` | Unlocks `elephantq.features.scheduling` and `elephantq.features.recurring`. |
+| `ELEPHANTQ_SCHEDULING_ENABLED` | Unlocks `elephantq.scheduling` and `elephantq.scheduling`. |
 | `ELEPHANTQ_DEPENDENCIES_ENABLED`, `ELEPHANTQ_TIMEOUTS_ENABLED` | Hooks into scheduling metadata and per-job guards. |
 
 Each of these features is documented in `docs/<feature>.md` (see the `/docs` directory). The CLI gracefully refuses to run commands when the corresponding flag is disabled, so enabling a feature means turning on the flag and (if needed) installing the optional dependency.

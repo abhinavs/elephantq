@@ -54,7 +54,7 @@ await elephantq.every(10).minutes().schedule(daily_report)
 
 ## Fluent scheduling builders
 
-When your workflow needs richer expressions, use the builders under `elephantq.features.recurring` or `elephantq.features.scheduling`. They still rely on the same `@elephantq.job()` registry, but collect scheduling metadata for km-of-the-day jobs.
+When your workflow needs richer expressions, use the builders under `elephantq.scheduling` or `elephantq.scheduling`. They still rely on the same `@elephantq.job()` registry, but collect scheduling metadata for km-of-the-day jobs.
 
 ### Fluent recurring builder
 

@@ -1,27 +1,42 @@
 # ElephantQ
 
-Async-native background job queue - built for developers who want solid queues without infrastructure bloat.
+Async-native background job queue — zero setup to start, PostgreSQL for production.
 
-## What is ElephantQ
+## Quick start — no database server needed
 
-ElephantQ is a background job system for modern async Python. It uses PostgreSQL (`LISTEN/NOTIFY` + row locks) as the single backend for enqueueing, scheduling, retries, and monitoring—so if you already run Postgres, you already have your queue.
+```bash
+pip install elephantq
+```
 
-## Why ElephantQ exists
+```python
+import elephantq
 
-- Celery/RQ stacks pull in Redis and heavy configuration even for small workloads.
-- Many Python queues aren’t truly async-first, making FastAPI/Starlette apps jump through hoops.
-- Local development often needs multiple services just to run a job; ElephantQ keeps it to Postgres and your code.
+# SQLite backend — auto-detected from .db extension
+elephantq.configure(database_url="jobs.db")
 
-## Why teams choose ElephantQ
+@elephantq.job(retries=3)
+async def send_welcome(to: str):
+    print(f"sending welcome to {to}")
 
-- No extra infrastructure: just Postgres.
-- Async from the ground up: coroutine workers fit modern Python.
-- Production ready: retries, scheduling, dead-letter, monitoring are built in.
-- Fast to adopt: install, point at Postgres, start a worker.
+await elephantq.enqueue(send_welcome, to="team@example.com")
+await elephantq.run_worker(run_once=True)
+```
+
+No PostgreSQL, no Redis, no Docker. Just `pip install` and go.
+
+## Move to production — switch to PostgreSQL
+
+```bash
+export ELEPHANTQ_DATABASE_URL="postgresql://postgres@localhost/elephantq"
+elephantq setup   # create tables
+elephantq start --concurrency 4 --queues default,emails
+```
+
+Your code stays the same. ElephantQ auto-detects PostgreSQL from the URL and unlocks concurrent workers, push notifications (`pg_notify`), and transactional enqueue.
 
 ## Transactional enqueue
 
-Enqueue a job inside your existing database transaction. If the transaction rolls back, the job never enters the queue.
+Enqueue a job inside your application’s database transaction. If the transaction rolls back, the job never enters the queue.
 
 ```python
 async with pool.acquire() as conn:
@@ -31,28 +46,15 @@ async with pool.acquire() as conn:
         # If this transaction fails, the job is never enqueued
 ```
 
-This is the core guarantee: your application data and your job are committed atomically.
+This is the core guarantee: your data and your job are committed atomically. Works only with PostgreSQL — on other backends, `connection=` is silently ignored.
 
-## Quick start
+## Why ElephantQ
 
-```bash
-pip install elephantq
-export ELEPHANTQ_DATABASE_URL="postgresql://postgres@localhost/elephantq"
-export ELEPHANTQ_JOBS_MODULES="app.tasks"
-elephantq setup
-elephantq start --concurrency 4 --queues default,emails
-```
-
-```python
-# app/tasks.py
-import elephantq
-
-@elephantq.job(queue="emails", retries=3)
-async def send_welcome(to: str):
-    print("sending welcome to", to)
-
-await elephantq.enqueue(send_welcome, to="team@example.com")
-```
+- **Zero-setup local dev**: SQLite backend, no database server needed
+- **Async from the ground up**: coroutine workers fit modern Python (FastAPI, Starlette)
+- **PostgreSQL-native in production**: `FOR UPDATE SKIP LOCKED`, `pg_notify`, `JSONB`, transactional enqueue
+- **One library**: queue, worker, scheduler, dead letter, dashboard — single dependency
+- **Fast to adopt**: `pip install`, define a job, enqueue, run a worker
 
 ## How it compares
 

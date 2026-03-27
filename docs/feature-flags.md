@@ -50,7 +50,7 @@ All default to `false`. Set to `true` to enable.
 
 | Variable | What it unlocks |
 | --- | --- |
-| `ELEPHANTQ_SCHEDULING_ENABLED` | `elephantq.features.scheduling` and `elephantq.features.recurring` (requires `pip install elephantq[scheduling]`) |
+| `ELEPHANTQ_SCHEDULING_ENABLED` | `elephantq.scheduling` and `elephantq.scheduling` (requires `pip install elephantq[scheduling]`) |
 | `ELEPHANTQ_DEPENDENCIES_ENABLED` | Job dependency tracking (experimental — not yet enforced by worker) |
 | `ELEPHANTQ_TIMEOUTS_ENABLED` | Per-job timeout enforcement |
 | `ELEPHANTQ_DEAD_LETTER_QUEUE_ENABLED` | Dead-letter queue for permanently failed jobs |

@@ -5,6 +5,37 @@ All notable changes to ElephantQ will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-03-27
+
+### Architecture
+- **Pluggable storage backends** — `StorageBackend` Protocol with PostgreSQL, SQLite, and Memory implementations
+- **Auto-detection** — backend selected automatically from `database_url` (`.db` → SQLite, `postgresql://` → Postgres)
+- **Worker extraction** — `elephantq/worker.py` extracted from `client.py` (-247 lines)
+- **Three-tier test architecture** — smoke/unit/functional/integration with proper conftest isolation
+
+### Added
+- `PostgresBackend` — all SQL extracted from inline code into dedicated backend
+- `SQLiteBackend` — zero-setup local development (`pip install elephantq[sqlite]`)
+- `MemoryBackend` — in-memory backend for unit tests (zero external deps)
+- `@elephantq.periodic(cron="...", every_minutes=N)` — first-class decorator for recurring jobs
+- `JobContext` — runtime metadata injection for running jobs (`ctx: JobContext`)
+- `queueing_lock` parameter for flexible job deduplication
+- `elephantq.reset()` — test fixture cleanup via backend
+- Module discovery: auto `sys.path` fix, multi-module support, batch error reporting
+- Clean import paths: `from elephantq import every, cron` (no more `elephantq.features.X`)
+- `docs/backends.md`, `docs/agents.md`
+
+### Removed
+- `depends_on()` — experimental, unimplemented in worker
+- `EnterpriseFeatures` / `enterprise` aliases
+- All legacy/backward-compat code and comments
+- Legacy Fernet decryption path
+
+### Changed
+- Multi-scheduler safety via optimistic locking (`_claim_and_advance_run`)
+- Getting-started docs lead with SQLite (zero-setup) instead of requiring PostgreSQL
+- CI split into unit+sqlite (no Postgres) and integration (real Postgres) jobs
+
 ## [0.2.0] - 2026-03-24
 
 ### Breaking Changes

@@ -198,6 +198,43 @@ class PostgresBackend:
         """Shared implementation for both regular and transactional enqueue."""
         uid = uuid.UUID(job_id)
 
+        # Queueing lock dedup — more flexible than unique, uses custom key
+        if queueing_lock:
+            row = await conn.fetchrow(
+                """
+                INSERT INTO elephantq_jobs
+                    (id, job_name, args, args_hash, max_attempts, priority, queue,
+                     unique_job, queueing_lock, scheduled_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                ON CONFLICT (queueing_lock)
+                    WHERE status = 'queued' AND queueing_lock IS NOT NULL
+                DO NOTHING
+                RETURNING id
+                """,
+                uid,
+                job_name,
+                args,
+                args_hash,
+                max_attempts,
+                priority,
+                queue,
+                unique,
+                queueing_lock,
+                scheduled_at,
+            )
+            if row is None:
+                existing = await conn.fetchrow(
+                    "SELECT id FROM elephantq_jobs WHERE queueing_lock = $1 AND status = 'queued'",
+                    queueing_lock,
+                )
+                return str(existing["id"]) if existing else job_id
+            await conn.execute(
+                "SELECT pg_notify($1, $2)",
+                "elephantq_new_job",
+                queue,
+            )
+            return str(row["id"])
+
         if unique:
             row = await conn.fetchrow(
                 """
