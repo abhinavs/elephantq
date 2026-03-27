@@ -224,7 +224,8 @@ class SQLiteBackend:
                 (worker_id, _now_iso(), job_id),
             )
             await self._conn.commit()
-            return _sqlite_row_to_dict(row)
+            # Return raw dict — processor expects args as JSON string
+            return dict(row)
 
     async def notify_new_job(self, queue: str) -> None:
         pass  # No push notification

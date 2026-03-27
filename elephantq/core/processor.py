@@ -180,16 +180,17 @@ async def _execute_job_safely(
         tuple: (success: bool, error_message: Optional[str])
     """
     # Parse job arguments with corruption handling
-    try:
-        args_data = json.loads(job_record["args"])
-    except Exception as e:
-        # Catch both JSONDecodeError and TypeError broadly for corrupted data
-        if "json" in str(type(e)).lower() or isinstance(e, (TypeError, ValueError)):
-            # This will be handled by the caller
+    # Args may be a JSON string (Memory/SQLite) or already parsed dict (Postgres JSONB)
+    raw_args = job_record["args"]
+    if isinstance(raw_args, dict):
+        args_data = raw_args
+    elif isinstance(raw_args, str):
+        try:
+            args_data = json.loads(raw_args)
+        except (json.JSONDecodeError, TypeError, ValueError) as e:
             raise ValueError(f"Corrupted JSON data: {str(e)}") from e
-        else:
-            # Other exception types - re-raise
-            raise
+    else:
+        raise ValueError(f"Corrupted JSON data: unexpected type {type(raw_args)}")
 
     # Validate arguments if model is specified
     args_model = job_meta.get("args_model")
