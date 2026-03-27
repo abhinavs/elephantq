@@ -70,7 +70,6 @@ async def create_test_database():
         # Drop migration tracking so all migrations re-apply cleanly
         await conn.execute("DROP TABLE IF EXISTS elephantq_migrations CASCADE")
         # Drop all elephantq tables to start fresh
-        await conn.execute("DROP TABLE IF EXISTS elephantq_job_dependencies CASCADE")
         await conn.execute("DROP TABLE IF EXISTS elephantq_job_timeouts CASCADE")
         await conn.execute("DROP TABLE IF EXISTS elephantq_config CASCADE")
         await conn.execute("DROP TABLE IF EXISTS elephantq_webhook_deliveries CASCADE")

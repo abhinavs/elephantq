@@ -89,21 +89,6 @@ def test_scheduling_flag_required():
 
 
 @pytest.mark.asyncio
-async def test_dependencies_flag_required():
-    _clear_elephantq_env()
-    _disable_all_feature_flags()
-    _reset_settings_cache()
-
-    from elephantq.features.dependencies import store_job_dependencies
-
-    with pytest.raises(RuntimeError, match="Job dependencies"):
-        await store_job_dependencies(
-            "00000000-0000-0000-0000-000000000000",
-            ["00000000-0000-0000-0000-000000000001"],
-        )
-
-
-@pytest.mark.asyncio
 async def test_timeouts_flag_required():
     _clear_elephantq_env()
     _disable_all_feature_flags()

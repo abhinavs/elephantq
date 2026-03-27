@@ -127,9 +127,6 @@ class ElephantQSettings(BaseSettings):
     webhooks_enabled: bool = Field(
         default=False, description="Enable webhook notifications"
     )
-    dependencies_enabled: bool = Field(
-        default=False, description="Enable job dependency management"
-    )
     timeouts_enabled: bool = Field(
         default=False, description="Enable job timeout processing"
     )

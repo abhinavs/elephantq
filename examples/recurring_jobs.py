@@ -6,21 +6,33 @@ Start the scheduler process:
   elephantq scheduler
 """
 
-import asyncio
-
 import elephantq
-from elephantq.features.recurring import cron, every
 
 
-@elephantq.job()
+# Declarative — schedule is defined at decoration time
+@elephantq.periodic(cron="0 9 * * *")
 async def daily_report():
     print("Generating daily report")
 
 
+@elephantq.periodic(every_minutes=10, queue="maintenance")
+async def cleanup():
+    print("Running cleanup")
+
+
+# Programmatic — for dynamic schedules
 async def main() -> None:
-    await every(10).minutes().schedule(daily_report)
-    await cron("0 9 * * *").schedule(daily_report)
+    from elephantq import cron, every
+
+    @elephantq.job()
+    async def ad_hoc_task():
+        print("Ad hoc")
+
+    await every(5).minutes().schedule(ad_hoc_task)
+    await cron("*/30 * * * *").schedule(ad_hoc_task)
 
 
 if __name__ == "__main__":
+    import asyncio
+
     asyncio.run(main())

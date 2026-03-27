@@ -5,7 +5,7 @@ and then run this script.
 """
 
 import elephantq
-from elephantq.features import webhooks
+from elephantq import webhooks
 
 
 async def main() -> None:

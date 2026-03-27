@@ -1,0 +1,126 @@
+"""
+Core job lifecycle tests using SQLiteBackend.
+
+Proves the same flows that work with MemoryBackend also work with SQLite.
+No PostgreSQL required.
+"""
+
+import json
+import uuid
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from elephantq.core.processor import process_job_via_backend
+from elephantq.core.registry import JobRegistry
+
+
+@pytest.fixture
+def registry():
+    return JobRegistry()
+
+
+async def _create(backend, registry, func, args=None, **kw):
+    registry.register_job(func, **{k: v for k, v in kw.items() if k in ("retries",)})
+    job_name = f"{func.__module__}.{func.__name__}"
+    job_id = str(uuid.uuid4())
+    job_meta = registry.get_job(job_name)
+    max_attempts = (kw.get("retries", job_meta["retries"]) if job_meta else 3) + 1
+
+    await backend.create_job(
+        job_id=job_id,
+        job_name=job_name,
+        args=json.dumps(args or {}, default=str),
+        args_hash=None,
+        max_attempts=max_attempts,
+        priority=kw.get("priority", 100),
+        queue="default",
+        unique=False,
+        queueing_lock=None,
+        scheduled_at=kw.get("scheduled_at"),
+    )
+    return job_id
+
+
+@pytest.mark.asyncio
+async def test_enqueue_and_process(backend, registry):
+    executed = []
+
+    async def my_task(msg: str):
+        executed.append(msg)
+
+    job_id = await _create(backend, registry, my_task, {"msg": "hi"})
+    await process_job_via_backend(
+        backend=backend, job_registry=registry, queues=["default"]
+    )
+
+    assert executed == ["hi"]
+    job = await backend.get_job(job_id)
+    assert job["status"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_retry_on_failure(backend, registry):
+    async def bad_task():
+        raise RuntimeError("fail")
+
+    job_id = await _create(backend, registry, bad_task, retries=2)
+    await process_job_via_backend(
+        backend=backend, job_registry=registry, queues=["default"]
+    )
+
+    job = await backend.get_job(job_id)
+    assert job["status"] == "queued"
+    assert job["attempts"] == 1
+
+
+@pytest.mark.asyncio
+async def test_dead_letter_after_max(backend, registry):
+    async def bad_task():
+        raise RuntimeError("fail")
+
+    job_id = await _create(backend, registry, bad_task, retries=0)
+    await process_job_via_backend(
+        backend=backend, job_registry=registry, queues=["default"]
+    )
+
+    job = await backend.get_job(job_id)
+    assert job["status"] == "dead_letter"
+
+
+@pytest.mark.asyncio
+async def test_scheduled_not_early(backend, registry):
+    async def my_task():
+        pass
+
+    future = datetime.now(timezone.utc) + timedelta(hours=1)
+    await _create(backend, registry, my_task, scheduled_at=future)
+
+    result = await process_job_via_backend(
+        backend=backend, job_registry=registry, queues=["default"]
+    )
+    assert result is False
+
+
+@pytest.mark.asyncio
+async def test_cancel_and_list(backend, registry):
+    async def my_task():
+        pass
+
+    job_id = await _create(backend, registry, my_task)
+
+    assert await backend.cancel_job(job_id) is True
+    jobs = await backend.list_jobs(status="cancelled")
+    assert len(jobs) == 1
+
+
+@pytest.mark.asyncio
+async def test_reset(backend, registry):
+    async def my_task():
+        pass
+
+    await _create(backend, registry, my_task)
+    assert len(await backend.list_jobs()) == 1
+
+    await backend.reset()
+    assert len(await backend.list_jobs()) == 0

@@ -292,15 +292,3 @@ class DatabaseHelper:
             set_timezone=set_timezone,
             use_transaction=use_transaction,
         )
-
-
-# Create a default instance for convenience
-default_db = DatabaseHelper()
-
-# Convenience functions that use the default instance
-execute = default_db.execute
-fetchrow = default_db.fetchrow
-fetchall = default_db.fetchall
-fetchval = default_db.fetchval
-execute_transaction = default_db.execute_in_transaction
-execute_batch = default_db.execute_batch

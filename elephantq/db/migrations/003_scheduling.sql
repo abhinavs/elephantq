@@ -1,4 +1,4 @@
--- Scheduling infrastructure: recurring jobs, dependencies, and timeouts.
+-- Scheduling infrastructure: recurring jobs and timeouts.
 
 -- Recurring jobs (cron and interval schedules)
 CREATE TABLE IF NOT EXISTS elephantq_recurring_jobs (
@@ -23,22 +23,6 @@ CREATE INDEX IF NOT EXISTS idx_elephantq_recurring_jobs_status
   ON elephantq_recurring_jobs (status);
 CREATE INDEX IF NOT EXISTS idx_elephantq_recurring_jobs_next_run
   ON elephantq_recurring_jobs (next_run);
-
--- Job dependencies (experimental — stored but not yet enforced by the worker)
-CREATE TABLE IF NOT EXISTS elephantq_job_dependencies (
-  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  job_id UUID NOT NULL REFERENCES elephantq_jobs(id) ON DELETE CASCADE,
-  depends_on_job_id UUID NOT NULL,
-  dependency_status VARCHAR(20) DEFAULT 'pending',
-  timeout_at TIMESTAMP WITH TIME ZONE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  UNIQUE(job_id, depends_on_job_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_elephantq_job_deps_job_id
-  ON elephantq_job_dependencies (job_id);
-CREATE INDEX IF NOT EXISTS idx_elephantq_job_deps_depends_on
-  ON elephantq_job_dependencies (depends_on_job_id);
 
 -- Per-job timeout configuration
 CREATE TABLE IF NOT EXISTS elephantq_job_timeouts (

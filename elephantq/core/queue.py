@@ -3,9 +3,6 @@ Job queue operations - the heart of ElephantQ
 
 This handles everything related to putting jobs in the queue and managing them.
 The goal is to make it feel natural and reliable for developers.
-
-Supports both instance-based operations (with ElephantQApp) and global operations
-for backward compatibility.
 """
 
 import json
@@ -167,6 +164,7 @@ async def enqueue_job(
     queue: Optional[str] = None,
     scheduled_at: Optional[datetime] = None,
     unique: Optional[bool] = None,
+    queueing_lock: Optional[str] = None,
     connection: Optional[asyncpg.Connection] = None,
     **kwargs,
 ) -> str:
@@ -183,11 +181,12 @@ async def enqueue_job(
         queue: Queue name. If None, uses job default
         scheduled_at: When to execute the job. If None, executes immediately
         unique: Override job's unique setting. If True, prevents duplicate queued jobs
+        queueing_lock: Custom deduplication key. Only one job with this lock can be queued at a time.
         connection: Optional existing asyncpg connection for transactional enqueue
         **kwargs: Arguments to pass to the job function
 
     Returns:
-        str: The job ID, or existing job ID if unique job already exists
+        str: The job ID, or existing job ID if unique/locked job already exists
 
     Raises:
         ValueError: If job is not registered or arguments are invalid
@@ -247,10 +246,7 @@ async def enqueue(
     **kwargs,
 ) -> str:
     """
-    Global enqueue function for backward compatibility.
-
-    Uses global pool and registry. For new code, prefer using
-    ElephantQApp.enqueue() for better isolation and testability.
+    Global enqueue function using global pool and registry.
 
     Args:
         job_func: The decorated job function to enqueue

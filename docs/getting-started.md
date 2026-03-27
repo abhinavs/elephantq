@@ -1,6 +1,6 @@
 # Getting Started (about 60 seconds)
 
-This guide walks through the minimal sequence to enqueue, run, and observe a job with ElephantQ. It assumes you already have PostgreSQL running.
+This guide walks through the minimal sequence to enqueue, run, and observe a job with ElephantQ. No database server required for local development.
 
 ## 1. Install
 
@@ -8,25 +8,44 @@ This guide walks through the minimal sequence to enqueue, run, and observe a job
 pip install elephantq
 ```
 
-Optional extras add feature-specific dependencies:
+Optional extras:
 
 ```bash
+pip install elephantq[sqlite]       # SQLite backend for local dev
 pip install elephantq[scheduling]   # Recurring jobs (croniter)
 pip install elephantq[webhooks]     # Webhooks + signing (aiohttp, cryptography)
-pip install elephantq[logging]      # Structured logging (structlog)
 pip install elephantq[dashboard]    # Web dashboard (fastapi, uvicorn)
 pip install elephantq[monitoring]   # Metrics (prometheus-client, psutil)
 pip install elephantq[full]         # Everything
 ```
 
-## 2. Configure the environment
+## 2. Local development (SQLite — zero setup)
+
+No PostgreSQL needed. ElephantQ auto-detects SQLite from a `.db` file path:
+
+```python
+import elephantq
+
+elephantq.configure(database_url="elephantq.db")
+
+@elephantq.job()
+async def send_welcome(name: str):
+    print(f"Welcome, {name}!")
+
+await elephantq.enqueue(send_welcome, name="Alice")
+await elephantq.run_worker(run_once=True)
+```
+
+## 3. Production (PostgreSQL)
+
+For production, point at PostgreSQL:
 
 ```bash
 export ELEPHANTQ_DATABASE_URL="postgresql://postgres@localhost/elephantq_dev"
 export ELEPHANTQ_JOBS_MODULES="my_app.jobs"
 ```
 
-The worker imports the modules listed in `ELEPHANTQ_JOBS_MODULES`, so ensure it resolves to the files where you decorated your jobs.
+ElephantQ auto-detects PostgreSQL from the `postgresql://` URL prefix. The worker imports the modules listed in `ELEPHANTQ_JOBS_MODULES`.
 
 ## 3. Define a job
 

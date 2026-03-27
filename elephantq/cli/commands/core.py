@@ -177,10 +177,10 @@ def register_core_commands():
 async def handle_start_command(args):
     """Handle start command (worker functionality)"""
     # --- BEGIN DISCOVERY SNIPPET ---
-    import importlib
     import sys
 
     from elephantq import settings
+    from elephantq.discovery import discover_and_import_modules, parse_jobs_modules
 
     if not settings.ELEPHANTQ_JOBS_MODULES:
         print(
@@ -189,20 +189,17 @@ async def handle_start_command(args):
         )
         sys.exit(1)
 
-    print(f"Discovering jobs in: {settings.ELEPHANTQ_JOBS_MODULES}")
-    modules = [mod.strip() for mod in settings.ELEPHANTQ_JOBS_MODULES.split(",")]
-    for module_name in modules:
-        try:
-            importlib.import_module(module_name)
-            print(f"  - Imported '{module_name}'")
-        except ImportError as e:
-            print(
-                f"Error: Could not import module '{module_name}'. Please check your ELEPHANTQ_JOBS_MODULES setting and PYTHONPATH.",
-                file=sys.stderr,
-            )
-            print(f"  Details: {e}", file=sys.stderr)
-            sys.exit(1)
-    # --- END DISCOVERY SNIPPET ---
+    modules = parse_jobs_modules(settings.ELEPHANTQ_JOBS_MODULES)
+    if len(modules) == 1:
+        print(f"Discovering jobs in: {modules[0]}")
+    else:
+        print("Discovering jobs in:")
+        for mod in modules:
+            print(f"  {mod}")
+
+    discover_and_import_modules(modules)
+    for mod in modules:
+        print(f"  - Imported '{mod}'")
 
     # Resolve ElephantQ instance from CLI arguments
     try:

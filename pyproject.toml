@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "elephantq"
-version = "0.2.0"
+version = "0.3.0"
 description = "ElephantQ - PostgreSQL-only async job queue - built for developer happiness."
 authors = [{ name = "Abhinav Saxena", email = "abhinav@apiclabs.com" }]
 readme = "README.md"
@@ -39,6 +39,7 @@ dependencies = [
 
 [project.optional-dependencies]
 scheduling = ["croniter>=1.4.0"]
+sqlite = ["aiosqlite>=0.19.0"]
 webhooks = ["aiohttp>=3.8.0", "cryptography>=3.4.0"]
 logging = ["structlog>=22.0.0"]
 dev = [

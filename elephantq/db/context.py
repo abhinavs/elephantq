@@ -152,20 +152,31 @@ def clear_current_context():
 
 async def get_context_pool() -> asyncpg.Pool:
     """
-    Convenience function to get database pool from current context.
+    Get database pool from the global ElephantQ app's backend.
 
-    This is the main function that optional features should use
-    instead of directly calling get_pool() from connection.py.
+    This is the main function that feature modules use to get a
+    database connection pool. It delegates to the global app's
+    PostgresBackend, which manages the pool.
     """
-    context = get_current_context()
-    return await context.get_pool()
+    # Try context-local first (for CLI commands with explicit DB URL)
+    if _current_context is not None:
+        return await _current_context.get_pool()
+
+    # Otherwise use the global app's backend
+    import elephantq
+
+    app = elephantq._get_global_app()
+    await app._ensure_initialized()
+
+    # Get pool from backend (PostgresBackend exposes .pool)
+    backend = app.backend
+    if hasattr(backend, "pool"):
+        return backend.pool
+
+    # Fallback for non-Postgres backends
+    return await app.get_pool()
 
 
-# Backwards compatibility - optional features can use this directly
 async def get_database_pool() -> asyncpg.Pool:
-    """
-    Get database pool with context awareness.
-
-    Alias for get_context_pool() for better naming.
-    """
+    """Alias for get_context_pool()."""
     return await get_context_pool()

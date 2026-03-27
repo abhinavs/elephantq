@@ -513,6 +513,44 @@ class EnhancedRecurringManager:
                 uuid.UUID(job_id),
             )
 
+    async def _claim_and_advance_run(
+        self,
+        job_id: str,
+        expected_next_run: datetime,
+        new_next_run: datetime,
+        run_count: int,
+        actual_job_id: Optional[str],
+    ) -> bool:
+        """
+        Atomically claim a recurring job run using optimistic locking.
+
+        Only updates if next_run still matches expected_next_run.
+        If another scheduler already advanced next_run, returns False.
+        This ensures multiple schedulers can run safely without coordination.
+        """
+        pool = await get_context_pool()
+        async with pool.acquire() as conn:
+            result = await conn.execute(
+                """
+                UPDATE elephantq_recurring_jobs
+                SET last_run = NOW(),
+                    next_run = $1,
+                    run_count = $2,
+                    last_job_id = $3,
+                    updated_at = NOW()
+                WHERE id = $4
+                  AND next_run = $5
+                """,
+                new_next_run,
+                run_count,
+                uuid.UUID(actual_job_id) if actual_job_id else None,
+                uuid.UUID(job_id),
+                expected_next_run,
+            )
+            from elephantq.db.helpers import rows_affected
+
+            return rows_affected(result) == 1
+
     def _calculate_next_run(
         self,
         schedule_type: str,
@@ -606,18 +644,17 @@ class EnhancedRecurringScheduler:
     async def _execute_job(
         self, job_id: str, job: Dict[str, Any], current_time: datetime
     ):
-        """Execute a due job"""
-        try:
-            # Enqueue the job with all configured parameters
-            actual_job_id = await enqueue(
-                job["job_func"],
-                priority=job["priority"],
-                queue=job["queue"],
-                max_attempts=job["max_attempts"],
-                **job["job_kwargs"],
-            )
+        """Execute a due job with multi-scheduler safety.
 
-            # Calculate next run time
+        Uses optimistic locking: claim the next_run slot atomically.
+        If another scheduler already claimed it, skip silently.
+        """
+        try:
+            expected_next_run = job.get("next_run")
+            if not expected_next_run:
+                return
+
+            # Calculate what next_run WILL be after this execution
             next_run = _enhanced_manager._calculate_next_run(
                 job["schedule_type"], job["schedule_value"], current_time
             )
@@ -626,16 +663,46 @@ class EnhancedRecurringScheduler:
 
             new_run_count = job["run_count"] + 1
 
-            # Persist to database FIRST — if this fails, in-memory state stays unchanged
-            await _enhanced_manager._record_run(
+            # Atomically claim this run — if another scheduler already advanced
+            # next_run, this returns False and we skip the enqueue.
+            claimed = await _enhanced_manager._claim_and_advance_run(
                 job_id=job_id,
-                last_run=current_time,
-                next_run=next_run,
+                expected_next_run=expected_next_run,
+                new_next_run=next_run,
                 run_count=new_run_count,
-                last_job_id=actual_job_id,
+                actual_job_id=None,  # Will update after enqueue
             )
 
-            # Update in-memory state only after DB write succeeds
+            if not claimed:
+                logger.debug(
+                    "Recurring job %s already claimed by another scheduler", job_id
+                )
+                # Reload next_run from database to stay in sync
+                job["next_run"] = next_run
+                return
+
+            # Claim succeeded — now enqueue the actual job
+            actual_job_id = await enqueue(
+                job["job_func"],
+                priority=job["priority"],
+                queue=job["queue"],
+                max_attempts=job["max_attempts"],
+                **job["job_kwargs"],
+            )
+
+            # Update last_job_id in DB (non-critical, best-effort)
+            try:
+                await _enhanced_manager._record_run(
+                    job_id=job_id,
+                    last_run=current_time,
+                    next_run=next_run,
+                    run_count=new_run_count,
+                    last_job_id=actual_job_id,
+                )
+            except Exception:
+                pass  # Claim already succeeded, job is enqueued
+
+            # Update in-memory state
             _enhanced_manager.jobs[job_id].update(
                 {
                     "last_run": current_time,
@@ -654,7 +721,6 @@ class EnhancedRecurringScheduler:
 
         except Exception as e:
             logger.error("Failed to execute recurring job %s: %s", job_id, e)
-            # Don't update next_run on error - will retry
 
 
 # Global instances

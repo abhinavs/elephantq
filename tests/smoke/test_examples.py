@@ -5,7 +5,7 @@ Ensures every example is syntactically valid Python and uses importable APIs.
 Also checks for dead documentation URLs.
 
 These tests do NOT need a database connection.
-Run with: pytest tests/test_examples_smoke.py --noconftest -v
+Run with: pytest tests/smoke/ -v
 """
 
 import ast
@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-EXAMPLES_DIR = Path(__file__).parent.parent / "examples"
-PROJECT_ROOT = Path(__file__).parent.parent
+EXAMPLES_DIR = Path(__file__).parent.parent.parent / "examples"
+PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 
 @pytest.mark.parametrize(
@@ -79,6 +79,16 @@ def test_example_imports_resolve(example):
                 # Skip fastapi since it's optional for examples
                 top = node.module.split(".")[0]
                 __import__(top)
+
+
+def test_examples_use_clean_imports():
+    """Examples should import from elephantq or elephantq.<module>, not elephantq.features."""
+    for example in EXAMPLES_DIR.glob("*.py"):
+        source = example.read_text()
+        assert "elephantq.features" not in source, (
+            f"{example.name} imports from elephantq.features — "
+            f"use elephantq or elephantq.<module> instead"
+        )
 
 
 def test_no_dead_documentation_urls():

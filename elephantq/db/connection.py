@@ -11,7 +11,7 @@ import asyncpg
 
 from elephantq.settings import get_settings
 
-# Global pool for backward compatibility
+# Global pool
 _pool: Optional[asyncpg.Pool] = None
 _pool_lock: asyncio.Lock = asyncio.Lock()
 
@@ -35,17 +35,27 @@ async def _init_connection(conn):
 
 async def get_pool() -> asyncpg.Pool:
     """
-    Get connection pool with context awareness.
+    Get connection pool.
 
-    First checks for context-local pool, then falls back to global pool.
-    This allows for better testing and integration while maintaining backward compatibility.
+    Delegates to the global ElephantQ app's backend.
+    Kept for feature modules that import from db.connection directly.
     """
-    # Check if we have a context-local pool first
+    # Check if we have a context-local pool first (testing/CLI)
     context_pool = _context_pool.get(None)
     if context_pool is not None:
         return context_pool
 
-    # Fall back to global pool for backward compatibility
+    # Use global app's backend pool
+    import elephantq
+
+    app = elephantq._get_global_app()
+    await app._ensure_initialized()
+
+    backend = app.backend
+    if hasattr(backend, "pool"):
+        return backend.pool
+
+    # Fallback: create pool directly (should not normally reach here)
     global _pool
     if _pool is None:
         async with _pool_lock:

@@ -9,7 +9,7 @@ ElephantQ bundles a number of higher-level capabilities in the same package. The
 - **What it does:** Tracks job counts, queue depth, retry totals, and scheduler health. Metrics are exposed via Prometheus-friendly counters so you can scrape them alongside the rest of your stack.
 
 ```python
-from elephantq.features.metrics import get_system_metrics
+from elephantq.metrics import get_system_metrics
 metrics = await get_system_metrics(timeframe_hours=1)
 print("Jobs processed in the last hour:", metrics["jobs_processed"])
 ```
@@ -21,7 +21,7 @@ print("Jobs processed in the last hour:", metrics["jobs_processed"])
 - **What it does:** Captures per-job context (job id, queue, retries, errors) and emits structured events that you can route to your logging backend.
 
 ```python
-from elephantq.features.logging import setup, get_job_logger
+from elephantq.logging import setup, get_job_logger
 
 setup(format="structured", level="INFO")
 logger = get_job_logger("my-job-id")
@@ -51,7 +51,7 @@ Webhooks and custom metrics can react to dead-letter activity to keep your opera
 - **What it does:** Register webhook endpoints that receive job lifecycle events such as `job.succeeded`, `job.failed`, or `job.dead_letter`.
 
 ```python
-await elephantq.features.webhooks.register_endpoint(
+await elephantq.webhooks.register_endpoint(
     url="https://hooks.example.com/elephantq",
     events=["job.failed", "job.dead_letter"],
     secret="supersecret",
@@ -70,7 +70,7 @@ The feature keeps delivery retries, headers, and metadata inside ElephantQ, so y
 Timeouts allow you to cancel jobs that run longer than expected:
 
 ```python
-from elephantq.features.scheduling import schedule_job
+from elephantq.scheduling import schedule_job
 
 builder = schedule_job(generate_report)
 await (
@@ -95,7 +95,7 @@ Dependencies store their own table (`elephantq_job_dependencies`). Enforcement i
 | `ELEPHANTQ_DASHBOARD_WRITE_ENABLED` | Adds retry/delete/cancel buttons in the UI (use in trusted environments). |
 | `ELEPHANTQ_METRICS_ENABLED` | Switches on metrics counters and Prometheus blanks. |
 | `ELEPHANTQ_LOGGING_ENABLED` | Wires `structlog` to job-aware logging. |
-| `ELEPHANTQ_SCHEDULING_ENABLED` | Unlocks `elephantq.features.scheduling` and `elephantq.features.recurring`. |
+| `ELEPHANTQ_SCHEDULING_ENABLED` | Unlocks `elephantq.scheduling` and `elephantq.scheduling`. |
 | `ELEPHANTQ_DEPENDENCIES_ENABLED`, `ELEPHANTQ_TIMEOUTS_ENABLED` | Hooks into scheduling metadata and per-job guards. |
 
 Each of these features is documented in `docs/<feature>.md` (see the `/docs` directory). The CLI gracefully refuses to run commands when the corresponding flag is disabled, so enabling a feature means turning on the flag and (if needed) installing the optional dependency.

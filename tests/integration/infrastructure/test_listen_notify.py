@@ -129,9 +129,12 @@ async def test_notify_sent_verification(test_db, clean_app):
         # Set up LISTEN on our monitor connection
         await notification_conn.add_listener("elephantq_new_job", notification_callback)
 
+        # Configure short poll interval for fast test feedback
+        app._settings.notification_timeout = 0.2
+
         # Start worker
         worker_task = asyncio.create_task(app.run_worker(concurrency=1, run_once=False))
-        await asyncio.sleep(1.0)  # Let worker start
+        await asyncio.sleep(0.5)  # Let worker start
 
         # Enqueue a job - this should trigger NOTIFY
         await app.enqueue(test_job, message="test notification")
@@ -152,8 +155,8 @@ async def test_notify_sent_verification(test_db, clean_app):
             first_notification["payload"] == "default"
         ), "Notification payload should be queue name"
 
-        # Verify job was also processed
-        await asyncio.sleep(1.0)  # Give time for processing
+        # Verify job was also processed (worker polls at 0.2s intervals)
+        await asyncio.sleep(2.0)  # Give time for processing
         assert len(processed_jobs) == 1, "Job should have been processed"
 
         worker_task.cancel()
@@ -195,10 +198,13 @@ async def test_queue_specific_notifications(test_db, clean_app):
     try:
         await notification_conn.add_listener("elephantq_new_job", notification_callback)
 
+        # Configure short poll interval
+        app._settings.notification_timeout = 0.2
+
         worker_task = asyncio.create_task(
             app.run_worker(concurrency=1, queues=["high", "low"], run_once=False)
         )
-        await asyncio.sleep(1.0)
+        await asyncio.sleep(0.5)
 
         # Enqueue jobs to different queues
         await app.enqueue(high_priority_job, message="high job")
@@ -217,8 +223,8 @@ async def test_queue_specific_notifications(test_db, clean_app):
         assert "high" in payloads, "Should receive notification for high queue"
         assert "low" in payloads, "Should receive notification for low queue"
 
-        # Verify jobs were processed
-        await asyncio.sleep(1.0)
+        # Verify jobs were processed (worker polls at 0.2s)
+        await asyncio.sleep(2.0)
         assert len(processed_jobs) == 2, "Both jobs should be processed"
 
         worker_task.cancel()

@@ -34,7 +34,7 @@ elephantq metrics --format json --export metrics.json
 ## Python API
 
 ```python
-from elephantq.features.metrics import get_system_metrics
+from elephantq.metrics import get_system_metrics
 
 metrics = await get_system_metrics(timeframe_hours=1)
 

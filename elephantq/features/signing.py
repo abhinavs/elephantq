@@ -26,10 +26,8 @@ def _require_cryptography():
         )
 
 
-_LEGACY_SALT = b"elephantq_security_salt_v1"
 _SALT_LENGTH = 16
 _PBKDF2_ITERATIONS = 310000
-_LEGACY_PBKDF2_ITERATIONS = 100000
 
 
 class SecretManager:
@@ -37,13 +35,11 @@ class SecretManager:
     Manages encryption and decryption of sensitive data like webhook secrets.
 
     Uses Fernet (symmetric encryption) with a per-encryption random salt.
-    Supports decrypting legacy tokens that used a hardcoded salt.
     """
 
     def __init__(self):
         _require_cryptography()
         self._secret_key: str = ""
-        self._legacy_fernet: Optional[Fernet] = None
         self._initialize_encryption()
 
     def _initialize_encryption(self):
@@ -63,10 +59,6 @@ class SecretManager:
             )
 
         self._secret_key = secret_key
-        # Pre-compute the legacy Fernet for backward-compatible decryption
-        self._legacy_fernet = Fernet(
-            self._derive_key(secret_key, _LEGACY_SALT, _LEGACY_PBKDF2_ITERATIONS)
-        )
 
     @staticmethod
     def _derive_key(
@@ -101,33 +93,26 @@ class SecretManager:
         """
         Decrypt a ciphertext string.
 
-        Tries the new random-salt format first, then falls back to the
-        legacy hardcoded-salt format for backward compatibility.
+        Format: base64(salt + fernet_token) where salt is the first 16 bytes.
         """
         if not ciphertext:
             return ciphertext
 
         raw = base64.urlsafe_b64decode(ciphertext.encode("utf-8"))
 
-        # Try new format: first 16 bytes are the salt
-        if len(raw) > _SALT_LENGTH:
-            salt = raw[:_SALT_LENGTH]
-            token = raw[_SALT_LENGTH:]
-            # Try current iteration count first
-            for iters in (_PBKDF2_ITERATIONS, _LEGACY_PBKDF2_ITERATIONS):
-                try:
-                    key = self._derive_key(self._secret_key, salt, iters)
-                    fernet = Fernet(key)
-                    return fernet.decrypt(token).decode("utf-8")
-                except Exception:
-                    continue
+        if len(raw) <= _SALT_LENGTH:
+            raise ValueError("Invalid ciphertext: too short")
 
-        # Legacy format: entire payload is a Fernet token with hardcoded salt
+        salt = raw[:_SALT_LENGTH]
+        token = raw[_SALT_LENGTH:]
+
         try:
-            assert self._legacy_fernet is not None
-            return self._legacy_fernet.decrypt(raw).decode("utf-8")
+            key = self._derive_key(self._secret_key, salt)
+            fernet = Fernet(key)
+            result: str = fernet.decrypt(token).decode("utf-8")
+            return result
         except Exception as e:
-            raise ValueError(f"Failed to decrypt secret: {e}")
+            raise ValueError(f"Failed to decrypt secret: {e}") from e
 
     def is_encrypted(self, value: str) -> bool:
         """
@@ -140,9 +125,8 @@ class SecretManager:
 
         try:
             decoded = base64.urlsafe_b64decode(value.encode("utf-8"))
-            # New format: 16-byte salt + Fernet token (min 73 bytes)
-            # Legacy: just Fernet token (min 73 bytes)
-            return len(decoded) >= 73
+            # 16-byte salt + Fernet token (min 73 bytes)
+            return len(decoded) >= _SALT_LENGTH + 73
         except Exception:
             return False
 

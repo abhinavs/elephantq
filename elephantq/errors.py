@@ -398,7 +398,3 @@ def create_user_friendly_error(
         suggestions=suggestions,
         documentation_url="https://github.com/abhinavs/elephantq/blob/main/docs/production.md",
     )
-
-
-# Backwards-compatible alias
-ElephantQError = ElephantQError

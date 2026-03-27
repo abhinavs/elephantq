@@ -5,16 +5,13 @@ Instance-based architecture to replace global state patterns.
 Enables multiple isolated ElephantQ instances with independent configurations.
 """
 
-import asyncio
 import logging
 from pathlib import Path
 from typing import Any, List, Optional
 
 import asyncpg
-import asyncpg.exceptions
 
 from .core.registry import JobRegistry
-from .db.connection import _init_connection
 from .db.helpers import rows_affected as _rows_affected
 from .errors import ElephantQError
 from .settings import ElephantQSettings
@@ -50,6 +47,7 @@ class ElephantQ:
         self,
         database_url: Optional[str] = None,
         config_file: Optional[Path] = None,
+        backend: Optional[Any] = None,
         **settings_overrides,
     ):
         """
@@ -58,14 +56,25 @@ class ElephantQ:
         Args:
             database_url: PostgreSQL connection URL
             config_file: Optional configuration file path
+            backend: Optional StorageBackend instance. If not provided,
+                creates a PostgresBackend from the database_url.
             **settings_overrides: Override any ElephantQSettings field
         """
         # Core instance state
         self._initialized = False
         self._closed = False
 
+        # Resolve backend: explicit string name, auto-detect from URL, or None (lazy Postgres)
+        if isinstance(backend, str):
+            backend = self._resolve_backend_name(backend, database_url)
+        elif backend is None and database_url:
+            backend = self._auto_detect_backend(database_url)
+        self._backend = backend
+
         # Settings with overrides
-        if database_url:
+        # Only pass database_url to settings for postgres backend
+        # (SQLite and Memory backends use database_url as a file path, not a Postgres URL)
+        if database_url and self._backend is None:
             settings_overrides["database_url"] = database_url
 
         if config_file:
@@ -78,17 +87,56 @@ class ElephantQ:
         # Instance components (initialized lazily)
         self._pool: Optional[asyncpg.Pool] = None
         self._job_registry = JobRegistry()
-        from .errors import DatabaseConnectionError
 
-        logger.debug(
-            "Created ElephantQ instance with database: %s",
-            DatabaseConnectionError._mask_database_url(self._settings.database_url),
-        )
+        logger.debug("Created ElephantQ instance")
+
+    @staticmethod
+    def _auto_detect_backend(database_url: str) -> Any:
+        """Auto-detect backend from database URL format.
+
+        - postgresql:// or postgres:// → None (PostgresBackend created lazily)
+        - *.db or *.sqlite → SQLiteBackend
+        - anything else → None (assume Postgres, will fail at connect if wrong)
+        """
+        if database_url.startswith(("postgresql://", "postgres://")):
+            return None  # PostgresBackend created in _ensure_initialized
+
+        if database_url.endswith((".db", ".sqlite", ".sqlite3")):
+            from .backends.sqlite import SQLiteBackend
+
+            return SQLiteBackend(database_url)
+
+        return None  # Default to Postgres
+
+    @staticmethod
+    def _resolve_backend_name(name: str, database_url: Optional[str] = None) -> Any:
+        """Resolve a string backend name to a backend instance."""
+        if name == "memory":
+            from .backends.memory import MemoryBackend
+
+            return MemoryBackend()
+        elif name == "sqlite":
+            from .backends.sqlite import SQLiteBackend
+
+            path = database_url if database_url else "elephantq.db"
+            return SQLiteBackend(path)
+        elif name == "postgres":
+            # Will be created in _ensure_initialized with settings
+            return None
+        else:
+            raise ValueError(
+                f"Unknown backend: {name!r}. Use 'postgres', 'sqlite', or 'memory'."
+            )
 
     @property
     def settings(self) -> ElephantQSettings:
         """Get application settings."""
         return self._settings
+
+    @property
+    def backend(self):
+        """Access the storage backend."""
+        return self._backend
 
     @property
     def is_initialized(self) -> bool:
@@ -104,7 +152,7 @@ class ElephantQ:
         """
         Auto-initialize ElephantQ on first use.
 
-        Creates database connection pool.
+        Creates a PostgresBackend if no backend was provided, then initializes it.
         """
         if self._initialized:
             return
@@ -117,16 +165,21 @@ class ElephantQ:
         try:
             logger.debug("Auto-initializing ElephantQ application...")
 
-            # Create database connection pool
-            self._pool = await asyncpg.create_pool(
-                self._settings.database_url,
-                min_size=self._settings.db_pool_min_size,
-                max_size=self._settings.db_pool_max_size,
-                init=_init_connection,
-            )
-            logger.debug(
-                f"Created database pool (min: {self._settings.db_pool_min_size}, max: {self._settings.db_pool_max_size})"
-            )
+            # Create backend if not provided
+            if self._backend is None:
+                from .backends.postgres import PostgresBackend
+
+                self._backend = PostgresBackend(
+                    database_url=self._settings.database_url,
+                    pool_min_size=self._settings.db_pool_min_size,
+                    pool_max_size=self._settings.db_pool_max_size,
+                )
+
+            await self._backend.initialize()
+
+            # Keep _pool reference for backward compat with code that uses it directly
+            if hasattr(self._backend, "pool"):
+                self._pool = self._backend.pool
 
             self._initialized = True
             logger.debug("ElephantQ application initialized successfully")
@@ -166,11 +219,11 @@ class ElephantQ:
         logger.info("Closing ElephantQ application...")
 
         try:
-            # Close database pool
-            if self._pool:
-                await self._pool.close()
+            # Close backend (which closes its pool)
+            if self._backend:
+                await self._backend.close()
                 self._pool = None
-                logger.debug("Closed database pool")
+                logger.debug("Closed backend")
 
             self._closed = True
             self._initialized = False
@@ -181,6 +234,15 @@ class ElephantQ:
             # Continue cleanup even if errors occur
             self._closed = True
             self._initialized = False
+
+    async def reset(self) -> None:
+        """
+        Delete all jobs and workers. Used in test fixtures.
+
+        Delegates to the backend's reset() method.
+        """
+        await self._ensure_initialized()
+        await self._backend.reset()  # type: ignore[union-attr]
 
     def job(self, **kwargs):
         """
@@ -251,9 +313,6 @@ class ElephantQ:
         """
         Run a worker for this ElephantQ instance.
 
-        Runs a worker that processes jobs using this instance's job registry,
-        enabling isolated job processing with instance-based architecture.
-
         Args:
             concurrency: Number of concurrent job processing tasks
             run_once: If True, process available jobs once and exit
@@ -265,251 +324,20 @@ class ElephantQ:
         """
         await self._ensure_initialized()
 
-        queue_info = "all queues" if queues is None else f"queues: {queues}"
-        logger.info(
-            f"Starting ElephantQ worker - concurrency: {concurrency}, processing: {queue_info}"
-        )
-
         self._warn_if_pool_too_small(concurrency)
 
-        try:
-            if run_once:
-                return await self._run_worker_once(queues)
-            else:
-                return await self._run_worker_continuous(concurrency, queues)
-        finally:
-            logger.info("ElephantQ worker stopped")
+        from .worker import Worker
 
-    async def _run_worker_once(
-        self,
-        queues: Optional[List[str]] = None,
-        max_jobs: Optional[int] = None,
-    ) -> bool:
-        """
-        Process available jobs once and exit.
-
-        Continues processing until no more jobs are available or max_jobs is reached.
-
-        Args:
-            queues: Optional list of queues to process
-            max_jobs: Maximum number of jobs to process. None means no limit.
-
-        Returns:
-            True if any jobs were processed, False otherwise
-        """
-        from .core.processor import process_jobs_with_registry
-
-        jobs_processed = 0
-
-        while max_jobs is None or jobs_processed < max_jobs:
-            async with self._pool.acquire() as conn:  # type: ignore[union-attr]
-                processed = await process_jobs_with_registry(
-                    conn=conn,
-                    job_registry=self._job_registry,
-                    queue=queues,
-                    heartbeat=None,
-                )
-
-            if processed:
-                jobs_processed += 1
-            else:
-                break
-
-        return jobs_processed > 0
-
-    async def _run_worker_continuous(
-        self, concurrency: int, queues: Optional[List[str]] = None
-    ) -> bool:
-        """
-        Run continuous worker with heartbeat and signal handling.
-
-        Returns:
-            True if any jobs were processed during the session
-        """
-        from .core.heartbeat import WorkerHeartbeat
-        from .core.processor import process_jobs_with_registry
-        from .utils.signals import GracefulSignalHandler
-
-        # Create worker heartbeat system
-        heartbeat = WorkerHeartbeat(self._pool, queues, concurrency)  # type: ignore[arg-type]
-        await heartbeat.register_worker()
-        await heartbeat.start_heartbeat()
-
-        # Continuous processing with LISTEN/NOTIFY
-        async def worker():
-            # Each worker needs its own connection for LISTEN/NOTIFY
-            listen_conn = None
-            notification_event = asyncio.Event()
-
-            def notification_callback(connection, pid, channel, payload):
-                logger.debug(f"Received notification on {channel}: {payload}")
-                notification_event.set()
-
-            try:
-                listen_conn = await self._pool.acquire()  # type: ignore[union-attr]
-                # Set up LISTEN for job notifications
-                await listen_conn.add_listener(
-                    "elephantq_new_job", notification_callback
-                )
-
-                # Track last cleanup time for periodic cleanup
-                last_cleanup = 0
-                cleanup_interval = self._settings.cleanup_interval
-
-                while True:
-                    try:
-                        # Check if shutdown has been requested
-                        if shutdown_event.is_set():
-                            logger.info("Shutdown requested, stopping worker")
-                            break
-
-                        # Process jobs from all queues first
-                        any_processed = False
-
-                        # Use separate connection for job processing to avoid blocking LISTEN
-                        try:
-                            async with self._pool.acquire() as job_conn:  # type: ignore[union-attr]
-                                # Process jobs efficiently
-                                processed = await process_jobs_with_registry(
-                                    conn=job_conn,
-                                    job_registry=self._job_registry,
-                                    queue=queues,
-                                    heartbeat=heartbeat,
-                                )
-                                if processed:
-                                    any_processed = True
-
-                                # Run periodic cleanup of expired jobs
-                                import time
-
-                                current_time = time.time()
-                                if current_time - last_cleanup > cleanup_interval:
-                                    try:
-                                        # Clean up expired completed jobs if RESULT_TTL is set
-                                        if self._settings.result_ttl > 0:
-                                            cleaned = await job_conn.execute(
-                                                "DELETE FROM elephantq_jobs WHERE status = 'done' AND expires_at < NOW()"
-                                            )
-                                            cleaned_count = (
-                                                int(cleaned.split()[-1])
-                                                if cleaned
-                                                else 0
-                                            )
-                                            if cleaned_count > 0:
-                                                logger.debug(
-                                                    f"Cleaned up {cleaned_count} expired jobs"
-                                                )
-
-                                        # Clean up stale workers
-                                        from .core.heartbeat import (
-                                            cleanup_stale_workers,
-                                        )
-
-                                        await cleanup_stale_workers(
-                                            self._pool,  # type: ignore[arg-type]
-                                            stale_threshold_seconds=self._settings.stale_worker_threshold,
-                                        )
-
-                                        last_cleanup = current_time
-                                    except Exception as cleanup_error:
-                                        logger.warning(
-                                            f"Cleanup failed: {cleanup_error}"
-                                        )
-                                        last_cleanup = (
-                                            current_time  # Prevent continuous retries
-                                        )
-
-                        except Exception as e:
-                            if "pool is closing" in str(e):
-                                logger.debug("Pool is closing, stopping worker")
-                                break
-                            else:
-                                raise
-
-                        if not any_processed:
-                            # No jobs available, wait for NOTIFY with timeout
-                            try:
-                                # Wait for notification with configurable timeout
-                                await asyncio.wait_for(
-                                    notification_event.wait(),
-                                    timeout=self._settings.notification_timeout,
-                                )
-                                notification_event.clear()  # Reset for next notification
-                                logger.info("Received job notification")
-                            except asyncio.TimeoutError:
-                                # Timeout is normal - allows periodic checks for scheduled jobs
-                                logger.debug(
-                                    "No notifications, checking for scheduled jobs"
-                                )
-
-                    except Exception as e:
-                        logger.exception(f"Worker error: {e}")
-                        await asyncio.sleep(self._settings.error_retry_delay)
-
-            finally:
-                if listen_conn is not None:
-                    try:
-                        await listen_conn.remove_listener(
-                            "elephantq_new_job", notification_callback
-                        )
-                    except asyncpg.exceptions.InterfaceError as e:
-                        logger.debug(f"Failed to remove listener (pool closing): {e}")
-
-                    try:
-                        await self._pool.release(listen_conn)  # type: ignore[union-attr]
-                    except asyncpg.exceptions.InterfaceError as e:
-                        logger.debug(
-                            f"Failed to release connection (pool closing): {e}"
-                        )
-
-        # Setup signal handlers for graceful shutdown
-        shutdown_event = asyncio.Event()
-        signal_handler = GracefulSignalHandler()
-        signal_handler.setup_signal_handlers(shutdown_event)
-
-        # Start multiple worker tasks for concurrency
-        tasks = [asyncio.create_task(worker()) for _ in range(concurrency)]
-
-        try:
-            # Create a task that waits for shutdown signal
-            shutdown_task = asyncio.create_task(shutdown_event.wait())
-            worker_task = asyncio.ensure_future(
-                asyncio.gather(*tasks, return_exceptions=True)
-            )
-
-            # Wait for either workers to complete or shutdown signal
-            done, pending = await asyncio.wait(
-                {worker_task, shutdown_task}, return_when=asyncio.FIRST_COMPLETED
-            )
-
-            # If shutdown was requested, cancel workers
-            if shutdown_task in done:
-                logger.info("Graceful shutdown initiated by signal...")
-                for task in tasks:
-                    if not task.done():
-                        task.cancel()
-
-                # Wait for workers to finish gracefully
-                await asyncio.gather(*tasks, return_exceptions=True)
-
-            # Cancel pending tasks
-            for task in pending:
-                task.cancel()
-
-        except KeyboardInterrupt:
-            # Fallback handler for direct KeyboardInterrupt (shouldn't happen with signals)
-            logger.info("Shutting down workers...")
-            for task in tasks:
-                task.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
-        finally:
-            # Cleanup signal handlers
-            signal_handler.restore_signal_handlers()
-
-            # Stop heartbeat system
-            await heartbeat.stop_heartbeat()
-
-        return True  # Jobs may have been processed during the session
+        worker = Worker(
+            backend=self._backend,
+            registry=self._job_registry,
+            settings=self._settings,
+        )
+        return await worker.run(
+            concurrency=concurrency,
+            run_once=run_once,
+            queues=queues,
+        )
 
     # Job Management API
 
@@ -793,8 +621,59 @@ class ElephantQ:
             return await migration_runner._run_migrations_with_connection(conn)
 
     async def setup(self) -> int:
-        """Create/upgrade ElephantQ tables via migrations (instance API)."""
+        """
+        Set up ElephantQ — create database (if needed) and run migrations.
+
+        - PostgreSQL: creates the database if it doesn't exist, then runs migrations
+        - SQLite: tables created automatically by SQLiteBackend.initialize()
+        - Memory: no-op
+
+        Returns:
+            Number of migrations applied (0 for SQLite/Memory)
+        """
+        await self._ensure_initialized()
+
+        # SQLite and Memory backends create tables on initialize() — nothing to migrate
+        if not hasattr(self._backend, "pool"):
+            return 0
+
+        # PostgreSQL: attempt to create the database, then run migrations
+        await self._ensure_postgres_database_exists()
         return await self.run_migrations()
+
+    async def _ensure_postgres_database_exists(self) -> None:
+        """Create the PostgreSQL database if it doesn't exist."""
+        import asyncpg as _asyncpg
+
+        url = self._settings.database_url
+        # Parse database name from URL
+        # postgresql://user:pass@host:port/dbname
+        if "/" not in url.split("@")[-1]:
+            return  # No database name in URL
+
+        parts = url.rsplit("/", 1)
+        if len(parts) != 2:
+            return
+
+        server_url = parts[0] + "/postgres"  # Connect to default 'postgres' db
+        db_name = parts[1].split("?")[0]  # Strip query params
+
+        try:
+            conn = await _asyncpg.connect(server_url)
+            try:
+                exists = await conn.fetchval(
+                    "SELECT 1 FROM pg_database WHERE datname = $1", db_name
+                )
+                if not exists:
+                    # Can't use parameterized query for CREATE DATABASE
+                    await conn.execute(f'CREATE DATABASE "{db_name}"')
+                    logger.info(f"Created database: {db_name}")
+            finally:
+                await conn.close()
+        except Exception as e:
+            # Database might already exist, or we might not have permissions
+            # Either way, we'll find out when migrations run
+            logger.debug(f"Could not auto-create database: {e}")
 
     async def _cleanup_on_error(self):
         """Cleanup resources after initialization error."""
@@ -804,6 +683,3 @@ class ElephantQ:
                 self._pool = None
         except Exception as e:
             logger.debug(f"Error during cleanup: {e}")
-
-
-# Backwards-compatible alias
