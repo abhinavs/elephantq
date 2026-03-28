@@ -5,11 +5,6 @@ site_description = "Background jobs for Python. Powered by the Postgres you alre
 site_author = "Abhinav Saxena"
 docs_dir = "docs"
 site_dir = "site"
-
-[project.theme]
-variant = "modern"
-
-[project.nav]
 nav = [
   { "Home" = "index.md" },
   { "Getting Started" = [
@@ -62,3 +57,6 @@ nav = [
     "migration/from-rq.md",
   ] },
 ]
+
+[project.theme]
+variant = "modern"
