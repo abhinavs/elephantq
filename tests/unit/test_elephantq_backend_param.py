@@ -15,11 +15,12 @@ def test_elephantq_init_accepts_backend():
     assert "backend" in sig.parameters
 
 
-def test_elephantq_exposes_backend_property():
-    """ElephantQ should expose the backend for features/tests."""
+def test_elephantq_exposes_backend_attribute():
+    """ElephantQ should expose the _backend attribute for internal use."""
     from elephantq.app import ElephantQ
 
-    assert hasattr(ElephantQ, "backend") or "backend" in dir(ElephantQ)
+    app = ElephantQ(backend="memory")
+    assert hasattr(app, "_backend")
 
 
 def test_elephantq_resolves_memory_backend_string():
@@ -28,7 +29,7 @@ def test_elephantq_resolves_memory_backend_string():
     from elephantq.backends.memory import MemoryBackend
 
     app = ElephantQ(backend="memory")
-    assert isinstance(app.backend, MemoryBackend)
+    assert isinstance(app._backend, MemoryBackend)
 
 
 def test_elephantq_resolves_sqlite_backend_string(tmp_path):
@@ -38,7 +39,7 @@ def test_elephantq_resolves_sqlite_backend_string(tmp_path):
     from elephantq.backends.sqlite import SQLiteBackend
 
     app = ElephantQ(backend="sqlite", database_url=str(tmp_path / "test.db"))
-    assert isinstance(app.backend, SQLiteBackend)
+    assert isinstance(app._backend, SQLiteBackend)
 
 
 def test_elephantq_unknown_backend_raises():

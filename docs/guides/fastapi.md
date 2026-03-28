@@ -15,14 +15,16 @@ eq = ElephantQ(database_url="postgresql://localhost/myapp")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await eq.setup()     # creates tables, runs migrations
     yield
     await eq.close()     # closes the connection pool
 
 app = FastAPI(lifespan=lifespan)
 ```
 
-`setup()` creates the database if it doesn't exist and runs any pending migrations. `close()` shuts down the connection pool cleanly when the process exits.
+The connection pool initializes lazily on first use (first `enqueue()` call). `close()` shuts it down cleanly when the process exits.
+
+!!! warning "Run migrations at deploy time, not app startup"
+    Use `elephantq setup` in your deploy pipeline (CI step, Dockerfile entrypoint, k8s init container) — not in the lifespan. Running migrations on every app boot creates race conditions when multiple replicas start simultaneously.
 
 ## Defining jobs
 
@@ -77,7 +79,6 @@ eq = ElephantQ(database_url="postgresql://localhost/myapp")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await eq.setup()
     yield
     await eq.close()
 
@@ -146,8 +147,6 @@ tenant_b = ElephantQ(database_url="postgresql://localhost/tenant_b")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await tenant_a.setup()
-    await tenant_b.setup()
     yield
     await tenant_a.close()
     await tenant_b.close()

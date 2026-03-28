@@ -248,7 +248,7 @@ async def handle_start_command(args):
         return 1
     finally:
         # Clean up instance if used
-        if elephantq_instance and elephantq_instance.is_initialized:
+        if elephantq_instance and elephantq_instance._is_initialized:
             await elephantq_instance.close()
 
     return 0
@@ -273,8 +273,8 @@ async def handle_setup_command(args):
                 "info",
             )
             # Use instance-based migrations
-            status = await elephantq_instance.get_migration_status()
-            applied_count = await elephantq_instance.run_migrations()
+            status = await elephantq_instance._get_migration_status()
+            applied_count = await elephantq_instance._run_migrations()
         else:
             print_status("Using global API configuration", "info")
             # Use global API migrations
@@ -317,7 +317,7 @@ async def handle_setup_command(args):
         return 1
     finally:
         # Clean up instance if used
-        if elephantq_instance and elephantq_instance.is_initialized:
+        if elephantq_instance and elephantq_instance._is_initialized:
             await elephantq_instance.close()
 
 

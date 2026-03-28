@@ -20,12 +20,12 @@ async def test_concurrent_access_all_get_same_backend():
     # Fire 10 concurrent _ensure_initialized calls
     await asyncio.gather(*[app._ensure_initialized() for _ in range(10)])
 
-    assert app.is_initialized
-    assert app.backend is not None
+    assert app._is_initialized
+    assert app._backend is not None
 
     # All resolved to the same backend
-    backend = app.backend
+    backend = app._backend
     await app._ensure_initialized()
-    assert app.backend is backend
+    assert app._backend is backend
 
     await app.close()

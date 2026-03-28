@@ -24,7 +24,7 @@ from elephantq import ElephantQ
 async def eq():
     app = ElephantQ(backend="memory")
     yield app
-    await app.reset()
+    await app._reset()
     await app.close()
 ```
 
@@ -120,16 +120,16 @@ async def test_failure_tracking(eq):
 
 ## Resetting state between tests
 
-If you share a single instance across tests (for example, a session-scoped fixture), call `reset()` to wipe all jobs and workers:
+If you share a single instance across tests (for example, a session-scoped fixture), call `_reset()` to wipe all jobs and workers:
 
 ```python
 @pytest.fixture(autouse=True)
 async def clean_slate(eq):
     yield
-    await eq.reset()
+    await eq._reset()
 ```
 
-`reset()` truncates job and worker tables (or clears the in-memory dicts) without tearing down the connection.
+`_reset()` truncates job and worker tables (or clears the in-memory dicts) without tearing down the connection.
 
 ## SQLite for integration tests
 
@@ -143,7 +143,6 @@ from elephantq import ElephantQ
 async def eq(tmp_path):
     db_path = str(tmp_path / "test.db")
     app = ElephantQ(backend="sqlite", database_url=db_path)
-    await app.setup()
     yield app
     await app.close()
 ```

@@ -443,7 +443,7 @@ if __name__ == "__main__":
                 from elephantq.worker import Worker
 
                 global_app = elephantq._get_global_app()
-                worker = Worker(global_app.backend, global_app.get_job_registry())
+                worker = Worker(global_app._backend, global_app._get_job_registry())
 
                 start_time = time.time()
                 processed_jobs = 0

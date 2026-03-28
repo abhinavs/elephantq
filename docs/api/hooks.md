@@ -181,7 +181,7 @@ async def track_failure(job_name, job_id, error, attempt):
 @app.on_error
 async def alert_on_final_failure(job_name, job_id, error, attempt):
     # Look up the job's max_attempts from the registry
-    job_meta = app.get_job_registry().get_job(job_name)
+    job_meta = app._get_job_registry().get_job(job_name)
     if job_meta and attempt >= job_meta["max_retries"] + 1:
         await send_slack_message(
             f"Job {job_name} ({job_id}) moved to dead-letter queue: {error}"

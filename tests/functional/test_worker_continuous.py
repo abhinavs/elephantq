@@ -24,8 +24,8 @@ async def test_worker_processes_job_and_shuts_down():
         from elephantq.worker import Worker
 
         worker = Worker(
-            backend=app.backend,
-            registry=app.get_job_registry(),
+            backend=app._backend,
+            registry=app._get_job_registry(),
             settings=app.settings,
         )
         # Override poll_interval to poll quickly
@@ -68,8 +68,8 @@ async def test_worker_run_method_dispatches_correctly():
     from elephantq.worker import Worker
 
     worker = Worker(
-        backend=app.backend,
-        registry=app.get_job_registry(),
+        backend=app._backend,
+        registry=app._get_job_registry(),
         settings=app.settings,
     )
     processed = await worker.run(run_once=True)

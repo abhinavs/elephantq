@@ -55,7 +55,7 @@ class TestGlobalAPI:
         # Check job is registered in global app
         app = elephantq._get_global_app()
         job_name = "tests.unit.test_global_api.test_job"
-        job_meta = app.get_job_registry().get_job(job_name)
+        job_meta = app._get_job_registry().get_job(job_name)
 
         assert job_meta is not None
         assert job_meta["max_retries"] == 3
@@ -161,7 +161,7 @@ class TestGlobalAPI:
         global_app = elephantq._get_global_app()
 
         # Global app should have global_job but not instance_job
-        global_registry = global_app.get_job_registry()
+        global_registry = global_app._get_job_registry()
         assert (
             global_registry.get_job("tests.unit.test_global_api.global_job") is not None
         )
@@ -170,7 +170,7 @@ class TestGlobalAPI:
         )
 
         # Instance app should have instance_job but not global_job
-        instance_registry = instance_app.get_job_registry()
+        instance_registry = instance_app._get_job_registry()
         assert (
             instance_registry.get_job("tests.unit.test_global_api.instance_job")
             is not None
@@ -229,7 +229,7 @@ class TestGlobalAPI:
         assert app.settings.database_url is not None  # Should have some default
 
         # Job should be registered
-        job_meta = app.get_job_registry().get_job(
+        job_meta = app._get_job_registry().get_job(
             "tests.unit.test_global_api.default_job"
         )
         assert job_meta is not None

@@ -44,8 +44,8 @@ async def clean_test_state():
     global_app = elephantq._global_app
     if (
         global_app is not None
-        and global_app.is_initialized
-        and not global_app.is_closed
+        and global_app._is_initialized
+        and not global_app._is_closed
     ):
         await global_app.close()
 
@@ -60,5 +60,5 @@ async def clean_test_state():
 
     # Clean up after test - close both pools
     await close_pool()
-    if global_app.is_initialized:
+    if global_app._is_initialized:
         await global_app.close()

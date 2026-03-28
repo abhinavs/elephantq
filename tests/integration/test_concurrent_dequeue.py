@@ -29,7 +29,7 @@ async def test_concurrent_dequeue_no_duplicates():
     exactly one should succeed, the rest should get None.
     """
     app = elephantq._get_global_app()
-    backend = app.backend
+    backend = app._backend
 
     # Enqueue exactly 1 job
     await app.enqueue(race_job, n=1)
@@ -54,7 +54,7 @@ async def test_concurrent_dequeue_distributes_jobs():
     10 jobs, 5 concurrent workers: all 10 should be claimed with zero duplicates.
     """
     app = elephantq._get_global_app()
-    backend = app.backend
+    backend = app._backend
 
     # Enqueue 10 jobs
     for i in range(10):

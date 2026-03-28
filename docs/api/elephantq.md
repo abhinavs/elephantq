@@ -86,19 +86,6 @@ automatically.
 
 ## Lifecycle
 
-### setup()
-
-Creates the database if it does not exist (PostgreSQL only) and runs all pending
-migrations. Idempotent -- safe to call on every deploy.
-
-```python
-app = ElephantQ(database_url="postgresql://localhost/myapp")
-await app.setup()
-```
-
-Returns the number of migrations applied (`int`). Returns `0` for SQLite and
-in-memory backends, which create their schema on first connect.
-
 ### close()
 
 Closes the connection pool and releases resources. Calling `close()` twice is
@@ -110,20 +97,19 @@ await app.close()
 
 ### Async context manager
 
-The cleanest pattern -- `setup()` on enter, `close()` on exit:
+`close()` is called automatically on exit:
 
 ```python
 async with ElephantQ(database_url="postgresql://localhost/myapp") as app:
     await app.enqueue(my_job, message="hello")
 ```
 
-### reset()
+The connection pool initializes lazily on first use. No explicit init call is needed.
 
-Deletes all jobs and workers. Intended for test fixtures, not production use.
-
-```python
-await app.reset()
-```
+!!! note "Database migrations"
+    Use the `elephantq setup` CLI command in your deploy pipeline to create
+    tables and run migrations. Don't run migrations from application code --
+    it causes race conditions when multiple replicas start simultaneously.
 
 
 ## get_pool()

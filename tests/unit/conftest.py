@@ -16,7 +16,10 @@ async def reset_global_state():
     import elephantq
 
     if elephantq._global_app is not None:
-        if elephantq._global_app.is_initialized and not elephantq._global_app.is_closed:
+        if (
+            elephantq._global_app._is_initialized
+            and not elephantq._global_app._is_closed
+        ):
             try:
                 await elephantq._global_app.close()
             except Exception:

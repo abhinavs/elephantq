@@ -136,17 +136,12 @@ class ElephantQ:
         return self._settings
 
     @property
-    def backend(self):
-        """Access the storage backend."""
-        return self._backend
-
-    @property
-    def is_initialized(self) -> bool:
+    def _is_initialized(self) -> bool:
         """Check if app is initialized."""
         return self._initialized
 
     @property
-    def is_closed(self) -> bool:
+    def _is_closed(self) -> bool:
         """Check if app is closed."""
         return self._closed
 
@@ -245,7 +240,7 @@ class ElephantQ:
             self._closed = True
             self._initialized = False
 
-    async def reset(self) -> None:
+    async def _reset(self) -> None:
         """
         Delete all jobs and workers. Used in test fixtures.
 
@@ -395,7 +390,7 @@ class ElephantQ:
         await self._ensure_initialized()
         return self._pool  # type: ignore[return-value]
 
-    def get_job_registry(self) -> JobRegistry:
+    def _get_job_registry(self) -> JobRegistry:
         """Get job registry."""
         return self._job_registry
 
@@ -531,7 +526,7 @@ class ElephantQ:
         await self._ensure_initialized()
         return await self._backend.get_queue_stats()
 
-    async def get_migration_status(self) -> dict:
+    async def _get_migration_status(self) -> dict:
         """
         Get current database migration status for this instance.
 
@@ -547,7 +542,7 @@ class ElephantQ:
         async with self._pool.acquire() as conn:  # type: ignore[union-attr]
             return await migration_runner._get_migration_status_with_connection(conn)
 
-    async def run_migrations(self) -> int:
+    async def _run_migrations(self) -> int:
         """
         Run all pending database migrations for this instance.
 
@@ -566,7 +561,7 @@ class ElephantQ:
         async with self._pool.acquire() as conn:  # type: ignore[union-attr]
             return await migration_runner._run_migrations_with_connection(conn)
 
-    async def setup(self) -> int:
+    async def _setup(self) -> int:
         """
         Set up ElephantQ — create database (if needed) and run migrations.
 
@@ -585,7 +580,7 @@ class ElephantQ:
 
         # PostgreSQL: attempt to create the database, then run migrations
         await self._ensure_postgres_database_exists()
-        return await self.run_migrations()
+        return await self._run_migrations()
 
     async def _ensure_postgres_database_exists(self) -> None:
         """Create the PostgreSQL database if it doesn't exist."""

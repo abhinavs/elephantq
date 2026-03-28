@@ -33,7 +33,7 @@ async def test_unregistered_job_dead_lettered():
 
     # Process with a clean registry (no jobs registered)
     empty_registry = JobRegistry()
-    backend = app.backend
+    backend = app._backend
     worker = Worker(backend, empty_registry)
     processed = await worker.run_once(queues=None, max_jobs=1)
 

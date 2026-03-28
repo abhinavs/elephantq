@@ -23,8 +23,8 @@ async def test_timed_out_job_retried_then_dead_lettered():
     and then moved to dead_letter.
     """
     app = elephantq._get_global_app()
-    registry = app.get_job_registry()
-    backend = app.backend
+    registry = app._get_job_registry()
+    backend = app._backend
     worker = Worker(backend, registry)
 
     job_id = await app.enqueue(slow_timeout_job)

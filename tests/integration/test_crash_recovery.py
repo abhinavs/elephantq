@@ -91,8 +91,8 @@ async def test_recovered_job_is_processed_by_new_worker():
     """
     app = elephantq._get_global_app()
     pool = await app.get_pool()
-    registry = app.get_job_registry()
-    backend = app.backend
+    registry = app._get_job_registry()
+    backend = app._backend
     worker = Worker(backend, registry)
 
     # Enqueue a job, then manually set it to 'processing' with a stale worker

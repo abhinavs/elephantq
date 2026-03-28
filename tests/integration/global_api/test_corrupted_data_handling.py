@@ -62,8 +62,8 @@ async def test_corrupted_json_data(clean_db):
 
     global_app = elephantq._get_global_app()
     app_pool = await global_app.get_pool()
-    registry = global_app.get_job_registry()
-    backend = global_app.backend
+    registry = global_app._get_job_registry()
+    backend = global_app._backend
 
     # Insert a job with valid JSON args
     job_id = uuid.uuid4()
@@ -321,7 +321,7 @@ async def test_pydantic_validation_success(clean_db):
 
             try:
                 global_app = elephantq._get_global_app()
-                app_registry = global_app.get_job_registry()
+                app_registry = global_app._get_job_registry()
                 print(f"App registry keys: {list(app_registry._registry.keys())}")
             except Exception as e:
                 print(f"Error getting app registry: {e}")

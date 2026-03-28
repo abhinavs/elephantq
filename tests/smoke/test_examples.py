@@ -45,12 +45,12 @@ def test_recurring_jobs_uses_real_api():
 
 
 def test_transactional_enqueue_setup_call():
-    """transactional_enqueue.py must not pass unsupported args to elephantq.setup()."""
+    """transactional_enqueue.py must not pass unsupported args to elephantq._setup()."""
     source = (EXAMPLES_DIR / "transactional_enqueue.py").read_text()
 
-    assert "setup(database_url=" not in source, (
-        "transactional_enqueue.py passes database_url to elephantq.setup(), "
-        "but setup() takes no arguments"
+    assert "_setup(database_url=" not in source, (
+        "transactional_enqueue.py passes database_url to elephantq._setup(), "
+        "but _setup() takes no arguments"
     )
 
 

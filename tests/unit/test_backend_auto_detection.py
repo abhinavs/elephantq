@@ -13,7 +13,7 @@ def test_postgres_url_selects_postgres_backend():
     # Backend is None at construction — PostgresBackend created lazily in _ensure_initialized
     # But we can verify it WILL choose Postgres by checking settings
     assert app.settings.database_url == "postgresql://localhost/myapp"
-    assert app.backend is None  # Created lazily
+    assert app._backend is None  # Created lazily
 
 
 def test_sqlite_file_url_selects_sqlite_backend(tmp_path):
@@ -24,7 +24,7 @@ def test_sqlite_file_url_selects_sqlite_backend(tmp_path):
 
     db_path = str(tmp_path / "myapp.db")
     app = ElephantQ(database_url=db_path)
-    assert isinstance(app.backend, SQLiteBackend)
+    assert isinstance(app._backend, SQLiteBackend)
 
 
 def test_sqlite_extension_detected(tmp_path):
@@ -35,7 +35,7 @@ def test_sqlite_extension_detected(tmp_path):
 
     db_path = str(tmp_path / "myapp.sqlite")
     app = ElephantQ(database_url=db_path)
-    assert isinstance(app.backend, SQLiteBackend)
+    assert isinstance(app._backend, SQLiteBackend)
 
 
 def test_no_config_defaults_to_sqlite():
@@ -50,7 +50,7 @@ def test_no_config_defaults_to_sqlite():
     old = os.environ.pop("ELEPHANTQ_DATABASE_URL", None)
     try:
         app = ElephantQ(database_url="elephantq.db")
-        assert isinstance(app.backend, SQLiteBackend)
+        assert isinstance(app._backend, SQLiteBackend)
     finally:
         if old:
             os.environ["ELEPHANTQ_DATABASE_URL"] = old
@@ -62,4 +62,4 @@ def test_explicit_backend_overrides_auto_detection():
     from elephantq.backends.memory import MemoryBackend
 
     app = ElephantQ(backend="memory")
-    assert isinstance(app.backend, MemoryBackend)
+    assert isinstance(app._backend, MemoryBackend)

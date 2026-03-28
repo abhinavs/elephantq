@@ -140,7 +140,7 @@ async with ElephantQ(database_url="postgresql://localhost/myapp") as eq:
     await eq.run_worker(run_once=True)
 ```
 
-The context manager calls `_ensure_initialized()` on entry and `close()` on exit. No need to call `setup()` or `close()` yourself.
+The context manager calls `close()` on exit. The connection pool initializes lazily on first use.
 
 This is handy for:
 

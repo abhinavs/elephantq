@@ -17,7 +17,7 @@ def test_periodic_with_cron_registers_job():
 
     # Should be registered in the global registry
     app = elephantq._get_global_app()
-    registry = app.get_job_registry()
+    registry = app._get_job_registry()
     job_name = f"{daily_report.__module__}.{daily_report.__name__}"
     assert registry.get_job(job_name) is not None
 
@@ -56,7 +56,7 @@ def test_periodic_with_queue():
 
     # Job should be registered with the specified queue
     app = elephantq._get_global_app()
-    registry = app.get_job_registry()
+    registry = app._get_job_registry()
     job_name = f"{nightly_cleanup.__module__}.{nightly_cleanup.__name__}"
     job_meta = registry.get_job(job_name)
     assert job_meta["queue"] == "maintenance"

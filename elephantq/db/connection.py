@@ -39,9 +39,9 @@ async def get_pool() -> asyncpg.Pool:
     app = elephantq._get_global_app()
     await app._ensure_initialized()
 
-    backend = app.backend
+    backend = app._backend
     if hasattr(backend, "pool"):
-        return backend.pool
+        return backend.pool  # type: ignore[union-attr]
 
     raise RuntimeError(
         "No connection pool available. " "This function requires a PostgreSQL backend."
@@ -52,7 +52,7 @@ async def close_pool():
     """Close the global app's backend pool."""
     import elephantq
 
-    if elephantq._global_app is not None and elephantq._global_app.is_initialized:
+    if elephantq._global_app is not None and elephantq._global_app._is_initialized:
         await elephantq._global_app.close()
 
 

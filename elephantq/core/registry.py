@@ -180,7 +180,7 @@ def get_job(name: str) -> Optional[Dict[str, Any]]:
     """
     import elephantq
 
-    return elephantq._get_global_app().get_job_registry().get_job(name)
+    return elephantq._get_global_app()._get_job_registry().get_job(name)
 
 
 def get_global_registry() -> JobRegistry:
@@ -192,7 +192,7 @@ def get_global_registry() -> JobRegistry:
     """
     import elephantq
 
-    return elephantq._get_global_app().get_job_registry()
+    return elephantq._get_global_app()._get_job_registry()
 
 
 def clear_registry():

@@ -49,8 +49,8 @@ __all__ = [
     "enqueue",
     "schedule",
     "run_worker",
-    "setup",
-    "reset",
+    "_setup",
+    "_reset",
     "configure",
     "get_job_status",
     "cancel_job",
@@ -84,7 +84,7 @@ def _get_global_app() -> ElephantQ:
     """
     global _global_app
 
-    if _global_app is None or _global_app.is_closed:
+    if _global_app is None or _global_app._is_closed:
         _global_app = ElephantQ()
 
         # Re-register all global jobs with the new instance
@@ -149,8 +149,8 @@ def configure(
     # old app is garbage collected or via close_pool().
     if (
         _global_app is not None
-        and _global_app.is_initialized
-        and not _global_app.is_closed
+        and _global_app._is_initialized
+        and not _global_app._is_closed
     ):
         _global_app._closed = True
         _global_app._initialized = False
@@ -290,16 +290,16 @@ async def run_worker(
     )
 
 
-async def setup() -> int:
+async def _setup() -> int:
     """Set up ElephantQ — create database (if needed) and run migrations."""
     app = _get_global_app()
-    return await app.setup()
+    return await app._setup()
 
 
-async def reset() -> None:
+async def _reset() -> None:
     """Delete all jobs and workers. Used in test fixtures."""
     app = _get_global_app()
-    return await app.reset()
+    return await app._reset()
 
 
 async def get_job(job_id: str):

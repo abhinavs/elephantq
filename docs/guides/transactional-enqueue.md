@@ -33,7 +33,6 @@ eq = ElephantQ(database_url="postgresql://localhost/myapp")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await eq.setup()
     yield
     await eq.close()
 
