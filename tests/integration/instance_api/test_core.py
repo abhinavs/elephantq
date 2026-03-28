@@ -92,7 +92,7 @@ async def test_enqueue_job_invalid_args():
         await elephantq.enqueue(sample_job, x=1, y="invalid")
 
     # Clean up global app
-    if global_app.is_initialized:
+    if global_app._is_initialized:
         await global_app.close()
 
 
@@ -157,7 +157,7 @@ async def test_retry_mechanism():
         assert "Always fails" in job_record["last_error"]
 
     # Clean up global app
-    if global_app.is_initialized:
+    if global_app._is_initialized:
         await global_app.close()
 
 
@@ -191,7 +191,7 @@ async def test_run_worker_processes_job():
         assert job_record["status"] == "done"
 
     # Clean up global app
-    if global_app.is_initialized:
+    if global_app._is_initialized:
         await global_app.close()
 
 
@@ -258,7 +258,7 @@ async def test_task_discovery():
 
     # Clean up global app
     global_app = elephantq._get_global_app()
-    if global_app.is_initialized:
+    if global_app._is_initialized:
         await global_app.close()
 
     # Restore original environment variables

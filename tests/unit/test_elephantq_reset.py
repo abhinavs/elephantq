@@ -1,23 +1,23 @@
 """
-Tests for elephantq.reset() — global reset function for test fixtures.
+Tests for elephantq._reset() — global reset function for test fixtures.
 """
 
 import pytest
 
 
 def test_elephantq_has_reset_function():
-    """elephantq module should expose a reset() function."""
+    """elephantq module should expose a _reset() function."""
     import elephantq
 
-    assert hasattr(elephantq, "reset")
-    assert callable(elephantq.reset)
+    assert hasattr(elephantq, "_reset")
+    assert callable(elephantq._reset)
 
 
 def test_elephantq_client_has_reset_method():
-    """ElephantQ class should have a reset() method."""
+    """ElephantQ class should have a _reset() method."""
     from elephantq.app import ElephantQ
 
-    assert hasattr(ElephantQ, "reset")
+    assert hasattr(ElephantQ, "_reset")
 
 
 @pytest.mark.asyncio
@@ -35,7 +35,7 @@ async def test_reset_clears_jobs_via_memory_backend():
         pass
 
     job_name = f"{dummy.__module__}.{dummy.__name__}"
-    await app.backend.create_job(
+    await app._backend.create_job(
         job_id=str(uuid.uuid4()),
         job_name=job_name,
         args="{}",
@@ -48,10 +48,10 @@ async def test_reset_clears_jobs_via_memory_backend():
         scheduled_at=None,
     )
 
-    jobs_before = await app.backend.list_jobs()
+    jobs_before = await app._backend.list_jobs()
     assert len(jobs_before) == 1
 
-    await app.reset()
+    await app._reset()
 
-    jobs_after = await app.backend.list_jobs()
+    jobs_after = await app._backend.list_jobs()
     assert len(jobs_after) == 0

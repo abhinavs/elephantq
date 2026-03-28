@@ -23,6 +23,7 @@ def run_cli_command(args, timeout=10, expect_success=True):
     """Helper to run CLI commands"""
     env = os.environ.copy()
     env.setdefault("ELEPHANTQ_JOBS_MODULES", "tests.fixtures.cli_jobs")
+    env.setdefault("PYTHONPATH", str(PROJECT_ROOT))
     try:
         result = subprocess.run(
             [sys.executable, "-m", "elephantq.cli.main"] + args,
@@ -238,6 +239,7 @@ async def test_cli_concurrent_workers():
         for i in range(2):
             env = os.environ.copy()
             env.setdefault("ELEPHANTQ_JOBS_MODULES", "tests.fixtures.cli_jobs")
+            env.setdefault("PYTHONPATH", str(PROJECT_ROOT))
             process = subprocess.Popen(
                 [sys.executable, "-m", "elephantq.cli.main", "start", "--run-once"],
                 cwd=str(PROJECT_ROOT),
@@ -270,6 +272,7 @@ async def test_cli_signal_handling():
     # Start a worker process
     env = os.environ.copy()
     env.setdefault("ELEPHANTQ_JOBS_MODULES", "tests.fixtures.cli_jobs")
+    env.setdefault("PYTHONPATH", str(PROJECT_ROOT))
     process = subprocess.Popen(
         [sys.executable, "-m", "elephantq.cli.main", "start", "--concurrency", "1"],
         cwd=str(PROJECT_ROOT),

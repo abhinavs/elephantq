@@ -89,8 +89,8 @@ async def test_global_get_queue_stats():
 async def test_global_setup():
     elephantq.configure(database_url="postgresql://test@localhost/test")
     app = elephantq._get_global_app()
-    with patch.object(app, "setup", new_callable=AsyncMock) as mock:
-        await elephantq.setup()
+    with patch.object(app, "_setup", new_callable=AsyncMock) as mock:
+        await elephantq._setup()
         mock.assert_called_once()
 
 
@@ -98,6 +98,6 @@ async def test_global_setup():
 async def test_global_reset():
     elephantq.configure(database_url="postgresql://test@localhost/test")
     app = elephantq._get_global_app()
-    with patch.object(app, "reset", new_callable=AsyncMock) as mock:
-        await elephantq.reset()
+    with patch.object(app, "_reset", new_callable=AsyncMock) as mock:
+        await elephantq._reset()
         mock.assert_called_once()

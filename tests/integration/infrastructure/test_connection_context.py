@@ -379,7 +379,7 @@ async def test_elephantq_integration_with_contexts():
     app = ElephantQ(database_url=TEST_DATABASE_URL)
     await app._ensure_initialized()
 
-    registry = app.get_job_registry()
+    registry = app._get_job_registry()
 
     async def test_context_job(value: int):
         return value * 2
@@ -393,7 +393,7 @@ async def test_elephantq_integration_with_contexts():
     job_id = await app.enqueue(test_context_job, value=21)
 
     # Process the job using Worker + backend
-    worker = Worker(app.backend, registry)
+    worker = Worker(app._backend, registry)
     processed = await worker.run_once(queues=["default"], max_jobs=1)
     assert processed is True
 

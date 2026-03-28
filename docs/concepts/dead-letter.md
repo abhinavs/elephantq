@@ -1,0 +1,152 @@
+# Dead Letter Queue
+
+The dead-letter queue (DLQ) captures jobs that have exhausted all retries. Instead of disappearing into `failed` status, they land in a separate table where you can inspect, debug, and resurrect them.
+
+## Enabling the DLQ
+
+```bash
+export ELEPHANTQ_DEAD_LETTER_QUEUE_ENABLED=true
+```
+
+When enabled, any job that fails after its final retry attempt is moved to the `elephantq_dead_letter_jobs` table with status `dead_letter`. Without the DLQ, failed jobs stay in `failed` status in the main table.
+
+## How jobs get there
+
+A job enters the DLQ when:
+
+- It has used all retry attempts and still fails (`max_retries_exceeded`)
+- It raises a permanent/unrecoverable error (`permanent_failure`)
+- The job function is no longer registered (`job_not_found`)
+- Arguments fail validation (`invalid_arguments`)
+- It exceeds its timeout after all retries (`timeout`)
+
+Each dead-letter record preserves the original job name, arguments, queue, priority, error message, and attempt count.
+
+## CLI management
+
+### List dead-letter jobs
+
+```bash
+elephantq dead-letter list
+elephantq dead-letter list --limit 20
+elephantq dead-letter list --filter "send_welcome_email"
+```
+
+### Resurrect a job
+
+Resurrect creates a new job with the same function and arguments, reset to `queued` status:
+
+```bash
+elephantq dead-letter resurrect abc123-def456
+```
+
+### Delete a dead-letter job
+
+```bash
+elephantq dead-letter delete abc123-def456
+```
+
+### Clean up old entries
+
+```bash
+elephantq dead-letter cleanup --days 30        # remove entries older than 30 days
+elephantq dead-letter cleanup --days 7 --dry-run  # preview what would be removed
+```
+
+### Export for analysis
+
+```bash
+elephantq dead-letter export --format json --output dead_jobs.json
+elephantq dead-letter export --format csv --output dead_jobs.csv
+```
+
+## Programmatic API
+
+```python
+from elephantq.features.dead_letter import (
+    list_dead_letter_jobs,
+    get_dead_letter_job,
+    resurrect_job,
+    delete_dead_letter_job,
+    get_dead_letter_stats,
+    export_dead_letter_jobs,
+    create_filter,
+)
+
+# List all dead-letter jobs
+jobs = await list_dead_letter_jobs()
+
+# Get a specific job
+job = await get_dead_letter_job("abc123-def456")
+
+# Resurrect with options
+new_job_id = await resurrect_job(
+    "abc123-def456",
+    reset_attempts=True,       # start fresh (default)
+    new_max_attempts=10,       # give it more tries this time
+    new_queue="retry-queue",   # route to a different queue
+)
+
+# Delete permanently
+await delete_dead_letter_job("abc123-def456")
+
+# Get statistics
+stats = await get_dead_letter_stats(hours=24)
+print(f"Total: {stats.total_count}")
+print(f"By reason: {stats.by_reason}")
+print(f"Oldest job: {stats.oldest_job_age_hours:.1f} hours ago")
+```
+
+### Filtered queries
+
+```python
+f = create_filter()
+f.job_names = ["myapp.tasks.send_welcome_email"]
+f.reasons = ["max_retries_exceeded"]
+f.limit = 50
+
+jobs = await list_dead_letter_jobs(f)
+```
+
+### Bulk operations
+
+```python
+from elephantq.features.dead_letter import bulk_resurrect_jobs
+
+f = create_filter()
+f.job_names = ["myapp.tasks.sync_inventory"]
+
+new_job_ids = await bulk_resurrect_jobs(f, reset_attempts=True, new_max_attempts=5)
+print(f"Resurrected {len(new_job_ids)} jobs")
+```
+
+## Debugging a failed job
+
+When a job lands in the DLQ, follow this workflow:
+
+1. **Find it.** List dead-letter jobs filtered by job name or time range.
+
+2. **Read the error.** The `last_error` field contains the exception message from the final attempt.
+
+    ```python
+    job = await get_dead_letter_job(job_id)
+    print(job.last_error)     # "ConnectionRefusedError: ..."
+    print(job.attempts)       # 4 (tried 4 times)
+    print(job.args)           # {"user_id": 42}
+    ```
+
+3. **Fix the root cause.** Deploy a code fix, restore a downstream service, or correct the input data.
+
+4. **Resurrect.** Create a new job from the dead-letter entry. The original arguments are preserved.
+
+    ```python
+    new_id = await resurrect_job(job_id)
+    ```
+
+5. **Verify.** Check that the resurrected job completes successfully.
+
+    ```python
+    status = await app.get_job_status(new_id)
+    ```
+
+> **Tip:** Set up monitoring on `get_dead_letter_stats()` to alert when jobs accumulate in the DLQ. A growing DLQ usually signals a systemic issue -- a down service, a bad deploy, or a data problem.

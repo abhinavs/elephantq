@@ -15,7 +15,7 @@ class TestDeliverySemantics:
     def test_no_exactly_once_claim_in_docs(self):
         """No doc file should claim exactly-once delivery as a guarantee."""
         violations = []
-        for doc_file in DOCS_DIR.glob("*.md"):
+        for doc_file in DOCS_DIR.rglob("*.md"):
             content = doc_file.read_text().lower()
             # Look for "exactly-once" or "exactly once" as a positive claim
             # (not in "does NOT guarantee" context)
@@ -27,7 +27,8 @@ class TestDeliverySemantics:
                         "not guarantee" not in line
                         and "not" not in line.split("exactly")[0]
                     ):
-                        violations.append(f"{doc_file.name}:{i}: {line.strip()}")
+                        rel_path = doc_file.relative_to(DOCS_DIR)
+                        violations.append(f"{rel_path}:{i}: {line.strip()}")
         assert (
             not violations
         ), "Documentation falsely claims exactly-once delivery:\n" + "\n".join(
@@ -36,25 +37,25 @@ class TestDeliverySemantics:
 
     def test_at_least_once_mentioned_in_getting_started(self):
         """Getting started guide should mention at-least-once delivery."""
-        content = (DOCS_DIR / "getting-started.md").read_text().lower()
+        content = (DOCS_DIR / "getting-started" / "quickstart.md").read_text().lower()
         assert "at-least-once" in content or "at least once" in content
 
     def test_at_least_once_mentioned_in_retries(self):
         """Retries doc should mention at-least-once delivery."""
-        content = (DOCS_DIR / "retries.md").read_text().lower()
+        content = (DOCS_DIR / "concepts" / "retries.md").read_text().lower()
         assert "at-least-once" in content or "at least once" in content
 
     def test_at_least_once_mentioned_in_production(self):
         """Production guide should mention at-least-once delivery."""
-        content = (DOCS_DIR / "production.md").read_text().lower()
+        content = (DOCS_DIR / "production" / "checklist.md").read_text().lower()
         assert "at-least-once" in content or "at least once" in content
 
     def test_idempotency_in_getting_started(self):
         """Getting started should mention idempotency."""
-        content = (DOCS_DIR / "getting-started.md").read_text().lower()
+        content = (DOCS_DIR / "getting-started" / "quickstart.md").read_text().lower()
         assert "idempoten" in content
 
     def test_idempotency_in_retries(self):
         """Retries doc should mention idempotency."""
-        content = (DOCS_DIR / "retries.md").read_text().lower()
+        content = (DOCS_DIR / "concepts" / "retries.md").read_text().lower()
         assert "idempoten" in content

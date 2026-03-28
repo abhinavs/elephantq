@@ -189,7 +189,7 @@ async def test_registry_edge_cases():
     """Test job registry behavior in edge cases"""
     # Test duplicate job registration with global ElephantQ app
     global_app = elephantq._get_global_app()
-    app_registry = global_app.get_job_registry()
+    app_registry = global_app._get_job_registry()
 
     initial_count = len(app_registry)
 
