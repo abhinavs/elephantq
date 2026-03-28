@@ -48,22 +48,48 @@ asyncio.run(run_migrations())
 
 ## Running Tests
 
-Unit tests (no database needed):
+The test suite is organized into tiers, from fastest (no dependencies) to slowest (requires Postgres):
+
+**Unit tests** — MemoryBackend, no database needed:
 
 ```bash
 python -m pytest tests/unit/ -v
 ```
 
-Integration tests (requires the test database above):
+**Backend conformance tests** — runs against Memory and SQLite backends to verify protocol compliance:
+
+```bash
+python -m pytest tests/backend/ -v
+```
+
+**Functional tests** — SQLite backend, no Postgres needed:
+
+```bash
+python -m pytest tests/functional/ -v
+```
+
+**Integration tests** — requires the Postgres test database above:
 
 ```bash
 python -m pytest tests/integration/ -v
 ```
 
-Full suite:
+**Smoke tests** — quick sanity checks against the example code:
 
 ```bash
-python -m pytest tests/ -v
+python -m pytest tests/smoke/ -v
+```
+
+**Everything except integration** (good for local development):
+
+```bash
+python -m pytest tests/unit tests/backend tests/functional tests/smoke -v
+```
+
+**Full suite with coverage:**
+
+```bash
+python -m pytest tests/ --cov=elephantq --cov-report=term-missing -v
 ```
 
 ## Coding Standards
