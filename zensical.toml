@@ -1,0 +1,64 @@
+[project]
+site_name = "ElephantQ"
+site_url = "https://elephantq.dev/docs/"
+site_description = "Background jobs for Python. Powered by the Postgres you already have."
+site_author = "Abhinav Saxena"
+docs_dir = "docs"
+site_dir = "site"
+
+[project.theme]
+variant = "modern"
+
+[project.nav]
+nav = [
+  { "Home" = "index.md" },
+  { "Getting Started" = [
+    "getting-started/index.md",
+    "getting-started/quickstart.md",
+    "getting-started/installation.md",
+  ] },
+  { "Concepts" = [
+    "concepts/index.md",
+    "concepts/jobs.md",
+    "concepts/queues.md",
+    "concepts/workers.md",
+    "concepts/retries.md",
+    "concepts/scheduling.md",
+    "concepts/dead-letter.md",
+  ] },
+  { "Guides" = [
+    "guides/index.md",
+    "guides/fastapi.md",
+    "guides/transactional-enqueue.md",
+    "guides/common-patterns.md",
+    "guides/testing.md",
+  ] },
+  { "API Reference" = [
+    "api/index.md",
+    "api/elephantq.md",
+    "api/jobs.md",
+    "api/worker.md",
+    "api/hooks.md",
+  ] },
+  { "CLI" = ["cli/index.md", "cli/commands.md"] },
+  { "Dashboard" = ["dashboard/index.md", "dashboard/overview.md"] },
+  { "Production" = [
+    "production/index.md",
+    "production/checklist.md",
+    "production/postgres.md",
+    "production/deployment.md",
+    "production/reliability.md",
+  ] },
+  { "Recipes" = [
+    "recipes/index.md",
+    "recipes/email-jobs.md",
+    "recipes/file-processing.md",
+    "recipes/scheduled-reports.md",
+    "recipes/webhook-delivery.md",
+  ] },
+  { "Migration" = [
+    "migration/index.md",
+    "migration/from-celery.md",
+    "migration/from-rq.md",
+  ] },
+]
