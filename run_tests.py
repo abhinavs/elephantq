@@ -142,6 +142,26 @@ def main():
 
     # Define test batches with new structure
     test_batches = [
+        # UNIT TESTS — fastest, no external dependencies
+        (
+            "Unit Tests",
+            ["tests/unit/"],
+        ),
+        # BACKEND CONFORMANCE — Memory + SQLite protocol compliance
+        (
+            "Backend Conformance Tests",
+            ["tests/backend/"],
+        ),
+        # FUNCTIONAL TESTS — SQLite backend, no Postgres needed
+        (
+            "Functional Tests",
+            ["tests/functional/"],
+        ),
+        # SMOKE TESTS — quick sanity checks
+        (
+            "Smoke Tests",
+            ["tests/smoke/"],
+        ),
         # GLOBAL API TESTS - Use elephantq.job, elephantq.enqueue, etc.
         (
             "Global API - Job Management & Introspection",
@@ -180,14 +200,6 @@ def main():
             "Instance API - Core Functionality",
             ["tests/integration/instance_api/test_core.py"],
         ),
-        (
-            "Instance API - Worker Heartbeat System",
-            ["tests/integration/instance_api/test_worker_heartbeat.py"],
-        ),
-        (
-            "Instance API - Worker Heartbeat Comprehensive",
-            ["tests/integration/instance_api/test_worker_heartbeat_comprehensive.py"],
-        ),
         # INFRASTRUCTURE TESTS - Support both APIs
         (
             "Infrastructure - CLI Integration",
@@ -219,6 +231,24 @@ def main():
             "Infrastructure - Queue Processing Behavior",
             ["tests/integration/infrastructure/test_queue_processing_behavior.py"],
         ),
+        # INTEGRATION - Standalone test files
+        (
+            "Integration - Concurrency & Recovery",
+            [
+                "tests/integration/test_concurrent_dequeue.py",
+                "tests/integration/test_crash_recovery.py",
+                "tests/integration/test_pool_exhaustion.py",
+                "tests/integration/test_queueing_lock.py",
+            ],
+        ),
+        (
+            "Integration - Backend & Handlers",
+            [
+                "tests/integration/test_postgres_backend.py",
+                "tests/integration/test_missing_handler.py",
+                "tests/integration/test_timeout_integration.py",
+            ],
+        ),
         (
             "Integration - Feature Modules",
             [
@@ -228,11 +258,6 @@ def main():
                 "tests/integration/test_migrations.py",
                 "tests/integration/test_transactional_enqueue.py",
             ],
-        ),
-        # UNIT TESTS — run entire directory to catch all test files
-        (
-            "Unit Tests",
-            ["tests/unit/"],
         ),
     ]
 
