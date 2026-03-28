@@ -2,7 +2,12 @@
 
 Background jobs for Python. Powered by the Postgres you already have.
 
-## Quick start
+[![PyPI version](https://img.shields.io/pypi/v/elephantq)](https://pypi.org/project/elephantq/)
+[![Python versions](https://img.shields.io/pypi/pyversions/elephantq)](https://pypi.org/project/elephantq/)
+[![License](https://img.shields.io/github/license/abhinavs/elephantq)](https://github.com/abhinavs/elephantq/blob/main/LICENSE)
+[![Tests](https://img.shields.io/github/actions/workflow/status/abhinavs/elephantq/tests.yml?label=tests)](https://github.com/abhinavs/elephantq/actions)
+
+## Quickstart
 
 ```bash
 pip install elephantq
@@ -10,70 +15,75 @@ pip install elephantq
 
 ```python
 # jobs.py
-import elephantq
+from elephantq import ElephantQ
 
-app = elephantq.ElephantQ(database_url="postgresql://postgres@localhost/elephantq")
+app = ElephantQ(database_url="postgresql://localhost/myapp")
 
 @app.job(max_retries=3)
 async def send_welcome(to: str):
-    print(f"Sending welcome to {to}")
+    print(f"Sending welcome email to {to}")
 ```
 
 ```python
-# enqueue from your app (FastAPI, CLI, script, etc.)
-await app.enqueue(send_welcome, to="team@example.com")
+# enqueue from anywhere in your app
+await app.enqueue(send_welcome, to="dev@example.com")
 ```
 
 ```bash
-# set up the database and start a worker
+# set up tables and start processing
 elephantq setup
 elephantq start --concurrency 4
 ```
 
-That's it. Define a job, enqueue it, start a worker.
+Four steps. Define a job, enqueue it, set up the database, start a worker.
+
+> **Local dev without Postgres?** Use SQLite: `ElephantQ(database_url='local.db')`.
+> For production, always use PostgreSQL.
 
 ## Transactional enqueue
 
-Enqueue a job inside your database transaction. If the transaction rolls back, the job never existed. No Redis queue can do this.
+Enqueue a job inside your database transaction. If the transaction rolls back, the job never existed.
 
 ```python
 async with pool.acquire() as conn:
     async with conn.transaction():
         await conn.execute("INSERT INTO orders ...")
         await app.enqueue(send_invoice, connection=conn, order_id=order_id)
-        # Both commit atomically, or neither does
+        # Both commit together, or neither does
 ```
+
+No Redis queue can do this. Your job and your data land in the same commit. If something fails halfway through, both roll back. No stale jobs, no ghost tasks, no cleanup scripts.
 
 ## Why ElephantQ
 
-**No Redis. No RabbitMQ. No extra infrastructure.**
-
 Most Python job queues force you to run Redis or RabbitMQ alongside your database. That's another service to deploy, monitor, back up, and debug when things go wrong at 3am.
 
-ElephantQ uses your existing PostgreSQL database as the job queue. One dependency. One place your data lives. One thing to back up.
+ElephantQ uses your existing PostgreSQL. One dependency. One place your data lives. One thing to back up.
 
-| Feature             | ElephantQ | Celery         | RQ     | Dramatiq       | Arq    |
-| ------------------- | --------- | -------------- | ------ | -------------- | ------ |
-| No Redis dependency | yes       | no             | no     | no             | no     |
-| Async native        | yes       | partial        | no     | partial        | yes    |
-| Transactional enq.  | yes       | no             | no     | no             | no     |
-| Setup complexity    | Low       | High           | Medium | Medium         | Medium |
-| Infra dependencies  | Postgres  | Redis/RabbitMQ | Redis  | Redis/RabbitMQ | Redis  |
+| Feature             | ElephantQ | Celery         | RQ     |
+| ------------------- | --------- | -------------- | ------ |
+| No Redis dependency | Yes       | No             | No     |
+| Async native        | Yes       | Partial        | No     |
+| Transactional enq.  | Yes       | No             | No     |
+| Setup complexity    | Low       | High           | Medium |
+| Built-in dashboard  | Yes       | No (Flower)    | No     |
+| Dead-letter queue   | Yes       | No             | No     |
 
 ## Features
 
-- **Retries with backoff** — failed jobs are retried automatically with configurable delays and exponential backoff
-- **Dead-letter queue** — after max retries, jobs move to dead-letter for inspection and manual retry
-- **Job priorities** — lower number = higher priority, processed first
-- **Scheduled jobs** — enqueue jobs to run at a specific time or after a delay
-- **Recurring jobs** — cron-based periodic tasks with `@app.periodic(cron="0 * * * *")`
-- **Dedup** — prevent duplicate jobs with `dedup_key` or `unique=True`
-- **Middleware hooks** — `@app.before_job`, `@app.after_job`, `@app.on_error` for logging, metrics, tracing
-- **Job results** — store and retrieve return values from completed jobs
-- **Multiple queues** — route jobs to named queues, run workers per queue
-- **Worker heartbeat** — track worker liveness, auto-requeue jobs from crashed workers
-- **Async context manager** — `async with ElephantQ(...) as app:` for clean lifecycle management
-- **CLI** — `elephantq setup`, `elephantq start`, `elephantq status`, `elephantq workers`
+- **Retries with backoff** -- configurable delays, exponential backoff, per-attempt delay lists
+- **Dead-letter queue** -- failed jobs preserved for inspection and manual retry
+- **Job priorities** -- lower number = higher priority, processed first
+- **Scheduled jobs** -- run at a specific time or after a delay
+- **Recurring jobs** -- cron-based periodic tasks with `@app.periodic(cron="0 * * * *")`
+- **Transactional enqueue** -- atomic with your database writes
+- **Multiple queues** -- route jobs by type, run dedicated workers per queue
+- **Middleware hooks** -- `before_job`, `after_job`, `on_error` for logging, metrics, tracing
+- **Worker heartbeat** -- auto-detect crashed workers, requeue their jobs
+- **Job results** -- store and retrieve return values from completed jobs
+- **Deduplication** -- prevent duplicate jobs with `dedup_key` or `unique=True`
+- **CLI** -- `setup`, `start`, `status`, `workers`, dead-letter management
+- **Dashboard** -- web UI for monitoring queues, workers, and job state
 
 ## Dashboard
 
@@ -89,41 +99,32 @@ elephantq dashboard
 ## Install
 
 ```bash
-pip install elephantq              # core (PostgreSQL backend included)
+pip install elephantq              # core (Postgres backend)
 pip install elephantq[full]        # everything below
 pip install elephantq[sqlite]      # SQLite backend for local dev
 pip install elephantq[scheduling]  # cron-based recurring jobs
-pip install elephantq[webhooks]    # webhook delivery
 pip install elephantq[dashboard]   # web dashboard
 pip install elephantq[monitoring]  # Prometheus metrics
+pip install elephantq[webhooks]    # webhook delivery + signing
 ```
 
-## Works great for
+## When NOT to use ElephantQ
 
-- Sending emails after user signup
-- Processing file uploads in the background
-- Running nightly reports and data syncs
-- Webhook delivery with retry logic
+- **You need 10k+ jobs/sec sustained throughput.** Postgres row locking has limits. Redis-backed queues like Celery or Arq are built for this.
+- **You need cross-language consumers.** ElephantQ is Python-only. If your workers are in Go or Node, use RabbitMQ or a similar broker.
+- **You're not using Postgres.** The production backend requires PostgreSQL. If your stack is MySQL or MongoDB, this isn't for you.
+- **You need DAG-based workflow orchestration.** ElephantQ handles individual jobs, not pipelines. Look at Prefect or Airflow.
 
 ## Documentation
 
-- [Getting started](docs/getting-started.md)
-- [Architecture](docs/architecture.md)
-- [Scheduling](docs/scheduling.md)
-- [Testing](docs/testing.md)
-- [Production guide](docs/production.md)
-- [Deployment](docs/deployment.md)
-- [Backends](docs/backends.md)
-- [Feature flags](docs/feature-flags.md)
-
-## Deploy to production
-
-Ready-to-use configs for systemd, supervisor, Docker Compose, and Kubernetes:
-
-[Deployment guide](docs/deployment.md)
-
-**Note:** if you need 10k+ jobs/sec or cross-language consumers, a Redis-backed queue is a better fit.
+- [Quickstart](docs/getting-started/quickstart.md)
+- [FastAPI integration](docs/guides/fastapi.md)
+- [Jobs and concepts](docs/concepts/jobs.md)
+- [Production checklist](docs/production/checklist.md)
+- [Deployment](docs/production/deployment.md)
+- [CLI reference](docs/cli/commands.md)
+- [API reference](docs/api/elephantq.md)
 
 ## License
 
-MIT License
+MIT
