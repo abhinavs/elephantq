@@ -5,7 +5,7 @@ Background jobs for Python. Powered by the Postgres you already have.
 [![PyPI version](https://img.shields.io/pypi/v/elephantq)](https://pypi.org/project/elephantq/)
 [![Python versions](https://img.shields.io/pypi/pyversions/elephantq)](https://pypi.org/project/elephantq/)
 [![License](https://img.shields.io/github/license/abhinavs/elephantq)](https://github.com/abhinavs/elephantq/blob/main/LICENSE)
-[![Tests](https://img.shields.io/github/actions/workflow/status/abhinavs/elephantq/tests.yml?label=tests)](https://github.com/abhinavs/elephantq/actions)
+[![Tests](https://img.shields.io/github/actions/workflow/status/abhinavs/elephantq/test.yml?label=tests)](https://github.com/abhinavs/elephantq/actions)
 
 ## Quickstart
 
