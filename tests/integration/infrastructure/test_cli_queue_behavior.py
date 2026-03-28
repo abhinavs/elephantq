@@ -18,7 +18,7 @@ from tests.db_utils import TEST_DATABASE_URL
 os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
 
 # Get project root directory dynamically
-PROJECT_ROOT = Path(__file__).parent.parent.parent
+PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 
 
 async def run_cli_command(args, timeout=10):
@@ -29,6 +29,7 @@ async def run_cli_command(args, timeout=10):
         text=True,
         timeout=timeout,
         cwd=str(PROJECT_ROOT),
+        env={**os.environ, "PYTHONPATH": str(PROJECT_ROOT)},
     )
     return result
 

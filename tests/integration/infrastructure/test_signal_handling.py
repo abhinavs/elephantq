@@ -99,11 +99,7 @@ class TestWorkerSignalHandling:
         if api_type == "global":
             script_content = """
 import asyncio
-import sys
 import os
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 import elephantq
 
@@ -126,10 +122,7 @@ if __name__ == "__main__":
         else:  # instance API
             script_content = """
 import asyncio
-import sys
 import os
-from pathlib import Path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
 from elephantq import ElephantQ
 
@@ -171,6 +164,7 @@ if __name__ == "__main__":
                 env={
                     **os.environ,
                     "ELEPHANTQ_DATABASE_URL": TEST_DATABASE_URL,
+                    "PYTHONPATH": str(PROJECT_ROOT),
                 },
             )
 
@@ -237,6 +231,7 @@ if __name__ == "__main__":
                 env={
                     **os.environ,
                     "ELEPHANTQ_DATABASE_URL": TEST_DATABASE_URL,
+                    "PYTHONPATH": str(PROJECT_ROOT),
                 },
             )
 
@@ -303,6 +298,7 @@ if __name__ == "__main__":
                 env={
                     **os.environ,
                     "ELEPHANTQ_DATABASE_URL": TEST_DATABASE_URL,
+                    "PYTHONPATH": str(PROJECT_ROOT),
                 },
             )
 
@@ -379,6 +375,7 @@ if __name__ == "__main__":
                 env={
                     **os.environ,
                     "ELEPHANTQ_DATABASE_URL": TEST_DATABASE_URL,
+                    "PYTHONPATH": str(PROJECT_ROOT),
                 },
             )
 
@@ -448,6 +445,7 @@ class TestCLISignalHandling:
             env={
                 **os.environ,
                 "ELEPHANTQ_DATABASE_URL": TEST_DATABASE_URL,
+                "PYTHONPATH": str(PROJECT_ROOT),
             },
         )
 
@@ -510,6 +508,7 @@ class TestCLISignalHandling:
             env={
                 **os.environ,
                 "ELEPHANTQ_DATABASE_URL": TEST_DATABASE_URL,
+                "PYTHONPATH": str(PROJECT_ROOT),
             },
         )
 

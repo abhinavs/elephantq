@@ -28,9 +28,16 @@ def _make_test_db_url(db_name: str) -> str:
 def run_cli_command(cmd_args, timeout=10, expect_success=True):
     """Run a CLI command and return the result."""
     full_cmd = [sys.executable, "-m", "elephantq.cli.main"] + cmd_args
+    env = os.environ.copy()
+    env.setdefault("PYTHONPATH", str(PROJECT_ROOT))
 
     result = subprocess.run(
-        full_cmd, cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=timeout
+        full_cmd,
+        cwd=str(PROJECT_ROOT),
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        env=env,
     )
 
     if expect_success and result.returncode != 0:
@@ -74,6 +81,8 @@ async def setup_test_databases():
 
         # Set up each database with ElephantQ schema using the setup command
         db_url = _make_test_db_url(db_name)
+        setup_env = os.environ.copy()
+        setup_env.setdefault("PYTHONPATH", str(PROJECT_ROOT))
         setup_result = subprocess.run(
             [
                 sys.executable,
@@ -86,6 +95,7 @@ async def setup_test_databases():
             cwd=str(PROJECT_ROOT),
             capture_output=True,
             text=True,
+            env=setup_env,
         )
 
         if setup_result.returncode != 0:

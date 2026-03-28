@@ -21,6 +21,9 @@ import elephantq
 from elephantq.db.context import DatabaseContext
 from elephantq.settings import get_settings
 
+# Get project root directory dynamically
+PROJECT_ROOT = str(Path(__file__).parent.parent.parent.parent)
+
 
 # Test job functions
 @elephantq.job(unique=False)  # Ensure multiple instances can be enqueued
@@ -111,8 +114,6 @@ class TestProductionScenarios:
             settings = get_settings()
             worker_script = f"""
 import asyncio
-import sys
-sys.path.insert(0, "{os.path.dirname(os.path.dirname(__file__))}")
 
 import elephantq
 
@@ -132,7 +133,10 @@ if __name__ == "__main__":
 
                 try:
                     # Start the worker process
-                    process = subprocess.Popen([sys.executable, script_file.name])
+                    process = subprocess.Popen(
+                        [sys.executable, script_file.name],
+                        env={**os.environ, "PYTHONPATH": PROJECT_ROOT},
+                    )
 
                     # Give worker time to start and process some jobs
                     await asyncio.sleep(2.0)
