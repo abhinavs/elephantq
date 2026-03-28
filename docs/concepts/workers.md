@@ -56,11 +56,11 @@ elephantq start --concurrency 25
 
 ## Job pickup: LISTEN/NOTIFY
 
-When a job is enqueued, ElephantQ sends a Postgres `NOTIFY` on the `elephantq_new_job` channel. Workers listening on that channel wake up immediately and compete for the job using `SELECT ... FOR UPDATE SKIP LOCKED`. The winner processes it; the losers move on.
+When a job is enqueued, ElephantQ sends a PostgreSQL `NOTIFY` on the `elephantq_new_job` channel. Workers listening on that channel wake up immediately and compete for the job using `SELECT ... FOR UPDATE SKIP LOCKED`. The winner processes it; the losers move on.
 
 This makes job pickup near-instant (typically under 10ms) without polling overhead.
 
-> **Note:** LISTEN/NOTIFY is a Postgres feature. SQLite and memory backends fall back to polling at the configured `poll_interval` (default: 5 seconds).
+> **Note:** LISTEN/NOTIFY is a PostgreSQL feature. SQLite and memory backends fall back to polling at the configured `poll_interval` (default: 5 seconds).
 
 ## Heartbeat system
 

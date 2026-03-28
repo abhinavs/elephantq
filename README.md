@@ -110,9 +110,9 @@ pip install elephantq[webhooks]    # webhook delivery + signing
 
 ## When NOT to use ElephantQ
 
-- **You need 10k+ jobs/sec sustained throughput.** Postgres row locking has limits. Redis-backed queues like Celery or Arq are built for this.
+- **You need 10k+ jobs/sec sustained throughput.** PostgreSQL row locking has limits. Redis-backed queues like Celery or Arq are built for this.
 - **You need cross-language consumers.** ElephantQ is Python-only. If your workers are in Go or Node, use RabbitMQ or a similar broker.
-- **You're not using Postgres.** The production backend requires PostgreSQL. If your stack is MySQL or MongoDB, this isn't for you.
+- **You're not using PostgreSQL.** The production backend requires PostgreSQL. If your stack is MySQL or MongoDB, this isn't for you.
 - **You need DAG-based workflow orchestration.** ElephantQ handles individual jobs, not pipelines. Look at Prefect or Airflow.
 
 ## Documentation

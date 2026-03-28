@@ -42,7 +42,7 @@ Key settings:
 
 - **Dedicated user with least-privilege access.** Workers need SELECT, INSERT, UPDATE, DELETE on ElephantQ tables. They do not need CREATE TABLE after initial setup.
 - **Run `elephantq setup` during deploys.** This is idempotent and handles schema migrations.
-- **Backups and PITR.** Your job data lives in Postgres. Treat it like any other critical table.
+- **Backups and PITR.** Your job data lives in PostgreSQL. Treat it like any other critical table.
 - **Monitor connection pool utilization.** See the [PostgreSQL tuning guide](postgres.md) for pool sizing.
 
 ## Retries, timeouts, and idempotency

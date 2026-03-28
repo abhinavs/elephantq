@@ -133,7 +133,7 @@ async def clean_slate(eq):
 
 ## SQLite for integration tests
 
-When you need to test against a real SQL database but don't want to run Postgres in CI:
+When you need to test against a real SQL database but don't want to run PostgreSQL in CI:
 
 ```python
 import pytest
@@ -152,7 +152,7 @@ SQLite gives you real SQL semantics (constraints, transactions) without external
 
 ## Tips
 
-- Keep unit tests on the Memory backend. Reserve Postgres tests for CI or a dedicated integration suite.
+- Keep unit tests on the Memory backend. Reserve PostgreSQL tests for CI or a dedicated integration suite.
 - Use `run_once=True` liberally. It's deterministic and fast.
 - `JobContext` is injected automatically. Add a `ctx: JobContext` parameter to your job function to inspect context during tests.
 - For hooks testing, register `@eq.before_job` / `@eq.after_job` / `@eq.on_error` and assert they were called with the expected context.

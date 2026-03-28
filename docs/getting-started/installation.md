@@ -10,7 +10,7 @@ Python 3.10 or later.
 pip install elephantq
 ```
 
-This pulls in `asyncpg` (PostgreSQL driver), `click`, and `pydantic-settings`. Enough to run jobs on Postgres right away.
+This pulls in `asyncpg` (PostgreSQL driver), `click`, and `pydantic-settings`. Enough to run jobs on PostgreSQL right away.
 
 ## Optional extras
 

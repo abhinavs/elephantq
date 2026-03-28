@@ -456,4 +456,4 @@ Each worker process maintains its own connection pool. With many workers, total 
 total_connections = num_workers * pool_max_size
 ```
 
-Make sure your Postgres `max_connections` can handle this, with room for your application and admin connections. See [PostgreSQL tuning](postgres.md) for pool sizing details.
+Make sure your PostgreSQL `max_connections` can handle this, with room for your application and admin connections. See [PostgreSQL tuning](postgres.md) for pool sizing details.

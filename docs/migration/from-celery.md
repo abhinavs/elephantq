@@ -6,7 +6,7 @@ code translation, and an honest look at what you gain and lose.
 ## Why migrate
 
 - **No more Redis/RabbitMQ infrastructure.** ElephantQ uses PostgreSQL as its
-  broker and result backend. If you already run Postgres, you have zero new
+  broker and result backend. If you already run PostgreSQL, you have zero new
   infrastructure to deploy, monitor, or pay for.
 - **Transactional enqueue.** Enqueue a job inside the same database transaction
   that writes your application data. If the transaction rolls back, the job
@@ -26,7 +26,7 @@ code translation, and an honest look at what you gain and lose.
 | `celery.conf` / `celeryconfig.py` | `ELEPHANTQ_*` env vars or `ElephantQ()` constructor kwargs |
 | Celery Beat | `@app.periodic(cron="...")` + `elephantq scheduler` |
 | Flower | `elephantq dashboard` |
-| Result backend (Redis/DB) | Built-in job results stored in Postgres |
+| Result backend (Redis/DB) | Built-in job results stored in PostgreSQL |
 | Redis / RabbitMQ broker | PostgreSQL (your existing database) |
 | `celery worker` | `elephantq start` |
 | `celery inspect` | `elephantq status` |
@@ -94,7 +94,7 @@ await app.schedule(send_email, run_at=run_at, to="a@b.com", subject="Hello", bod
 ### Transactional enqueue (new capability)
 
 This pattern is impossible with Celery. With ElephantQ you can enqueue a job
-inside the same Postgres transaction that writes your data:
+inside the same PostgreSQL transaction that writes your data:
 
 ```python
 async with app.get_pool() as conn:
@@ -178,7 +178,7 @@ async def on_fail(job, exception):
 
 Be honest with yourself about whether these matter for your workload:
 
-- **Extreme throughput.** Redis can push 10k--50k+ jobs/sec. Postgres tops out
+- **Extreme throughput.** Redis can push 10k--50k+ jobs/sec. PostgreSQL tops out
   lower (hundreds to low thousands/sec depending on hardware). If you are
   processing millions of jobs per minute, ElephantQ is not the right fit.
 - **Cross-language workers.** Celery has Go, Node, and Rust clients.
@@ -250,4 +250,4 @@ Be honest with yourself about whether these matter for your workload:
   ElephantQ. There is no rush to cut over all at once.
 - **Watch connection pool sizing.** Each ElephantQ worker holds open database
   connections. Set `ELEPHANTQ_POOL_MAX_SIZE` based on your concurrency and
-  available Postgres connections.
+  available PostgreSQL connections.

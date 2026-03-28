@@ -146,4 +146,4 @@ This is handy for:
 
 - Database migration scripts that need to enqueue follow-up jobs
 - One-shot CLI tools
-- Integration tests that need a real Postgres backend
+- Integration tests that need a real PostgreSQL backend

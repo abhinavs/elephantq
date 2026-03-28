@@ -97,4 +97,4 @@ async with pool.acquire() as conn:
         await elephantq.enqueue(send_invoice, connection=conn, order_id=order_id)
 ```
 
-> **Note:** Transactional enqueue requires PostgreSQL. It is not available with the SQLite or Memory backends. Calling `enqueue(..., connection=conn)` on a non-Postgres backend raises a `ValueError`.
+> **Note:** Transactional enqueue requires PostgreSQL. It is not available with the SQLite or Memory backends. Calling `enqueue(..., connection=conn)` on a non-PostgreSQL backend raises a `ValueError`.

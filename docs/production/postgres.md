@@ -31,9 +31,9 @@ ElephantQ uses connections for:
 
 With the default concurrency of 4, budget about 7 connections per worker process. If you run 3 worker processes at concurrency 4, you need roughly 21 connections total.
 
-Set `pool_max_size` accordingly. If your pool is too small, workers will block waiting for a connection. If it's too large, you waste Postgres backend slots.
+Set `pool_max_size` accordingly. If your pool is too small, workers will block waiting for a connection. If it's too large, you waste PostgreSQL backend slots.
 
-> **Warning:** Each Postgres connection consumes about 5-10 MB of server memory. If you run many workers, watch `max_connections` on the Postgres side.
+> **Warning:** Each PostgreSQL connection consumes about 5-10 MB of server memory. If you run many workers, watch `max_connections` on the PostgreSQL side.
 
 ### Example: 3 workers, concurrency 8
 
@@ -44,13 +44,13 @@ export ELEPHANTQ_POOL_MIN_SIZE=5
 export ELEPHANTQ_POOL_MAX_SIZE=12
 export ELEPHANTQ_POOL_HEADROOM=2
 
-# Postgres side: 3 workers * 12 = 36 connections needed
+# PostgreSQL side: 3 workers * 12 = 36 connections needed
 # Set max_connections >= 50 (leave room for admin/monitoring)
 ```
 
 ## PgBouncer
 
-If you run PgBouncer between ElephantQ and Postgres, the pooling mode matters a lot.
+If you run PgBouncer between ElephantQ and PostgreSQL, the pooling mode matters a lot.
 
 ### Session mode -- works fine
 
@@ -86,18 +86,18 @@ For most setups, point ElephantQ directly at PostgreSQL and use PgBouncer for yo
 
 ## LISTEN/NOTIFY considerations
 
-ElephantQ uses Postgres `LISTEN/NOTIFY` for instant worker wakeup when jobs are enqueued. This is what makes job pickup near-instant rather than polling-based.
+ElephantQ uses PostgreSQL `LISTEN/NOTIFY` for instant worker wakeup when jobs are enqueued. This is what makes job pickup near-instant rather than polling-based.
 
 Things to know:
 
 - The listener holds one long-lived connection per worker process. This connection cannot go through a connection pooler in transaction mode.
 - If the listener connection drops, ElephantQ falls back to polling and reconnects automatically.
-- `NOTIFY` payloads are limited to 8000 bytes in Postgres. ElephantQ sends only the queue name, so this is never a problem in practice.
-- If you use a managed Postgres service (RDS, Cloud SQL, etc.), LISTEN/NOTIFY works out of the box. No special configuration needed.
+- `NOTIFY` payloads are limited to 8000 bytes in PostgreSQL. ElephantQ sends only the queue name, so this is never a problem in practice.
+- If you use a managed PostgreSQL service (RDS, Cloud SQL, etc.), LISTEN/NOTIFY works out of the box. No special configuration needed.
 
-## Postgres server tuning
+## PostgreSQL server tuning
 
-For ElephantQ-heavy workloads, these Postgres settings help:
+For ElephantQ-heavy workloads, these PostgreSQL settings help:
 
 ```
 # postgresql.conf

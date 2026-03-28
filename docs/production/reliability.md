@@ -169,12 +169,12 @@ SQLite works for prototyping and local development, but it has hard limitations:
 
 Do not run SQLite in production.
 
-### Postgres scaling limits
+### PostgreSQL scaling limits
 
-ElephantQ is comfortable processing thousands of jobs per second on a single Postgres instance. At 10,000+ jobs/sec, you'll start hitting contention on the jobs table. At that scale, consider:
+ElephantQ is comfortable processing thousands of jobs per second on a single PostgreSQL instance. At 10,000+ jobs/sec, you'll start hitting contention on the jobs table. At that scale, consider:
 
 - Partitioning the jobs table by queue
-- Dedicated Postgres instances per queue group
+- Dedicated PostgreSQL instances per queue group
 - Reducing payload sizes
 - Archiving completed jobs aggressively (`ELEPHANTQ_RESULT_TTL`)
 
@@ -188,7 +188,7 @@ All features (timeouts, DLQ, metrics, scheduling, logging, webhooks, signing) ar
 
 ### Connection pool sizing matters
 
-If your pool is too small, workers block waiting for connections and throughput drops. If it's too large, you exhaust Postgres `max_connections`. The formula is straightforward:
+If your pool is too small, workers block waiting for connections and throughput drops. If it's too large, you exhaust PostgreSQL `max_connections`. The formula is straightforward:
 
 ```
 pool_max_size >= concurrency + headroom

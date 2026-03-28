@@ -6,14 +6,14 @@ mapping, code translation, and an honest look at trade-offs.
 ## Why migrate
 
 - **No more Redis dependency.** ElephantQ uses PostgreSQL as its job store. If
-  your app already talks to Postgres, you can drop Redis from your stack entirely.
+  your app already talks to PostgreSQL, you can drop Redis from your stack entirely.
 - **Async-native.** RQ workers are synchronous and block on each job. ElephantQ
   runs jobs as `async def` functions on an asyncio event loop with configurable
   concurrency.
 - **Built-in scheduling, DLQ, retries, and dashboard.** RQ needs rq-scheduler,
   rq-dashboard, and manual retry logic as separate installs. ElephantQ ships
   all of these out of the box.
-- **Transactional enqueue.** Enqueue a job inside the same Postgres transaction
+- **Transactional enqueue.** Enqueue a job inside the same PostgreSQL transaction
   that writes your application data. If the transaction rolls back, the job
   never exists.
 
@@ -344,6 +344,6 @@ Be honest about whether these matter for your use case:
   with `asyncio.to_thread()` so the async conversion goes smoothly.
 - **Migrate one queue at a time.** Run RQ and ElephantQ side by side. Move
   the lowest-risk queue first and verify it works before moving on.
-- **Watch your Postgres connection count.** Each ElephantQ worker uses a
+- **Watch your PostgreSQL connection count.** Each ElephantQ worker uses a
   connection pool. Set `ELEPHANTQ_POOL_MAX_SIZE` based on your concurrency
-  and available Postgres connections.
+  and available PostgreSQL connections.
