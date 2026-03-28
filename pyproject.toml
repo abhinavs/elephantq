@@ -61,7 +61,7 @@ dev = [
 ]
 dashboard = ["fastapi>=0.100.0", "uvicorn>=0.20.0"]
 monitoring = ["prometheus-client>=0.15.0", "psutil>=5.9.0"]
-full = ["elephantq[scheduling,webhooks,logging,dashboard,monitoring]"]
+full = ["elephantq[sqlite,scheduling,webhooks,logging,dashboard,monitoring]"]
 
 [project.urls]
 Homepage = "https://github.com/abhinavs/elephantq"
