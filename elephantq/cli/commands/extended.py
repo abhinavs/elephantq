@@ -215,10 +215,17 @@ def handle_dashboard_command(args):
 
 @with_elephantq_context
 def handle_scheduler_command(args):
+    import os
+
+    from elephantq.cli.commands.core import _configure_cli_logging
     from elephantq.features.recurring import (
         get_scheduler_status,
         start_recurring_scheduler,
         stop_recurring_scheduler,
+    )
+
+    _configure_cli_logging(
+        getattr(args, "log_level", None) or os.getenv("ELEPHANTQ_LOG_LEVEL", "INFO")
     )
 
     async def _run():

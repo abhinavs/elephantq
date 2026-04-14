@@ -64,8 +64,41 @@ def test_batch_add_chaining_with_queue():
     assert builder._queue == "reports"
 
 
+class _FakeConn:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    def transaction(self):
+        return self
+
+
+class _FakePool:
+    def __init__(self):
+        self.acquire_calls = 0
+
+    def acquire(self):
+        self.acquire_calls += 1
+        return _FakeConn()
+
+
+@pytest.fixture
+def fake_pool(monkeypatch):
+    pool = _FakePool()
+
+    async def fake_get_context_pool():
+        return pool
+
+    import elephantq.db.context as db_context
+
+    monkeypatch.setattr(db_context, "get_context_pool", fake_get_context_pool)
+    return pool
+
+
 @pytest.mark.asyncio
-async def test_batch_add_chaining_enqueue_all(monkeypatch):
+async def test_batch_add_chaining_enqueue_all(monkeypatch, fake_pool):
     """After chaining via add(), enqueue_all() should still enqueue all jobs."""
     captured = []
 
@@ -83,3 +116,50 @@ async def test_batch_add_chaining_enqueue_all(monkeypatch):
     assert len(job_ids) == 2
     assert captured[0]["priority"] == 30
     assert captured[1]["queue"] == "reports"
+
+
+@pytest.mark.asyncio
+async def test_batch_enqueue_all_uses_single_connection(monkeypatch, fake_pool):
+    """N batched jobs should acquire exactly one pooled connection."""
+    seen_connections = []
+
+    async def fake_enqueue(job_func, **kwargs):
+        seen_connections.append(kwargs.get("connection"))
+        return str(uuid.uuid4())
+
+    monkeypatch.setattr(scheduling, "enqueue", fake_enqueue)
+
+    batch = BatchScheduler()
+    for _ in range(5):
+        batch.add(dummy_job_a)
+
+    job_ids = await batch.enqueue_all()
+
+    assert len(job_ids) == 5
+    assert fake_pool.acquire_calls == 1
+    assert len(set(id(c) for c in seen_connections)) == 1
+    assert seen_connections[0] is not None
+
+
+@pytest.mark.asyncio
+async def test_batch_enqueue_all_propagates_error(monkeypatch, fake_pool):
+    """A mid-batch failure should propagate (transaction rollback responsibility
+    is on the DB layer; here we just assert no silent swallow)."""
+    counter = {"n": 0}
+
+    async def fake_enqueue(job_func, **kwargs):
+        counter["n"] += 1
+        if counter["n"] == 3:
+            raise RuntimeError("boom")
+        return str(uuid.uuid4())
+
+    monkeypatch.setattr(scheduling, "enqueue", fake_enqueue)
+
+    batch = BatchScheduler()
+    for _ in range(5):
+        batch.add(dummy_job_a)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        await batch.enqueue_all()
+
+    assert fake_pool.acquire_calls == 1

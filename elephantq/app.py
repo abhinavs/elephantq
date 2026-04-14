@@ -424,11 +424,36 @@ class ElephantQ:
             settings=self._settings,
             hooks=self._hooks,
         )
-        return await worker.run(
-            concurrency=concurrency,
-            run_once=run_once,
-            queues=queues,
-        )
+
+        scheduler_started = False
+        if not run_once:
+            try:
+                from .features.recurring import (
+                    _ensure_scheduler_running,
+                    stop_recurring_scheduler,
+                )
+
+                await _ensure_scheduler_running()
+                scheduler_started = True
+            except Exception as e:
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "Recurring scheduler not started: %s", e
+                )
+
+        try:
+            return await worker.run(
+                concurrency=concurrency,
+                run_once=run_once,
+                queues=queues,
+            )
+        finally:
+            if scheduler_started:
+                try:
+                    await stop_recurring_scheduler()
+                except Exception:
+                    pass
 
     # Job Management API
 
