@@ -12,6 +12,30 @@ from ..registry import register_simple_command
 logger = logging.getLogger(__name__)
 
 
+def _configure_cli_logging(level: str = "INFO") -> None:
+    """Attach a stream handler to the root logger so long-running CLI
+    commands (worker, scheduler) emit job-lifecycle logs to the terminal.
+
+    Safe to call multiple times; it won't duplicate handlers.
+    """
+    root = logging.getLogger()
+    try:
+        resolved = getattr(logging, str(level).upper())
+    except AttributeError:
+        resolved = logging.INFO
+    root.setLevel(resolved)
+    already_configured = any(
+        getattr(h, "_elephantq_cli_handler", False) for h in root.handlers
+    )
+    if not already_configured:
+        handler = logging.StreamHandler()
+        handler.setFormatter(
+            logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+        )
+        handler._elephantq_cli_handler = True  # type: ignore[attr-defined]
+        root.addHandler(handler)
+
+
 async def resolve_elephantq_instance(args):
     """
     Resolve ElephantQ instance configuration from CLI arguments.
@@ -93,6 +117,13 @@ def register_core_commands():
                 "kwargs": {
                     "action": "store_true",
                     "help": "Process jobs once and exit (useful for testing)",
+                },
+            },
+            {
+                "args": ["--log-level"],
+                "kwargs": {
+                    "default": None,
+                    "help": "Root logger level (default: INFO, or $ELEPHANTQ_LOG_LEVEL)",
                 },
             },
         ]
@@ -177,10 +208,15 @@ def register_core_commands():
 async def handle_start_command(args):
     """Handle start command (worker functionality)"""
     # --- BEGIN DISCOVERY SNIPPET ---
+    import os
     import sys
 
     from elephantq import settings
     from elephantq.discovery import discover_and_import_modules, parse_jobs_modules
+
+    _configure_cli_logging(
+        getattr(args, "log_level", None) or os.getenv("ELEPHANTQ_LOG_LEVEL", "INFO")
+    )
 
     if not settings.ELEPHANTQ_JOBS_MODULES:
         print(

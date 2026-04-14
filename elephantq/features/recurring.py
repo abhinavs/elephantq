@@ -677,8 +677,21 @@ class EnhancedRecurringScheduler:
                 logger.debug(
                     "Recurring job %s already claimed by another scheduler", job_id
                 )
-                # Reload next_run from database to stay in sync
-                job["next_run"] = next_run
+                # Reload the authoritative next_run from the DB instead of
+                # trusting the value this scheduler just computed.
+                try:
+                    pool = await get_context_pool()
+                    async with pool.acquire() as conn:
+                        row = await conn.fetchrow(
+                            "SELECT next_run FROM elephantq_recurring_jobs WHERE id = $1",
+                            uuid.UUID(job_id),
+                        )
+                    if row and row["next_run"]:
+                        job["next_run"] = row["next_run"]
+                except Exception as reload_err:
+                    logger.debug(
+                        "Failed to reload next_run for %s: %s", job_id, reload_err
+                    )
                 return
 
             # Claim succeeded — now enqueue the actual job

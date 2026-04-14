@@ -134,6 +134,27 @@ async def test_batch_scheduler_applies_batch_metadata(monkeypatch):
 
     monkeypatch.setattr(scheduling, "enqueue", fake_enqueue)
 
+    class _FakeConn:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+        def transaction(self):
+            return self
+
+    class _FakePool:
+        def acquire(self):
+            return _FakeConn()
+
+    async def fake_get_context_pool():
+        return _FakePool()
+
+    import elephantq.db.context as db_context
+
+    monkeypatch.setattr(db_context, "get_context_pool", fake_get_context_pool)
+
     async def dummy_job():
         pass
 

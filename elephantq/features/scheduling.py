@@ -164,6 +164,8 @@ class JobScheduleBuilder:
 
                         await store_job_timeout(job_id, self._timeout, conn)
         else:
+            if connection is not None:
+                enqueue_kwargs["connection"] = connection
             job_id = await enqueue(self.job_func, **enqueue_kwargs)
 
         # Store additional metadata (tags, timeout, etc.)
@@ -232,18 +234,26 @@ class BatchScheduler:
     async def enqueue_all(
         self, batch_priority: Optional[int] = None
     ) -> List[Union[str, Dict[str, Any]]]:
-        """Enqueue all jobs in the batch"""
-        job_ids = []
+        """Enqueue all jobs in the batch using a single pooled connection.
 
-        for i, (builder, kwargs) in enumerate(zip(self.jobs, self.enqueue_kwargs)):
-            # Add batch metadata
+        All inserts run in one transaction so the batch is atomic and we
+        hold exactly one connection for the full batch instead of
+        acquiring/releasing per job.
+        """
+        from elephantq.db.context import get_context_pool
+
+        for i, builder in enumerate(self.jobs):
             builder.with_tags(f"batch:{self.batch_name}", f"batch_item:{i}")
-
             if batch_priority is not None:
                 builder.with_priority(batch_priority)
 
-            job_id = await builder.enqueue(**kwargs)
-            job_ids.append(job_id)
+        pool = await get_context_pool()
+        job_ids: List[Union[str, Dict[str, Any]]] = []
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                for builder, kwargs in zip(self.jobs, self.enqueue_kwargs):
+                    job_id = await builder.enqueue(connection=conn, **kwargs)
+                    job_ids.append(job_id)
 
         return job_ids
 
