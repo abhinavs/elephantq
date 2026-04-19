@@ -268,6 +268,7 @@ async def process_jobs_with_timeout(
                     retry_delay=job_meta.get("retry_delay", 0),
                     retry_backoff=job_meta.get("retry_backoff", False),
                     retry_max_delay=job_meta.get("retry_max_delay"),
+                    retry_jitter=job_meta.get("retry_jitter", True),
                 )
                 if retry_delay > 0:
                     await conn.execute(
@@ -338,6 +339,7 @@ async def process_jobs_with_timeout(
                     retry_delay=job_meta.get("retry_delay", 0),
                     retry_backoff=job_meta.get("retry_backoff", False),
                     retry_max_delay=job_meta.get("retry_max_delay"),
+                    retry_jitter=job_meta.get("retry_jitter", True),
                 )
                 if retry_delay > 0:
                     await conn.execute(

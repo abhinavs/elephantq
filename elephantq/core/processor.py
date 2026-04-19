@@ -214,6 +214,7 @@ async def process_job_via_backend(
                 retry_delay=job_meta.get("retry_delay", 0),
                 retry_backoff=job_meta.get("retry_backoff", False),
                 retry_max_delay=job_meta.get("retry_max_delay"),
+                retry_jitter=job_meta.get("retry_jitter", True),
             )
             await backend.mark_job_failed(
                 job_id,
