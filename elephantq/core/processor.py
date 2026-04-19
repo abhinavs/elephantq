@@ -191,6 +191,38 @@ async def process_job_via_backend(
     duration_ms = round((time.time() - start_time) * 1000, 2)
 
     if job_success:
+        from elephantq.job import Snooze
+
+        if isinstance(job_result, Snooze):
+            settings = get_settings()
+            requested = float(job_result.seconds)
+            if requested < 0:
+                requested = 0.0
+            capped = min(requested, settings.snooze_max_seconds)
+            if capped < requested:
+                logger.warning(
+                    "Snooze capped from %.1fs to %.1fs (snooze_max_seconds) for job %s",
+                    requested,
+                    capped,
+                    job_id,
+                )
+            # Roll attempts back to the pre-claim value so the snooze does
+            # not consume a retry slot.
+            restored_attempts = max(attempts - 1, 0)
+            await backend.reschedule_job(
+                job_id,
+                delay_seconds=capped,
+                attempts=restored_attempts,
+                reason=job_result.reason,
+            )
+            logger.info(
+                "Job %s snoozed for %.1fs (attempts kept at %d)",
+                job_id,
+                capped,
+                restored_attempts,
+            )
+            return True
+
         settings = get_settings()
         await backend.mark_job_done(
             job_id, result_ttl=settings.result_ttl, result=job_result
@@ -214,6 +246,7 @@ async def process_job_via_backend(
                 retry_delay=job_meta.get("retry_delay", 0),
                 retry_backoff=job_meta.get("retry_backoff", False),
                 retry_max_delay=job_meta.get("retry_max_delay"),
+                retry_jitter=job_meta.get("retry_jitter", True),
             )
             await backend.mark_job_failed(
                 job_id,

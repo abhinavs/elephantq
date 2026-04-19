@@ -602,16 +602,46 @@ class EnhancedRecurringScheduler:
         logger.info("Enhanced recurring scheduler stopped")
 
     async def _scheduler_loop(self):
-        """Main scheduler loop with improved error handling"""
+        """Main scheduler loop with improved error handling.
+
+        Each tick runs under an advisory-lock leader guard so only one
+        scheduler across a multi-worker fleet evaluates due recurring jobs
+        per interval. The per-job optimistic lock in `_claim_and_advance_run`
+        remains the correctness floor; leader election is an efficiency
+        optimization on top.
+        """
+        from elephantq.core.leadership import with_advisory_lock
+
         while self.running:
             try:
-                await self._process_due_jobs()
+                backend = self._resolve_backend()
+                async with with_advisory_lock(
+                    backend, "elephantq.recurring_scheduler"
+                ) as leader:
+                    if leader:
+                        await self._process_due_jobs()
+
                 await asyncio.sleep(self.check_interval)
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error("Scheduler error: %s", e)
                 await asyncio.sleep(min(self.check_interval, 60))  # Backoff
+
+    def _resolve_backend(self):
+        """Return the backend of the global ElephantQ app if available, else None.
+
+        The recurring scheduler is always paired with the global app. When the
+        app's backend is Postgres, it exposes `with_advisory_lock`; other
+        backends return no attribute and `with_advisory_lock(None_or_backend)`
+        falls through to always-leader mode.
+        """
+        try:
+            import elephantq
+
+            return elephantq._get_global_app()._backend
+        except Exception:
+            return None
 
     async def _process_due_jobs(self):
         """Process jobs that are due to run"""

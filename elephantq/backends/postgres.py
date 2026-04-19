@@ -10,11 +10,13 @@ Uses asyncpg for all database operations. Supports:
 import json
 import logging
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, AsyncIterator, Optional
 
 import asyncpg
 
+from ..core.leadership import advisory_key
 from ..db.connection import _init_connection
 
 logger = logging.getLogger(__name__)
@@ -507,6 +509,37 @@ class PostgresBackend:
                     uid,
                 )
 
+    async def reschedule_job(
+        self,
+        job_id: str,
+        *,
+        delay_seconds: float,
+        attempts: int,
+        reason: Optional[str] = None,
+    ) -> None:
+        uid = uuid.UUID(job_id)
+        # Reason is stored in last_error with a SNOOZE: prefix so downstream
+        # tooling can distinguish snoozes from real failures without a schema
+        # change. scheduled_at is computed server-side to avoid client clock skew.
+        reason_text = f"SNOOZE: {reason}" if reason else "SNOOZE"
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    """
+                    UPDATE elephantq_jobs
+                    SET status = 'queued',
+                        attempts = $1,
+                        scheduled_at = NOW() + ($2 || ' seconds')::INTERVAL,
+                        last_error = $3,
+                        updated_at = NOW()
+                    WHERE id = $4
+                    """,
+                    attempts,
+                    str(delay_seconds),
+                    reason_text,
+                    uid,
+                )
+
     async def cancel_job(self, job_id: str) -> bool:
         uid = uuid.UUID(job_id)
         async with self.pool.acquire() as conn:
@@ -738,3 +771,29 @@ class PostgresBackend:
         async with self.pool.acquire() as conn:
             await conn.execute("TRUNCATE elephantq_jobs CASCADE")
             await conn.execute("TRUNCATE elephantq_workers CASCADE")
+
+    # --- Leader election ---
+
+    @asynccontextmanager
+    async def with_advisory_lock(self, name: str) -> AsyncIterator[bool]:
+        """
+        Try to acquire a Postgres session-scoped advisory lock keyed by `name`.
+
+        Yields True inside the block if this caller is the leader for `name`,
+        False if another session already holds the lock. The lock is held on
+        a dedicated connection for the full duration of the block and
+        released on exit (or automatically if the connection is lost).
+        """
+        key = advisory_key(name)
+        async with self.pool.acquire() as conn:
+            acquired = await conn.fetchval("SELECT pg_try_advisory_lock($1)", key)
+            try:
+                yield bool(acquired)
+            finally:
+                if acquired:
+                    try:
+                        await conn.fetchval("SELECT pg_advisory_unlock($1)", key)
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to release advisory lock %r: %s", name, e
+                        )

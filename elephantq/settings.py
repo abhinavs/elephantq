@@ -283,6 +283,13 @@ class ElephantQSettings(BaseSettings):
         description="Time to live for completed jobs in seconds (0=delete immediately, default=300 for 5 minutes)",
     )
 
+    # Snooze
+    snooze_max_seconds: float = Field(
+        default=24 * 3600,
+        gt=0,
+        description="Upper bound on Snooze(seconds=...) before the value is capped, preventing handlers from scheduling jobs arbitrarily far in the future",
+    )
+
     # Development/Testing
     debug: bool = Field(default=False, description="Enable debug mode")
 

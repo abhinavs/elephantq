@@ -287,6 +287,25 @@ class SQLiteBackend:
         )
         await self._conn.commit()
 
+    async def reschedule_job(
+        self,
+        job_id: str,
+        *,
+        delay_seconds: float,
+        attempts: int,
+        reason: Optional[str] = None,
+    ) -> None:
+        assert self._conn is not None
+        sched = (
+            datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
+        ).isoformat()
+        reason_text = f"SNOOZE: {reason}" if reason else "SNOOZE"
+        await self._conn.execute(
+            "UPDATE elephantq_jobs SET status='queued', attempts=?, scheduled_at=?, last_error=?, updated_at=? WHERE id=?",
+            (attempts, sched, reason_text, _now_iso(), job_id),
+        )
+        await self._conn.commit()
+
     async def cancel_job(self, job_id: str) -> bool:
         assert self._conn is not None
         cursor = await self._conn.execute(

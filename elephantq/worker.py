@@ -261,16 +261,27 @@ class Worker:
                 await asyncio.sleep(interval)
 
     async def _maybe_cleanup(self) -> None:
-        """Run periodic cleanup if enough time has passed."""
+        """Run periodic cleanup if enough time has passed.
+
+        Uses an advisory-lock leader guard so that, in multi-worker deployments,
+        only one worker performs pruning and stale-worker cleanup per tick.
+        Backends without advisory-lock support (Memory, SQLite) always run.
+        """
         current = time.time()
         if current - self._last_cleanup < self._settings.cleanup_interval:
             return
 
+        from .core.leadership import with_advisory_lock
+
         try:
-            await self._backend.delete_expired_jobs()
-            await self._backend.cleanup_stale_workers(
-                stale_threshold_seconds=int(self._settings.heartbeat_timeout),
-            )
+            async with with_advisory_lock(
+                self._backend, "elephantq.maintenance"
+            ) as leader:
+                if leader:
+                    await self._backend.delete_expired_jobs()
+                    await self._backend.cleanup_stale_workers(
+                        stale_threshold_seconds=int(self._settings.heartbeat_timeout),
+                    )
             self._last_cleanup = current
         except Exception as e:
             logger.warning(f"Cleanup failed: {e}")

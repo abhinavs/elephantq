@@ -219,6 +219,28 @@ class MemoryBackend:
             job["last_error"] = error
             job["updated_at"] = datetime.now(timezone.utc)
 
+    async def reschedule_job(
+        self,
+        job_id: str,
+        *,
+        delay_seconds: float,
+        attempts: int,
+        reason: Optional[str] = None,
+    ) -> None:
+        from datetime import timedelta
+
+        async with self._lock:
+            job = self._jobs.get(job_id)
+            if not job:
+                return
+            job["status"] = "queued"
+            job["attempts"] = attempts
+            job["scheduled_at"] = datetime.now(timezone.utc) + timedelta(
+                seconds=delay_seconds
+            )
+            job["last_error"] = f"SNOOZE: {reason}" if reason else "SNOOZE"
+            job["updated_at"] = datetime.now(timezone.utc)
+
     async def cancel_job(self, job_id: str) -> bool:
         async with self._lock:
             job = self._jobs.get(job_id)
