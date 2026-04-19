@@ -10,11 +10,13 @@ Uses asyncpg for all database operations. Supports:
 import json
 import logging
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, AsyncIterator, Optional
 
 import asyncpg
 
+from ..core.leadership import advisory_key
 from ..db.connection import _init_connection
 
 logger = logging.getLogger(__name__)
@@ -738,3 +740,29 @@ class PostgresBackend:
         async with self.pool.acquire() as conn:
             await conn.execute("TRUNCATE elephantq_jobs CASCADE")
             await conn.execute("TRUNCATE elephantq_workers CASCADE")
+
+    # --- Leader election ---
+
+    @asynccontextmanager
+    async def with_advisory_lock(self, name: str) -> AsyncIterator[bool]:
+        """
+        Try to acquire a Postgres session-scoped advisory lock keyed by `name`.
+
+        Yields True inside the block if this caller is the leader for `name`,
+        False if another session already holds the lock. The lock is held on
+        a dedicated connection for the full duration of the block and
+        released on exit (or automatically if the connection is lost).
+        """
+        key = advisory_key(name)
+        async with self.pool.acquire() as conn:
+            acquired = await conn.fetchval("SELECT pg_try_advisory_lock($1)", key)
+            try:
+                yield bool(acquired)
+            finally:
+                if acquired:
+                    try:
+                        await conn.fetchval("SELECT pg_advisory_unlock($1)", key)
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to release advisory lock %r: %s", name, e
+                        )
