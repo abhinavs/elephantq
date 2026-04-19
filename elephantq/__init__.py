@@ -29,7 +29,7 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import Optional, Union
 
 from .app import ElephantQ
-from .job import JobContext, JobStatus
+from .job import JobContext, JobStatus, Snooze
 from .settings import configure as settings_configure
 
 try:
@@ -61,6 +61,7 @@ __all__ = [
     "periodic",
     "JobContext",
     "JobStatus",
+    "Snooze",
     "every",
     "cron",
     "features",

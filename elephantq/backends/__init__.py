@@ -145,6 +145,22 @@ class StorageBackend(Protocol):
         """Move job to dead_letter status."""
         ...
 
+    async def reschedule_job(
+        self,
+        job_id: str,
+        *,
+        delay_seconds: float,
+        attempts: int,
+        reason: Optional[str] = None,
+    ) -> None:
+        """
+        Snooze a running job: set status back to 'queued', scheduled_at
+        forward by delay_seconds, and attempts to the supplied value
+        (callers typically pass the pre-claim count so the snooze does not
+        consume a retry slot). Used by the Snooze return type.
+        """
+        ...
+
     async def cancel_job(self, job_id: str) -> bool:
         """Cancel a queued job. Return True if cancelled."""
         ...

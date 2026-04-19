@@ -509,6 +509,37 @@ class PostgresBackend:
                     uid,
                 )
 
+    async def reschedule_job(
+        self,
+        job_id: str,
+        *,
+        delay_seconds: float,
+        attempts: int,
+        reason: Optional[str] = None,
+    ) -> None:
+        uid = uuid.UUID(job_id)
+        # Reason is stored in last_error with a SNOOZE: prefix so downstream
+        # tooling can distinguish snoozes from real failures without a schema
+        # change. scheduled_at is computed server-side to avoid client clock skew.
+        reason_text = f"SNOOZE: {reason}" if reason else "SNOOZE"
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    """
+                    UPDATE elephantq_jobs
+                    SET status = 'queued',
+                        attempts = $1,
+                        scheduled_at = NOW() + ($2 || ' seconds')::INTERVAL,
+                        last_error = $3,
+                        updated_at = NOW()
+                    WHERE id = $4
+                    """,
+                    attempts,
+                    str(delay_seconds),
+                    reason_text,
+                    uid,
+                )
+
     async def cancel_job(self, job_id: str) -> bool:
         uid = uuid.UUID(job_id)
         async with self.pool.acquire() as conn:

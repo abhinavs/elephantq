@@ -5,6 +5,35 @@ All notable changes to ElephantQ will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Breaking Changes
+- `StorageBackend` protocol gained a required `reschedule_job(job_id, *, delay_seconds, attempts, reason=None)` method, used by the new `Snooze` return type. All in-tree backends (Postgres, SQLite, Memory) implement it. Any third-party backend must add an implementation; otherwise `isinstance(backend, StorageBackend)` checks fail and handlers that return `Snooze` will raise `AttributeError`.
+- Advisory-lock leader election (see below) requires Postgres in session-pooling mode. **Transaction-pooling PgBouncer deployments must either switch to session-pooling or disable the feature** - `pg_try_advisory_lock` releases between statements under transaction-pooling, making the lock unsafe. Single-writer deployments (SQLite, Memory, or a single Postgres worker) are unaffected.
+
+### Added
+- `Snooze(seconds, reason=None)` return type (`elephantq.Snooze`). Returning it from a job handler re-schedules the job without consuming a retry slot. Useful for rate-limited APIs (HTTP 429) and webhook backpressure. Capped by the new `snooze_max_seconds` setting (default `86400`).
+- `retry_jitter` parameter on `@elephantq.job` (default `True`). Applies full-jitter to the exponential backoff when `retry_backoff=True`, sampling uniformly in `[computed/2, computed]` to prevent thundering-herd retries after batch failures. Set `retry_jitter=False` for deterministic timing.
+- `elephantq/core/leadership.py`: `advisory_key(name)` (blake2b-derived, cross-process stable) and `with_advisory_lock(backend, name)` async context manager. Backends without native support fall through to always-leader mode.
+- `PostgresBackend.with_advisory_lock(name)`: session-scoped `pg_try_advisory_lock` on a dedicated connection for the lifetime of the context.
+- `examples/snooze_on_rate_limit.py`: HTTP 429 demo wiring `Snooze` to `Retry-After`.
+
+### Changed
+- Exponential backoff (`retry_backoff=True`) now applies full-jitter by default. Jobs that depended on deterministic retry timing will see delays uniformly sampled in `[computed/2, computed]`. Set `retry_jitter=False` on the `@elephantq.job` decorator to restore the previous behavior.
+- `Worker._maybe_cleanup` (pruner + stale-worker rescuer) and `EnhancedRecurringScheduler._scheduler_loop` now run under an advisory-lock leader guard. Multi-worker deployments stop duplicating maintenance work N times per tick. Single-worker deployments see no change. The per-job optimistic lock in `_claim_and_advance_run` remains the correctness floor for recurring job claims.
+
+### Fixed
+- Removed orphan `asyncio.create_task(db_handler.setup_database())` call in `LoggingConfig.setup_enterprise_logging`. The target was a no-op, so the task never did anything; dropping it also eliminates a warning about an un-awaited coroutine when logging is configured synchronously.
+
+### Added (tests)
+- `tests/unit/test_no_orphan_tasks.py`: AST-walk guard against new orphan `asyncio.create_task` / `asyncio.ensure_future` calls.
+- `tests/integration/test_dead_letter_recursion.py`: bounded-time regression coverage for the `_rows_affected` recursion fix.
+- `tests/integration/test_schedule_builder_race.py`: 50-way concurrent-enqueue test pinning the `JobScheduleBuilder` dedup_key contract.
+- `tests/unit/test_no_depends_on.py`: expanded to `hasattr`, direct-import `ImportError`, and `__all__` assertions so the removed `depends_on` API cannot silently return.
+- `tests/unit/test_retry_backoff.py`: full-jitter bounds, RNG injection, and `retry_max_delay` cap under jitter.
+- `tests/unit/test_advisory_key.py` + `tests/integration/test_leader_election.py`: key stability across processes and exclusive-leader semantics under concurrent holders.
+- `tests/unit/test_snooze.py` + `tests/integration/test_snooze_postgres.py`: Snooze requeue path, attempts roll-back, cap enforcement, and end-to-end Postgres flow.
+
 ## [0.3.0] - 2026-03-27
 
 ### Architecture
