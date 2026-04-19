@@ -488,7 +488,6 @@ class LoggingConfig:
         # Database handler
         if database_logging:
             db_handler = DatabaseLogHandler()
-            asyncio.create_task(db_handler.setup_database())
             root_logger.addHandler(db_handler)
 
         # Set up specific loggers for different components
