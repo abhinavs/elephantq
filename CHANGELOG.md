@@ -33,6 +33,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `tests/unit/test_retry_backoff.py`: full-jitter bounds, RNG injection, and `retry_max_delay` cap under jitter.
 - `tests/unit/test_advisory_key.py` + `tests/integration/test_leader_election.py`: key stability across processes and exclusive-leader semantics under concurrent holders.
 - `tests/unit/test_snooze.py` + `tests/integration/test_snooze_postgres.py`: Snooze requeue path, attempts roll-back, cap enforcement, and end-to-end Postgres flow.
+### Fixed
+- Removed orphan `asyncio.create_task(db_handler.setup_database())` call in `LoggingConfig.setup_enterprise_logging`. The target was a no-op, so the task never did anything; dropping it also eliminates a warning about an un-awaited coroutine when logging is configured synchronously.
+
+### Added
+- `tests/unit/test_no_orphan_tasks.py`: AST-walk guard that fails if any new bare expression-statement `asyncio.create_task(...)` / `asyncio.ensure_future(...)` call is introduced in the package. Existing call sites store or track their tasks and remain allowed.
+- `tests/integration/test_dead_letter_recursion.py`: bounded-time regression coverage for the `_rows_affected` recursion fix across the `delete`, `bulk_delete`, and `move` paths of `DeadLetterManager`.
+- `tests/integration/test_schedule_builder_race.py`: pins the documented `JobScheduleBuilder` dedup_key contract under 50-way concurrent `enqueue()` - exactly one row, all callers receive the winning job id.
+- `tests/unit/test_no_depends_on.py`: additional assertions (`hasattr`, direct-import `ImportError`, `__all__`) to ensure the already-removed `depends_on` API cannot be silently reintroduced.
 
 ## [0.3.0] - 2026-03-27
 
