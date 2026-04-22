@@ -641,6 +641,9 @@ class EnhancedRecurringScheduler:
 
             return elephantq._get_global_app()._backend
         except Exception:
+            # Global app may not be initialized (feature used standalone or
+            # during early startup). Fall back to always-leader mode.
+            logger.debug("Unable to resolve global backend", exc_info=True)
             return None
 
     async def _process_due_jobs(self):
@@ -733,7 +736,11 @@ class EnhancedRecurringScheduler:
                 **job["job_kwargs"],
             )
 
-            # Update last_job_id in DB (non-critical, best-effort)
+            # Update last_job_id / run_count in DB. The claim already
+            # succeeded and the job is enqueued, so we cannot retry or roll
+            # back, but if this write fails our in-memory bookkeeping and the
+            # row in `elephantq_recurring_jobs` silently drift apart. Log so
+            # operators notice; do not raise.
             try:
                 await _enhanced_manager._record_run(
                     job_id=job_id,
@@ -743,7 +750,12 @@ class EnhancedRecurringScheduler:
                     last_job_id=actual_job_id,
                 )
             except Exception:
-                pass  # Claim already succeeded, job is enqueued
+                logger.exception(
+                    "Failed to record recurring run for %s (job enqueued as %s, "
+                    "run_count/last_run may be stale until next successful tick)",
+                    job_id,
+                    actual_job_id,
+                )
 
             # Update in-memory state
             _enhanced_manager.jobs[job_id].update(

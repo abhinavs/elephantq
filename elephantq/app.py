@@ -16,6 +16,37 @@ from .settings import ElephantQSettings
 logger = logging.getLogger(__name__)
 
 
+def _pool_sizing_error(
+    *, concurrency: int, pool_max_size: int, pool_headroom: int
+) -> Optional["ElephantQError"]:
+    """Return an error describing an undersized pool, or None if adequate.
+
+    Pure helper so the arithmetic can be unit-tested without spinning up a
+    real backend. `pool_max_size=0` disables the check (some operators set
+    it explicitly to opt out). The check is equality-inclusive: a pool
+    exactly equal to `concurrency + headroom` is considered enough.
+    """
+    if pool_max_size <= 0:
+        return None
+    required = concurrency + pool_headroom
+    if required <= pool_max_size:
+        return None
+    return ElephantQError(
+        f"Connection pool too small: worker concurrency ({concurrency}) "
+        f"plus reserved headroom ({pool_headroom}) requires {required} "
+        f"connections, but pool_max_size is {pool_max_size}. "
+        f"Raise ELEPHANTQ_POOL_MAX_SIZE, lower ELEPHANTQ_CONCURRENCY, "
+        f"or reduce ELEPHANTQ_POOL_HEADROOM.",
+        "ELEPHANTQ_POOL_TOO_SMALL",
+        context={
+            "concurrency": concurrency,
+            "pool_headroom": pool_headroom,
+            "pool_max_size": pool_max_size,
+            "required_connections": required,
+        },
+    )
+
+
 class ElephantQ:
     """
     ElephantQ Application
@@ -188,20 +219,24 @@ class ElephantQ:
                 f"ElephantQ initialization failed: {e}", "ELEPHANTQ_INIT_ERROR"
             ) from e
 
-    def _warn_if_pool_too_small(self, concurrency: int) -> None:
-        """Warn when worker concurrency + headroom exceeds the configured pool max size."""
-        if not self._pool or self._settings.pool_max_size <= 0:
-            return
+    def _check_pool_sizing(self, concurrency: int) -> None:
+        """Refuse to start a worker that would deadlock on a too-small pool.
 
-        required_connections = concurrency + self._settings.pool_headroom
-        if required_connections > self._settings.pool_max_size:
-            logger.warning(
-                "Worker concurrency (%s) + pool headroom (%s) exceeds configured pool max (%s). "
-                "Increase ELEPHANTQ_POOL_MAX_SIZE or reduce concurrency to prevent connection exhaustion.",
-                concurrency,
-                self._settings.pool_headroom,
-                self._settings.pool_max_size,
-            )
+        Only applies to backends that use an asyncpg connection pool. Memory
+        and SQLite backends have no pool and skip the check. A warning here
+        was what we had before; operators missed it and workers stalled in
+        production. Promoting to a hard error puts the misconfiguration in
+        front of them at startup instead of at 3am.
+        """
+        if not hasattr(self._backend, "pool"):
+            return
+        err = _pool_sizing_error(
+            concurrency=concurrency,
+            pool_max_size=self._settings.pool_max_size,
+            pool_headroom=self._settings.pool_headroom,
+        )
+        if err is not None:
+            raise err
 
     async def __aenter__(self):
         await self._ensure_initialized()
@@ -362,12 +397,18 @@ class ElephantQ:
             scheduled_at=scheduled_at,
         )
 
-        # Notify workers if backend supports push notifications
+        # Notify workers if backend supports push notifications. Workers
+        # also poll on a timer, so a failed notify degrades latency but does
+        # not drop the job. Log at debug so it's visible when investigating.
         if self._backend.supports_push_notify:
             try:
                 await self._backend.notify_new_job(final_queue)
             except Exception:
-                pass  # Non-critical — workers will poll
+                logger.debug(
+                    "notify_new_job failed for queue %s; workers will pick up via poll",
+                    final_queue,
+                    exc_info=True,
+                )
 
         return result_id or job_id
 
@@ -414,7 +455,7 @@ class ElephantQ:
         """
         await self._ensure_initialized()
 
-        self._warn_if_pool_too_small(concurrency)
+        self._check_pool_sizing(concurrency)
 
         from .worker import Worker
 
@@ -453,7 +494,13 @@ class ElephantQ:
                 try:
                     await stop_recurring_scheduler()
                 except Exception:
-                    pass
+                    # Shutdown path: the scheduler will be reclaimed by the
+                    # stale-worker sweep; log for investigation but don't
+                    # mask the worker's own exit status.
+                    logger.debug(
+                        "stop_recurring_scheduler failed during shutdown",
+                        exc_info=True,
+                    )
 
     # Job Management API
 

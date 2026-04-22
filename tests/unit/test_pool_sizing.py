@@ -1,0 +1,98 @@
+"""
+Pool sizing is a load-bearing configuration: if worker concurrency plus the
+reserved headroom exceeds `pool_max_size`, workers deadlock under load
+waiting for a connection. The previous behavior logged a warning that
+operators routinely missed. Now we refuse to start.
+"""
+
+import pytest
+
+from elephantq import ElephantQ
+from elephantq.app import _pool_sizing_error
+from elephantq.errors import ElephantQError
+
+
+def test_pool_sizing_error_triggers_when_undersized():
+    err = _pool_sizing_error(concurrency=10, pool_max_size=5, pool_headroom=2)
+    assert err is not None
+    assert isinstance(err, ElephantQError)
+    assert err.error_code == "ELEPHANTQ_POOL_TOO_SMALL"
+    # Actionable: both the numbers and the env vars belong in the message.
+    rendered = str(err)
+    assert "10" in rendered  # concurrency
+    assert "5" in rendered  # pool_max_size
+    assert "2" in rendered  # headroom
+    assert "ELEPHANTQ_POOL_MAX_SIZE" in rendered
+
+
+def test_pool_sizing_error_none_when_adequate():
+    assert _pool_sizing_error(concurrency=4, pool_max_size=10, pool_headroom=2) is None
+
+
+def test_pool_sizing_error_boundary_exact_fit_is_allowed():
+    # pool_max_size == concurrency + headroom is exactly enough.
+    assert _pool_sizing_error(concurrency=4, pool_max_size=6, pool_headroom=2) is None
+
+
+def test_pool_sizing_error_off_by_one_triggers():
+    # One connection short.
+    err = _pool_sizing_error(concurrency=4, pool_max_size=5, pool_headroom=2)
+    assert err is not None
+
+
+def test_pool_sizing_error_zero_max_size_skipped():
+    # pool_max_size=0 disables the check (some users set it explicitly).
+    assert _pool_sizing_error(concurrency=4, pool_max_size=0, pool_headroom=2) is None
+
+
+@pytest.mark.asyncio
+async def test_run_worker_raises_when_pool_too_small(monkeypatch):
+    """End-to-end: run_worker refuses to start with an undersized pool."""
+    monkeypatch.setenv("ELEPHANTQ_DATABASE_URL", "postgresql://localhost/elephantq")
+
+    app = ElephantQ(pool_max_size=2, pool_headroom=2)
+    # Attach a dummy postgres-looking backend so the check fires without
+    # requiring a real database.
+    app._backend = _FakePoolBackend()
+    app._initialized = True
+
+    with pytest.raises(ElephantQError, match="ELEPHANTQ_POOL_TOO_SMALL"):
+        await app.run_worker(concurrency=4, run_once=True)
+
+
+@pytest.mark.asyncio
+async def test_run_worker_ok_with_adequate_pool(monkeypatch):
+    """Regression guard: adequate pool does not raise."""
+    monkeypatch.setenv("ELEPHANTQ_DATABASE_URL", "postgresql://localhost/elephantq")
+
+    app = ElephantQ(pool_max_size=10, pool_headroom=2)
+
+    # With the memory backend there is no pool — check should be skipped.
+    from elephantq.backends.memory import MemoryBackend
+
+    app._backend = MemoryBackend()
+    app._initialized = True
+
+    # run_once processes no jobs (empty backend) and returns False.
+    result = await app.run_worker(concurrency=4, run_once=True)
+    assert result is False
+
+
+class _FakePoolBackend:
+    """Minimal stand-in for PostgresBackend used to trigger the pool-size check.
+
+    The `pool` attribute presence is the signal that this backend is backed by
+    an asyncpg pool, i.e. the check is meaningful. No real pool is needed for
+    the sizing calculation.
+    """
+
+    pool = object()  # truthy, but not actually used
+
+    supports_push_notify = False
+    supports_transactional_enqueue = False
+
+    async def fetch_and_lock_job(self, **kwargs):
+        return None
+
+    async def close(self):
+        pass

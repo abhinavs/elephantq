@@ -28,7 +28,7 @@ async def test_run_worker_starts_and_stops_recurring_scheduler(monkeypatch):
         return None
 
     monkeypatch.setattr(app, "_ensure_initialized", fake_init)
-    monkeypatch.setattr(app, "_warn_if_pool_too_small", lambda concurrency: None)
+    monkeypatch.setattr(app, "_check_pool_sizing", lambda concurrency: None)
 
     class FakeWorker:
         def __init__(self, **kwargs):
@@ -66,7 +66,7 @@ async def test_run_worker_run_once_skips_scheduler(monkeypatch):
         return None
 
     monkeypatch.setattr(app, "_ensure_initialized", fake_init)
-    monkeypatch.setattr(app, "_warn_if_pool_too_small", lambda concurrency: None)
+    monkeypatch.setattr(app, "_check_pool_sizing", lambda concurrency: None)
 
     class FakeWorker:
         def __init__(self, **kwargs):
@@ -103,7 +103,7 @@ async def test_run_worker_tolerates_scheduler_start_failure(monkeypatch):
         return None
 
     monkeypatch.setattr(app, "_ensure_initialized", fake_init)
-    monkeypatch.setattr(app, "_warn_if_pool_too_small", lambda concurrency: None)
+    monkeypatch.setattr(app, "_check_pool_sizing", lambda concurrency: None)
 
     class FakeWorker:
         def __init__(self, **kwargs):

@@ -227,7 +227,13 @@ class Worker:
                 try:
                     await self._backend.mark_worker_stopped(worker_id)
                 except Exception:
-                    pass
+                    # Shutdown path: if the DB is already unreachable, the
+                    # stale-worker sweep will mark this worker stopped later.
+                    logger.debug(
+                        "mark_worker_stopped failed for %s during shutdown",
+                        worker_id,
+                        exc_info=True,
+                    )
 
             # Clean up LISTEN connection
             if listen_handle is not None:
@@ -236,12 +242,18 @@ class Worker:
                         "elephantq_new_job", on_notification
                     )
                 except Exception:
-                    pass
+                    # Connection may already be broken during shutdown.
+                    logger.debug(
+                        "remove_listener failed during shutdown", exc_info=True
+                    )
                 try:
                     if hasattr(self._backend, "pool"):
                         await self._backend.pool.release(listen_handle)
                 except Exception:
-                    pass
+                    logger.debug(
+                        "LISTEN connection release failed during shutdown",
+                        exc_info=True,
+                    )
 
         return True
 
