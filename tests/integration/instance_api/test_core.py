@@ -75,7 +75,7 @@ async def test_enqueue_and_run_job():
 @pytest.mark.asyncio
 async def test_enqueue_job_invalid_args():
     # Configure global app to use test database
-    elephantq.configure(database_url=TEST_DATABASE_URL)
+    await elephantq.configure(database_url=TEST_DATABASE_URL)
 
     # Define job with args validation
     @elephantq.job(retries=5, args_model=SampleJobArgs)
@@ -102,7 +102,7 @@ async def test_retry_mechanism():
     _flaky_job_fail_counts = {}  # Reset for this test
 
     # Configure global app to use test database
-    elephantq.configure(database_url=TEST_DATABASE_URL)
+    await elephantq.configure(database_url=TEST_DATABASE_URL)
 
     # Define flaky job that fails first 2 times then succeeds
     @elephantq.job(retries=3)
@@ -164,7 +164,7 @@ async def test_retry_mechanism():
 @pytest.mark.asyncio
 async def test_run_worker_processes_job():
     # Configure global app to use test database
-    elephantq.configure(database_url=TEST_DATABASE_URL)
+    await elephantq.configure(database_url=TEST_DATABASE_URL)
 
     # Define sample job
     @elephantq.job(retries=5, args_model=SampleJobArgs)
@@ -220,7 +220,7 @@ async def test_cli_worker():
 @pytest.mark.asyncio
 async def test_task_discovery():
     # Configure global app to use test database
-    elephantq.configure(database_url=TEST_DATABASE_URL)
+    await elephantq.configure(database_url=TEST_DATABASE_URL)
 
     # Clear test table using global app pool
     global_app = elephantq._get_global_app()

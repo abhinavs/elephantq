@@ -118,7 +118,7 @@ import asyncio
 import elephantq
 
 async def main():
-    elephantq.configure(database_url="{settings.database_url}")
+    await elephantq.configure(database_url="{settings.database_url}")
     await elephantq.run_worker(concurrency=2)
 
 if __name__ == "__main__":

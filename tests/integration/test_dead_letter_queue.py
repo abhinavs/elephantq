@@ -13,7 +13,9 @@ from tests.db_utils import TEST_DATABASE_URL
 
 @pytest.mark.asyncio
 async def test_dead_letter_move_creates_record():
-    elephantq.configure(database_url=TEST_DATABASE_URL, dead_letter_queue_enabled=True)
+    await elephantq.configure(
+        database_url=TEST_DATABASE_URL, dead_letter_queue_enabled=True
+    )
 
     # Ensure dead_letter operations use the same pool as enqueue (the global app's pool)
     global_app = elephantq._get_global_app()

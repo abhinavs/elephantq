@@ -30,13 +30,14 @@ class TestGlobalAPI:
         assert isinstance(app2, ElephantQ)
         assert app1 is app2  # Same instance
 
-    def test_configure_creates_new_global_app(self):
+    @pytest.mark.asyncio
+    async def test_configure_creates_new_global_app(self):
         """Test that configure() creates a new global app with settings"""
         # Get initial app
         app1 = elephantq._get_global_app()
 
         # Configure with new settings
-        elephantq.configure(database_url="postgresql://test@localhost/test_db")
+        await elephantq.configure(database_url="postgresql://test@localhost/test_db")
 
         # Should get new app instance
         app2 = elephantq._get_global_app()
@@ -44,9 +45,10 @@ class TestGlobalAPI:
         assert app1 is not app2  # Different instances
         assert app2.settings.database_url == "postgresql://test@localhost/test_db"
 
-    def test_job_decorator_registers_with_global_app(self):
+    @pytest.mark.asyncio
+    async def test_job_decorator_registers_with_global_app(self):
         """Test that @elephantq.job() registers with global app"""
-        elephantq.configure(database_url="postgresql://test@localhost/test_db")
+        await elephantq.configure(database_url="postgresql://test@localhost/test_db")
 
         @elephantq.job(retries=3, queue="test")
         async def test_job(message: str):
@@ -76,7 +78,7 @@ class TestGlobalAPI:
     @pytest.mark.asyncio
     async def test_global_enqueue_uses_global_app(self):
         """Test that elephantq.enqueue() uses the global app"""
-        elephantq.configure(database_url="postgresql://test@localhost/test_db")
+        await elephantq.configure(database_url="postgresql://test@localhost/test_db")
 
         @elephantq.job()
         async def test_job(message: str):
@@ -124,7 +126,7 @@ class TestGlobalAPI:
     @pytest.mark.asyncio
     async def test_global_run_worker_uses_global_app(self):
         """Test that elephantq.run_worker() uses the global app"""
-        elephantq.configure(database_url="postgresql://test@localhost/test_db")
+        await elephantq.configure(database_url="postgresql://test@localhost/test_db")
 
         # Mock the global app's run_worker method
         app = elephantq._get_global_app()
@@ -138,10 +140,13 @@ class TestGlobalAPI:
                 concurrency=2, run_once=True, queues=["test"]
             )
 
-    def test_global_api_isolation_from_instances(self):
+    @pytest.mark.asyncio
+    async def test_global_api_isolation_from_instances(self):
         """Test that global API and instance API are isolated"""
         # Configure global app
-        elephantq.configure(database_url="postgresql://global@localhost/global_db")
+        await elephantq.configure(
+            database_url="postgresql://global@localhost/global_db"
+        )
 
         # Create instance app
         instance_app = ElephantQ(
@@ -179,7 +184,8 @@ class TestGlobalAPI:
             instance_registry.get_job("tests.unit.test_global_api.global_job") is None
         )
 
-    def test_global_api_configuration_persistence(self):
+    @pytest.mark.asyncio
+    async def test_global_api_configuration_persistence(self):
         """Test that global app configuration persists across calls"""
         # Configure global app
         test_config = {
@@ -187,7 +193,7 @@ class TestGlobalAPI:
             "concurrency": 8,
             "result_ttl": 600,
         }
-        elephantq.configure(**test_config)
+        await elephantq.configure(**test_config)
 
         # Get app multiple times
         app1 = elephantq._get_global_app()

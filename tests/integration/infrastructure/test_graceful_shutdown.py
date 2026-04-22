@@ -62,7 +62,7 @@ async def test_worker_cancellation_no_pool_errors(caplog):
         import elephantq
         from elephantq.settings import get_settings
 
-        elephantq.configure(database_url=get_settings().database_url)
+        await elephantq.configure(database_url=get_settings().database_url)
         worker_task = asyncio.create_task(elephantq.run_worker(concurrency=1))
 
         # Let it start up
@@ -103,7 +103,7 @@ async def test_multiple_rapid_worker_cancellations(caplog):
         import elephantq
         from elephantq.settings import get_settings
 
-        elephantq.configure(database_url=get_settings().database_url)
+        await elephantq.configure(database_url=get_settings().database_url)
 
         for i in range(3):
             # Start worker
@@ -184,7 +184,7 @@ async def test_graceful_shutdown_integration():
     import elephantq
     from elephantq.settings import get_settings
 
-    elephantq.configure(database_url=get_settings().database_url)
+    await elephantq.configure(database_url=get_settings().database_url)
     worker_task = asyncio.create_task(elephantq.run_worker(concurrency=1))
 
     # Wait for either signal or timeout

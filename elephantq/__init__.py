@@ -95,7 +95,7 @@ def _get_global_app() -> ElephantQ:
     return _global_app
 
 
-def configure(
+async def configure(
     *,
     database_url: Optional[str] = None,
     concurrency: Optional[int] = None,
@@ -110,6 +110,11 @@ def configure(
 ):
     """
     Configure the global ElephantQ instance.
+
+    This is async because reconfiguring must close the prior app's asyncpg
+    pool before the replacement is wired up. The old behavior only flipped a
+    private `_closed` flag and orphaned the pool, leaking connections on
+    every reconfigure (visible in test suites and hot-reload dev workflows).
 
     Args:
         database_url: Database connection URL
@@ -145,16 +150,23 @@ def configure(
     if settings_kwargs:
         settings_configure(**settings_kwargs)
 
-    # If the global app is already initialized, mark it as closed so the new
-    # app gets a fresh pool. The old pool (if any) will be closed when the
-    # old app is garbage collected or via close_pool().
+    # Close the prior global app (and its pool) before replacing it. Missing
+    # this was the leak: flipping _closed on a live app left the asyncpg
+    # pool running, holding Postgres connections until the process died.
     if (
         _global_app is not None
         and _global_app._is_initialized
         and not _global_app._is_closed
     ):
-        _global_app._closed = True
-        _global_app._initialized = False
+        try:
+            await _global_app.close()
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).debug(
+                "prior global app close() raised during reconfigure",
+                exc_info=True,
+            )
 
     _global_app = ElephantQ(**settings_kwargs)  # type: ignore[arg-type]
 

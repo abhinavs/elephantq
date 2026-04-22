@@ -21,7 +21,7 @@ async def main():
     database_url = os.environ.get(
         "ELEPHANTQ_DATABASE_URL", "postgresql://postgres@localhost/elephantq"
     )
-    elephantq.configure(database_url=database_url)
+    await elephantq.configure(database_url=database_url)
 
     await elephantq._setup()
 

@@ -21,7 +21,7 @@ def reset_global():
 
 @pytest.mark.asyncio
 async def test_global_get_job_status():
-    elephantq.configure(database_url="postgresql://test@localhost/test")
+    await elephantq.configure(database_url="postgresql://test@localhost/test")
     app = elephantq._get_global_app()
     with patch.object(app, "get_job_status", new_callable=AsyncMock) as mock:
         mock.return_value = {"status": "done", "id": "j1"}
@@ -32,7 +32,7 @@ async def test_global_get_job_status():
 
 @pytest.mark.asyncio
 async def test_global_cancel_job():
-    elephantq.configure(database_url="postgresql://test@localhost/test")
+    await elephantq.configure(database_url="postgresql://test@localhost/test")
     app = elephantq._get_global_app()
     with patch.object(app, "cancel_job", new_callable=AsyncMock) as mock:
         mock.return_value = True
@@ -43,7 +43,7 @@ async def test_global_cancel_job():
 
 @pytest.mark.asyncio
 async def test_global_retry_job():
-    elephantq.configure(database_url="postgresql://test@localhost/test")
+    await elephantq.configure(database_url="postgresql://test@localhost/test")
     app = elephantq._get_global_app()
     with patch.object(app, "retry_job", new_callable=AsyncMock) as mock:
         mock.return_value = True
@@ -54,7 +54,7 @@ async def test_global_retry_job():
 
 @pytest.mark.asyncio
 async def test_global_delete_job():
-    elephantq.configure(database_url="postgresql://test@localhost/test")
+    await elephantq.configure(database_url="postgresql://test@localhost/test")
     app = elephantq._get_global_app()
     with patch.object(app, "delete_job", new_callable=AsyncMock) as mock:
         mock.return_value = True
@@ -65,7 +65,7 @@ async def test_global_delete_job():
 
 @pytest.mark.asyncio
 async def test_global_list_jobs():
-    elephantq.configure(database_url="postgresql://test@localhost/test")
+    await elephantq.configure(database_url="postgresql://test@localhost/test")
     app = elephantq._get_global_app()
     with patch.object(app, "list_jobs", new_callable=AsyncMock) as mock:
         mock.return_value = [{"id": "j1"}, {"id": "j2"}]
@@ -76,7 +76,7 @@ async def test_global_list_jobs():
 
 @pytest.mark.asyncio
 async def test_global_get_queue_stats():
-    elephantq.configure(database_url="postgresql://test@localhost/test")
+    await elephantq.configure(database_url="postgresql://test@localhost/test")
     app = elephantq._get_global_app()
     with patch.object(app, "get_queue_stats", new_callable=AsyncMock) as mock:
         mock.return_value = {"queued": 5, "processing": 2}
@@ -87,7 +87,7 @@ async def test_global_get_queue_stats():
 
 @pytest.mark.asyncio
 async def test_global_setup():
-    elephantq.configure(database_url="postgresql://test@localhost/test")
+    await elephantq.configure(database_url="postgresql://test@localhost/test")
     app = elephantq._get_global_app()
     with patch.object(app, "_setup", new_callable=AsyncMock) as mock:
         await elephantq._setup()
@@ -96,7 +96,7 @@ async def test_global_setup():
 
 @pytest.mark.asyncio
 async def test_global_reset():
-    elephantq.configure(database_url="postgresql://test@localhost/test")
+    await elephantq.configure(database_url="postgresql://test@localhost/test")
     app = elephantq._get_global_app()
     with patch.object(app, "_reset", new_callable=AsyncMock) as mock:
         await elephantq._reset()
