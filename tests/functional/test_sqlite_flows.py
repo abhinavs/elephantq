@@ -130,3 +130,37 @@ async def test_reset(backend, registry):
 
     await backend.reset()
     assert len(await backend.list_jobs()) == 0
+
+
+@pytest.mark.asyncio
+async def test_result_persisted_and_retrieved_sqlite(backend, registry):
+    """A job's return value is stored and readable via get_job on SQLite."""
+
+    async def compute():
+        return {"answer": 42, "items": [1, 2, 3]}
+
+    job_id = await _create(backend, registry, compute)
+    await process_job_via_backend(
+        backend=backend, job_registry=registry, queues=["default"]
+    )
+
+    job = await backend.get_job(job_id)
+    assert job["status"] == "done"
+    assert job["result"] == {"answer": 42, "items": [1, 2, 3]}
+
+
+@pytest.mark.asyncio
+async def test_result_none_when_void_sqlite(backend, registry):
+    """A void handler stores NULL, not the string 'null'."""
+
+    async def no_return():
+        return None
+
+    job_id = await _create(backend, registry, no_return)
+    await process_job_via_backend(
+        backend=backend, job_registry=registry, queues=["default"]
+    )
+
+    job = await backend.get_job(job_id)
+    assert job["status"] == "done"
+    assert job["result"] is None

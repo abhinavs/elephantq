@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Breaking Changes
 - `StorageBackend` protocol gained a required `reschedule_job(job_id, *, delay_seconds, attempts, reason=None)` method, used by the new `Snooze` return type. All in-tree backends (Postgres, SQLite, Memory) implement it. Any third-party backend must add an implementation; otherwise `isinstance(backend, StorageBackend)` checks fail and handlers that return `Snooze` will raise `AttributeError`.
 - Advisory-lock leader election (see below) requires Postgres in session-pooling mode. **Transaction-pooling PgBouncer deployments must either switch to session-pooling or disable the feature** - `pg_try_advisory_lock` releases between statements under transaction-pooling, making the lock unsafe. Single-writer deployments (SQLite, Memory, or a single Postgres worker) are unaffected.
+- `scheduled_at` no longer accepts naive datetimes. Pass `datetime.now(timezone.utc)` or attach `tzinfo` explicitly. Naive datetimes were silently interpreted as local machine time and converted to UTC, producing schedules that drifted across hosts in different timezones.
+
+### Fixed
+- Job return values are now persisted on the Postgres and SQLite backends. `app.get_result(job_id)` previously returned `None` on both backends because the `result` column never existed; it now round-trips JSON-serializable values through a new `elephantq_jobs.result` column (added by migration `005_job_results.sql` and an idempotent `ALTER TABLE` in the SQLite backend).
+- Failing jobs capture the full exception traceback in `last_error` (capped at 8 KB). Prior to this change only `str(e)` was stored, losing the callsite and making production failures hard to diagnose.
 
 ### Added
 - `Snooze(seconds, reason=None)` return type (`elephantq.Snooze`). Returning it from a job handler re-schedules the job without consuming a retry slot. Useful for rate-limited APIs (HTTP 429) and webhook backpressure. Capped by the new `snooze_max_seconds` setting (default `86400`).

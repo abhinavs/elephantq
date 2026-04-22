@@ -110,9 +110,9 @@ async def test_dsl_usage_examples_compliance():
     assert status["status"] == "queued"
 
     # Spec Example 3: Scheduling a Job (basic)
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
-    future_time = datetime.now() + timedelta(minutes=30)
+    future_time = datetime.now(timezone.utc) + timedelta(minutes=30)
 
     scheduled_job_id = await elephantq.schedule(
         send_email,

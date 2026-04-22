@@ -407,10 +407,12 @@ if __name__ == "__main__":
         with tempfile.TemporaryDirectory() as temp_dir:
             timing_file = os.path.join(temp_dir, "timing_log.txt")
 
+            from datetime import timezone as _tz
+
             @elephantq.job()
             async def timed_job(expected_time: str, log_file: str):
                 """Job that logs when it actually executed"""
-                actual_time = datetime.now()
+                actual_time = datetime.now(_tz.utc)
                 with open(log_file, "a") as f:
                     f.write(f"{expected_time},{actual_time.isoformat()}\n")
                 return f"executed_at_{actual_time}"
@@ -420,8 +422,10 @@ if __name__ == "__main__":
                 async with pool.acquire() as conn:
                     await conn.execute("DELETE FROM elephantq_jobs")
 
-            # Schedule jobs at different times (local time — framework converts to UTC)
-            now = datetime.now()
+            # Schedule jobs at different times (timezone-aware UTC).
+            from datetime import timezone
+
+            now = datetime.now(timezone.utc)
             scheduled_times = [
                 now + timedelta(seconds=1),
                 now + timedelta(seconds=2),
