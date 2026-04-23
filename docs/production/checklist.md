@@ -153,3 +153,12 @@ Conservative values that work well for most deployments:
 | `ELEPHANTQ_POOL_HEADROOM` | `2` | Extra connections for listener/heartbeat. |
 | `ELEPHANTQ_RESULT_TTL` | `300` | Completed jobs are cleaned up after 5 minutes. |
 | `ELEPHANTQ_LOG_LEVEL` | `INFO` | Use `DEBUG` only during troubleshooting. |
+
+## Known limitations
+
+- **No named concurrency limits.** `unique=True` and `dedup_key` gate queueing, not execution. If you need "at most N jobs for logical key X at a time", impose that upstream.
+- **Recurring scheduler requires session-pooled Postgres.** The advisory-lock leader guard needs the lock to persist across statements on the same session. PgBouncer in transaction-pooling mode breaks this; switch to session-pooling or a direct Postgres connection.
+- **SQLite backend is single-writer.** Use PostgreSQL for anything with more than one worker process.
+- **Workers are Python-only.** For cross-language consumers, use a broker (RabbitMQ, Kafka) instead.
+
+Also summarised in the README's Known limitations section.
