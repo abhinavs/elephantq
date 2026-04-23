@@ -28,9 +28,26 @@ from datetime import datetime, timedelta, timezone
 from importlib.metadata import PackageNotFoundError, version
 from typing import Optional, Union
 
+from ._active import _active_app
 from .app import ElephantQ
 from .job import JobContext, JobStatus, Snooze
 from .settings import configure as settings_configure
+
+
+def _resolve_app() -> ElephantQ:
+    """Return the active ElephantQ if one is on the contextvar, else the global.
+
+    Top-level helpers (`elephantq.enqueue`, `elephantq.schedule`) used to
+    unconditionally reach for the global app. A caller using an explicit
+    `ElephantQ(...)` instance had their calls silently routed to the global
+    app's database. Checking the contextvar first honors the caller's
+    instance while preserving the zero-config global path.
+    """
+    active = _active_app.get()
+    if isinstance(active, ElephantQ):
+        return active
+    return _get_global_app()
+
 
 try:
     __version__ = version("elephantq")
@@ -257,8 +274,12 @@ def periodic(
 
 
 async def enqueue(job_func, connection=None, **kwargs):
-    """Enqueue a job using the global ElephantQ instance."""
-    app = _get_global_app()
+    """Enqueue a job, honoring an active `ElephantQ` instance if present.
+
+    When called from inside an `ElephantQ(...)` instance method the active
+    instance is used; otherwise the global app handles the call.
+    """
+    app = _resolve_app()
     return await app.enqueue(job_func, connection=connection, **kwargs)
 
 
@@ -296,8 +317,8 @@ async def run_worker(
     run_once: bool = False,
     queues: Optional[list] = None,
 ):
-    """Run a worker using the global ElephantQ instance."""
-    app = _get_global_app()
+    """Run a worker using the active or global ElephantQ instance."""
+    app = _resolve_app()
     return await app.run_worker(
         concurrency=concurrency, run_once=run_once, queues=queues
     )
@@ -305,19 +326,19 @@ async def run_worker(
 
 async def _setup() -> int:
     """Set up ElephantQ — create database (if needed) and run migrations."""
-    app = _get_global_app()
-    return await app._setup()
+    app = _resolve_app()
+    return await app._setup()  # type: ignore[no-any-return]
 
 
 async def _reset() -> None:
     """Delete all jobs and workers. Used in test fixtures."""
-    app = _get_global_app()
-    return await app._reset()
+    app = _resolve_app()
+    await app._reset()
 
 
 async def get_job(job_id: str):
     """Get information for a specific job."""
-    app = _get_global_app()
+    app = _resolve_app()
     return await app.get_job_status(job_id)
 
 
@@ -327,25 +348,25 @@ get_job_status = get_job
 
 async def get_result(job_id: str):
     """Get the return value of a completed job, or None."""
-    app = _get_global_app()
+    app = _resolve_app()
     return await app.get_result(job_id)
 
 
 async def cancel_job(job_id: str):
     """Cancel a queued job."""
-    app = _get_global_app()
+    app = _resolve_app()
     return await app.cancel_job(job_id)
 
 
 async def retry_job(job_id: str):
     """Retry a failed job."""
-    app = _get_global_app()
+    app = _resolve_app()
     return await app.retry_job(job_id)
 
 
 async def delete_job(job_id: str):
     """Delete a job from the queue."""
-    app = _get_global_app()
+    app = _resolve_app()
     return await app.delete_job(job_id)
 
 
@@ -356,13 +377,13 @@ async def list_jobs(
     offset: int = 0,
 ):
     """List jobs with optional filtering."""
-    app = _get_global_app()
+    app = _resolve_app()
     return await app.list_jobs(queue=queue, status=status, limit=limit, offset=offset)
 
 
 async def get_queue_stats():
     """Get statistics for all queues."""
-    app = _get_global_app()
+    app = _resolve_app()
     return await app.get_queue_stats()
 
 

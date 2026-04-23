@@ -629,21 +629,31 @@ class EnhancedRecurringScheduler:
                 await asyncio.sleep(min(self.check_interval, 60))  # Backoff
 
     def _resolve_backend(self):
-        """Return the backend of the global ElephantQ app if available, else None.
+        """Return the backend of the currently-active ElephantQ app, if any.
 
-        The recurring scheduler is always paired with the global app. When the
-        app's backend is Postgres, it exposes `with_advisory_lock`; other
+        Checks the active-app contextvar first so recurring jobs triggered
+        from inside an explicit `ElephantQ(...)` instance honor that
+        instance's backend rather than silently landing in the global app's
+        database. Falls back to the global app when nothing is active.
+
+        When the backend is Postgres, it exposes `with_advisory_lock`; other
         backends return no attribute and `with_advisory_lock(None_or_backend)`
         falls through to always-leader mode.
         """
         try:
+            from elephantq._active import get_active_app
+
+            active = get_active_app()
+            if active is not None:
+                return active._backend
+
             import elephantq
 
             return elephantq._get_global_app()._backend
         except Exception:
             # Global app may not be initialized (feature used standalone or
             # during early startup). Fall back to always-leader mode.
-            logger.debug("Unable to resolve global backend", exc_info=True)
+            logger.debug("Unable to resolve active backend", exc_info=True)
             return None
 
     async def _process_due_jobs(self):
