@@ -691,6 +691,8 @@ class ElephantQ:
 
     async def _ensure_postgres_database_exists(self) -> None:
         """Create the PostgreSQL database if it doesn't exist."""
+        import re
+
         import asyncpg as _asyncpg
 
         url = self._settings.database_url
@@ -706,6 +708,20 @@ class ElephantQ:
         server_url = parts[0] + "/postgres"  # Connect to default 'postgres' db
         db_name = parts[1].split("?")[0]  # Strip query params
 
+        # CREATE DATABASE cannot use parameterized statements, so the name is
+        # string-interpolated. The name is operator-controlled (comes from the
+        # connection URL) so this is not a classic injection vector, but a
+        # stray quote, space, or semicolon in the name still breaks quoting
+        # and produces mystifying errors. Reject non-identifiers up front.
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]*", db_name):
+            raise ValueError(
+                f"Refusing to CREATE DATABASE for non-identifier name: "
+                f"{db_name!r}. elephantq auto-create only accepts database "
+                f"names matching the SQL identifier pattern "
+                f"[A-Za-z_][A-Za-z0-9_$]*; create the database manually if "
+                f"you need an unusual name, then skip auto-create."
+            )
+
         try:
             conn = await _asyncpg.connect(server_url)
             try:
@@ -713,11 +729,14 @@ class ElephantQ:
                     "SELECT 1 FROM pg_database WHERE datname = $1", db_name
                 )
                 if not exists:
-                    # Can't use parameterized query for CREATE DATABASE
+                    # Identifier already validated above.
                     await conn.execute(f'CREATE DATABASE "{db_name}"')
                     logger.info(f"Created database: {db_name}")
             finally:
                 await conn.close()
+        except ValueError:
+            # Don't swallow our own validation error.
+            raise
         except Exception as e:
             # Database might already exist, or we might not have permissions
             # Either way, we'll find out when migrations run

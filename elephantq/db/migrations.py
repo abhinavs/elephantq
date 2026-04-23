@@ -11,7 +11,13 @@ from typing import List, Optional, Tuple
 
 import asyncpg
 
+from ..core.leadership import advisory_key
 from .context import get_context_pool
+
+# Reused across concurrent migration runs. Parallel deploys (two CI nodes
+# calling `elephantq setup` at once) used to race on non-idempotent DDL or
+# double-insert into `elephantq_migrations`; this lock serializes them.
+_MIGRATION_LOCK_KEY = advisory_key("elephantq.migrations")
 
 logger = logging.getLogger(__name__)
 
@@ -147,43 +153,58 @@ class MigrationRunner:
             return await self._run_migrations_with_connection(conn)
 
     async def _run_migrations_with_connection(self, conn: asyncpg.Connection) -> int:
-        """Internal method to run migrations with a provided connection"""
+        """Internal method to run migrations with a provided connection.
+
+        Holds a session-scoped `pg_advisory_lock` for the whole run so two
+        deploy nodes calling `elephantq setup` at the same time do not race
+        on non-idempotent DDL or on inserts into `elephantq_migrations`. The
+        losing node waits, then re-reads the applied set and typically
+        becomes a no-op.
+        """
         logger.info("Starting database migration process")
 
-        # Ensure migration tracking table exists
-        await self.ensure_migration_table(conn)
+        # Acquire the serializing advisory lock before any migration-table
+        # interaction. pg_advisory_lock blocks until the other holder
+        # releases, so both callers eventually make progress.
+        await conn.fetchval("SELECT pg_advisory_lock($1)", _MIGRATION_LOCK_KEY)
+        try:
+            # Ensure migration tracking table exists
+            await self.ensure_migration_table(conn)
 
-        # Discover available migrations
-        available_migrations = self.discover_migrations()
-        if not available_migrations:
-            logger.info("No migration files found")
-            return 0
+            # Discover available migrations
+            available_migrations = self.discover_migrations()
+            if not available_migrations:
+                logger.info("No migration files found")
+                return 0
 
-        # Get already applied migrations
-        applied_migrations = await self.get_applied_migrations(conn)
-        applied_set = set(applied_migrations)
+            # Re-read applied inside the lock so a concurrent winner's state
+            # is visible.
+            applied_migrations = await self.get_applied_migrations(conn)
+            applied_set = set(applied_migrations)
 
-        # Determine which migrations need to be applied
-        pending_migrations = [
-            (version, name, file_path)
-            for version, name, file_path in available_migrations
-            if version not in applied_set
-        ]
+            # Determine which migrations need to be applied
+            pending_migrations = [
+                (version, name, file_path)
+                for version, name, file_path in available_migrations
+                if version not in applied_set
+            ]
 
-        if not pending_migrations:
-            logger.info("All migrations are up to date")
-            return 0
+            if not pending_migrations:
+                logger.info("All migrations are up to date")
+                return 0
 
-        logger.info(f"Found {len(pending_migrations)} pending migrations")
+            logger.info(f"Found {len(pending_migrations)} pending migrations")
 
-        # Apply each pending migration
-        applied_count = 0
-        for version, name, file_path in pending_migrations:
-            await self.apply_migration(conn, version, name, file_path)
-            applied_count += 1
+            # Apply each pending migration
+            applied_count = 0
+            for version, name, file_path in pending_migrations:
+                await self.apply_migration(conn, version, name, file_path)
+                applied_count += 1
 
-        logger.info(f"Successfully applied {applied_count} migrations")
-        return applied_count
+            logger.info(f"Successfully applied {applied_count} migrations")
+            return applied_count
+        finally:
+            await conn.fetchval("SELECT pg_advisory_unlock($1)", _MIGRATION_LOCK_KEY)
 
     async def get_migration_status(self, conn: asyncpg.Connection = None) -> dict:
         """
