@@ -5,15 +5,69 @@ Instance-based architecture to replace global state patterns.
 Enables multiple isolated ElephantQ instances with independent configurations.
 """
 
+import functools
 import logging
 from pathlib import Path
 from typing import Any, List, Optional
 
+from ._active import _active_app
 from .core.registry import JobRegistry
 from .errors import ElephantQError
 from .settings import ElephantQSettings
 
 logger = logging.getLogger(__name__)
+
+
+def _with_active_app(method):
+    """Decorator that attaches `self` to the active-app contextvar for the
+    duration of an async instance method. Feature helpers read this to honor
+    the caller's `ElephantQ` instead of silently using the global app.
+
+    Resets on exit so the var does not leak across tasks: because
+    `ContextVar` is task-local, restoration via `reset(token)` is safe even
+    when multiple calls happen concurrently on different instances.
+    """
+
+    @functools.wraps(method)
+    async def wrapper(self, *args, **kwargs):
+        token = _active_app.set(self)
+        try:
+            return await method(self, *args, **kwargs)
+        finally:
+            _active_app.reset(token)
+
+    return wrapper
+
+
+def _pool_sizing_error(
+    *, concurrency: int, pool_max_size: int, pool_headroom: int
+) -> Optional["ElephantQError"]:
+    """Return an error describing an undersized pool, or None if adequate.
+
+    Pure helper so the arithmetic can be unit-tested without spinning up a
+    real backend. `pool_max_size=0` disables the check (some operators set
+    it explicitly to opt out). The check is equality-inclusive: a pool
+    exactly equal to `concurrency + headroom` is considered enough.
+    """
+    if pool_max_size <= 0:
+        return None
+    required = concurrency + pool_headroom
+    if required <= pool_max_size:
+        return None
+    return ElephantQError(
+        f"Connection pool too small: worker concurrency ({concurrency}) "
+        f"plus reserved headroom ({pool_headroom}) requires {required} "
+        f"connections, but pool_max_size is {pool_max_size}. "
+        f"Raise ELEPHANTQ_POOL_MAX_SIZE, lower ELEPHANTQ_CONCURRENCY, "
+        f"or reduce ELEPHANTQ_POOL_HEADROOM.",
+        "ELEPHANTQ_POOL_TOO_SMALL",
+        context={
+            "concurrency": concurrency,
+            "pool_headroom": pool_headroom,
+            "pool_max_size": pool_max_size,
+            "required_connections": required,
+        },
+    )
 
 
 class ElephantQ:
@@ -188,20 +242,24 @@ class ElephantQ:
                 f"ElephantQ initialization failed: {e}", "ELEPHANTQ_INIT_ERROR"
             ) from e
 
-    def _warn_if_pool_too_small(self, concurrency: int) -> None:
-        """Warn when worker concurrency + headroom exceeds the configured pool max size."""
-        if not self._pool or self._settings.pool_max_size <= 0:
-            return
+    def _check_pool_sizing(self, concurrency: int) -> None:
+        """Refuse to start a worker that would deadlock on a too-small pool.
 
-        required_connections = concurrency + self._settings.pool_headroom
-        if required_connections > self._settings.pool_max_size:
-            logger.warning(
-                "Worker concurrency (%s) + pool headroom (%s) exceeds configured pool max (%s). "
-                "Increase ELEPHANTQ_POOL_MAX_SIZE or reduce concurrency to prevent connection exhaustion.",
-                concurrency,
-                self._settings.pool_headroom,
-                self._settings.pool_max_size,
-            )
+        Only applies to backends that use an asyncpg connection pool. Memory
+        and SQLite backends have no pool and skip the check. A warning here
+        was what we had before; operators missed it and workers stalled in
+        production. Promoting to a hard error puts the misconfiguration in
+        front of them at startup instead of at 3am.
+        """
+        if not hasattr(self._backend, "pool"):
+            return
+        err = _pool_sizing_error(
+            concurrency=concurrency,
+            pool_max_size=self._settings.pool_max_size,
+            pool_headroom=self._settings.pool_headroom,
+        )
+        if err is not None:
+            raise err
 
     async def __aenter__(self):
         await self._ensure_initialized()
@@ -240,6 +298,7 @@ class ElephantQ:
             self._closed = True
             self._initialized = False
 
+    @_with_active_app
     async def _reset(self) -> None:
         """
         Delete all jobs and workers. Used in test fixtures.
@@ -280,6 +339,7 @@ class ElephantQ:
         self._hooks["on_error"].append(fn)
         return fn
 
+    @_with_active_app
     async def enqueue(self, job_func, connection=None, **kwargs):
         """
         Enqueue a job for processing.
@@ -362,15 +422,22 @@ class ElephantQ:
             scheduled_at=scheduled_at,
         )
 
-        # Notify workers if backend supports push notifications
+        # Notify workers if backend supports push notifications. Workers
+        # also poll on a timer, so a failed notify degrades latency but does
+        # not drop the job. Log at debug so it's visible when investigating.
         if self._backend.supports_push_notify:
             try:
                 await self._backend.notify_new_job(final_queue)
             except Exception:
-                pass  # Non-critical — workers will poll
+                logger.debug(
+                    "notify_new_job failed for queue %s; workers will pick up via poll",
+                    final_queue,
+                    exc_info=True,
+                )
 
         return result_id or job_id
 
+    @_with_active_app
     async def schedule(self, job_func, run_at, **kwargs):
         """
         Schedule a job for future execution.
@@ -394,6 +461,7 @@ class ElephantQ:
         """Get job registry."""
         return self._job_registry
 
+    @_with_active_app
     async def run_worker(
         self,
         concurrency: int = 4,
@@ -414,7 +482,7 @@ class ElephantQ:
         """
         await self._ensure_initialized()
 
-        self._warn_if_pool_too_small(concurrency)
+        self._check_pool_sizing(concurrency)
 
         from .worker import Worker
 
@@ -453,10 +521,17 @@ class ElephantQ:
                 try:
                     await stop_recurring_scheduler()
                 except Exception:
-                    pass
+                    # Shutdown path: the scheduler will be reclaimed by the
+                    # stale-worker sweep; log for investigation but don't
+                    # mask the worker's own exit status.
+                    logger.debug(
+                        "stop_recurring_scheduler failed during shutdown",
+                        exc_info=True,
+                    )
 
     # Job Management API
 
+    @_with_active_app
     async def get_job_status(self, job_id: str):
         """
         Get status information for a specific job.
@@ -470,6 +545,7 @@ class ElephantQ:
         await self._ensure_initialized()
         return await self._backend.get_job(job_id)  # type: ignore[union-attr]
 
+    @_with_active_app
     async def get_result(self, job_id: str):
         """Get the return value of a completed job, or None."""
         await self._ensure_initialized()
@@ -478,6 +554,7 @@ class ElephantQ:
             return job.get("result")
         return None
 
+    @_with_active_app
     async def cancel_job(self, job_id: str):
         """
         Cancel a queued job.
@@ -491,6 +568,7 @@ class ElephantQ:
         await self._ensure_initialized()
         return await self._backend.cancel_job(job_id)  # type: ignore[union-attr]
 
+    @_with_active_app
     async def retry_job(self, job_id: str):
         """
         Retry a failed job.
@@ -504,6 +582,7 @@ class ElephantQ:
         await self._ensure_initialized()
         return await self._backend.retry_job(job_id)  # type: ignore[union-attr]
 
+    @_with_active_app
     async def delete_job(self, job_id: str):
         """
         Delete a job from the queue.
@@ -517,6 +596,7 @@ class ElephantQ:
         await self._ensure_initialized()
         return await self._backend.delete_job(job_id)  # type: ignore[union-attr]
 
+    @_with_active_app
     async def list_jobs(
         self,
         queue: Optional[str] = None,
@@ -541,6 +621,7 @@ class ElephantQ:
             queue=queue, status=status, limit=limit, offset=offset
         )
 
+    @_with_active_app
     async def get_queue_stats(self):
         """
         Get statistics for all queues.
@@ -586,6 +667,7 @@ class ElephantQ:
         async with self._pool.acquire() as conn:  # type: ignore[union-attr]
             return await migration_runner._run_migrations_with_connection(conn)
 
+    @_with_active_app
     async def _setup(self) -> int:
         """
         Set up ElephantQ — create database (if needed) and run migrations.
@@ -609,6 +691,8 @@ class ElephantQ:
 
     async def _ensure_postgres_database_exists(self) -> None:
         """Create the PostgreSQL database if it doesn't exist."""
+        import re
+
         import asyncpg as _asyncpg
 
         url = self._settings.database_url
@@ -624,6 +708,20 @@ class ElephantQ:
         server_url = parts[0] + "/postgres"  # Connect to default 'postgres' db
         db_name = parts[1].split("?")[0]  # Strip query params
 
+        # CREATE DATABASE cannot use parameterized statements, so the name is
+        # string-interpolated. The name is operator-controlled (comes from the
+        # connection URL) so this is not a classic injection vector, but a
+        # stray quote, space, or semicolon in the name still breaks quoting
+        # and produces mystifying errors. Reject non-identifiers up front.
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_$]*", db_name):
+            raise ValueError(
+                f"Refusing to CREATE DATABASE for non-identifier name: "
+                f"{db_name!r}. elephantq auto-create only accepts database "
+                f"names matching the SQL identifier pattern "
+                f"[A-Za-z_][A-Za-z0-9_$]*; create the database manually if "
+                f"you need an unusual name, then skip auto-create."
+            )
+
         try:
             conn = await _asyncpg.connect(server_url)
             try:
@@ -631,11 +729,14 @@ class ElephantQ:
                     "SELECT 1 FROM pg_database WHERE datname = $1", db_name
                 )
                 if not exists:
-                    # Can't use parameterized query for CREATE DATABASE
+                    # Identifier already validated above.
                     await conn.execute(f'CREATE DATABASE "{db_name}"')
                     logger.info(f"Created database: {db_name}")
             finally:
                 await conn.close()
+        except ValueError:
+            # Don't swallow our own validation error.
+            raise
         except Exception as e:
             # Database might already exist, or we might not have permissions
             # Either way, we'll find out when migrations run

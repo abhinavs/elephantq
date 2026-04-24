@@ -48,12 +48,13 @@ async def test_pool_exhaustion_blocks_then_succeeds():
 
 
 @pytest.mark.asyncio
-async def test_pool_size_warning(caplog):
+async def test_pool_size_check_raises_on_undersized_pool():
     """
-    _warn_if_pool_too_small should log a warning when concurrency
-    exceeds pool capacity.
+    _check_pool_sizing refuses to start when concurrency + headroom exceeds
+    pool_max_size. The old behavior was a warning that operators missed;
+    we now fail fast so a misconfigured deploy does not deadlock under load.
     """
-    import logging
+    from elephantq.errors import ElephantQError
 
     app = ElephantQ(
         database_url=TEST_DATABASE_URL,
@@ -64,13 +65,8 @@ async def test_pool_size_warning(caplog):
     await app._ensure_initialized()
 
     try:
-        with caplog.at_level(logging.WARNING):
-            # concurrency=5 + safety_margin=2 = 7 > max_size=3
-            app._warn_if_pool_too_small(concurrency=5)
-
-        assert any(
-            "pool" in r.message.lower() and "concurrency" in r.message.lower()
-            for r in caplog.records
-        ), "Expected warning about pool size vs concurrency"
+        with pytest.raises(ElephantQError, match="ELEPHANTQ_POOL_TOO_SMALL"):
+            # concurrency=5 + headroom=2 = 7 > max_size=3
+            app._check_pool_sizing(concurrency=5)
     finally:
         await app.close()

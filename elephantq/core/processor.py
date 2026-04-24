@@ -11,12 +11,32 @@ import inspect
 import json
 import logging
 import time
+import traceback
 from typing import Any, List, Optional
 
 from elephantq.core.registry import JobRegistry
 from elephantq.core.retry import compute_retry_delay_seconds
 
 logger = logging.getLogger(__name__)
+
+# Cap how much traceback + message we stash on a failed job. 8 KB is enough for
+# a dozen-frame stack; bigger than that and one flaky handler can bloat the
+# last_error column of the jobs table.
+_MAX_LAST_ERROR_CHARS = 8192
+
+
+def _format_job_error(exc: BaseException) -> str:
+    """Render an exception as `ExceptionType: message\n<traceback>`.
+
+    Keeps the full frame information in one string so operators can read the
+    failure back from the job record (or the dashboard) without having to go
+    hunt for logs. Truncated at `_MAX_LAST_ERROR_CHARS` to stay bounded.
+    """
+    tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    rendered = f"{type(exc).__name__}: {exc}\n{tb}"
+    if len(rendered) > _MAX_LAST_ERROR_CHARS:
+        rendered = rendered[:_MAX_LAST_ERROR_CHARS]
+    return rendered
 
 
 async def _execute_job_safely(
@@ -93,7 +113,7 @@ async def _execute_job_safely(
     except asyncio.TimeoutError:
         return False, f"Job timed out after {timeout}s", None
     except Exception as e:
-        return False, str(e), None
+        return False, _format_job_error(e), None
 
 
 async def _call_hooks(hooks: dict, hook_name: str, *args) -> None:
@@ -234,10 +254,13 @@ async def process_job_via_backend(
             _hooks, "on_error", job_name, job_id, str(job_error), attempts
         )
         if attempts >= max_attempts:
+            wrapped = f"Max retries exceeded: {job_error}"
+            if len(wrapped) > _MAX_LAST_ERROR_CHARS:
+                wrapped = wrapped[:_MAX_LAST_ERROR_CHARS]
             await backend.mark_job_dead_letter(
                 job_id,
                 attempts=attempts,
-                error=f"Max retries exceeded: {job_error}",
+                error=wrapped,
             )
             logger.error(f"Job {job_id} moved to dead letter after {attempts} attempts")
         else:
@@ -248,10 +271,13 @@ async def process_job_via_backend(
                 retry_max_delay=job_meta.get("retry_max_delay"),
                 retry_jitter=job_meta.get("retry_jitter", True),
             )
+            error_message = str(job_error)
+            if len(error_message) > _MAX_LAST_ERROR_CHARS:
+                error_message = error_message[:_MAX_LAST_ERROR_CHARS]
             await backend.mark_job_failed(
                 job_id,
                 attempts=attempts,
-                error=str(job_error),
+                error=error_message,
                 retry_delay=retry_delay if retry_delay > 0 else None,
             )
             logger.warning(

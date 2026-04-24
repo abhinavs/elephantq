@@ -255,7 +255,9 @@ async def test_scheduled_jobs_across_queues(app, result_file):
     backend = app._backend
     worker = Worker(backend, registry)
 
-    future_time = datetime.now() + timedelta(seconds=1)
+    from datetime import timezone
+
+    future_time = datetime.now(timezone.utc) + timedelta(seconds=1)
 
     # Schedule jobs in different queues
     await app.enqueue(

@@ -44,7 +44,7 @@ from contextlib import asynccontextmanager  # noqa: E402
 @asynccontextmanager
 async def lifespan(app):
     app.state.pool = await asyncpg.create_pool(DATABASE_URL)
-    elephantq.configure(database_url=DATABASE_URL)
+    await elephantq.configure(database_url=DATABASE_URL)
     await elephantq._setup()
 
     async with app.state.pool.acquire() as conn:

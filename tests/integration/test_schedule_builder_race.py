@@ -41,7 +41,7 @@ async def race_builder_job():
 async def _ready_app():
     """Use the global app already configured by the integration conftest.
 
-    Calling `elephantq.configure()` here would orphan the conftest's pool
+    Calling `await elephantq.configure()` here would orphan the conftest's pool
     and potentially exhaust Postgres max_connections.
     """
     global_app = elephantq._get_global_app()

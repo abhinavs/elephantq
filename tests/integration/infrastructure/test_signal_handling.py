@@ -105,7 +105,7 @@ import elephantq
 
 async def main():
     # Configure elephantq
-    elephantq.configure(
+    await elephantq.configure(
         database_url=os.environ.get("ELEPHANTQ_DATABASE_URL", "postgresql://localhost/elephantq_test")
     )
 

@@ -108,6 +108,15 @@ pip install elephantq[monitoring]  # Prometheus metrics
 pip install elephantq[webhooks]    # webhook delivery + signing
 ```
 
+## Known limitations
+
+Worth knowing before you adopt. Also called out in the production checklist linked below.
+
+- **No named concurrency limits (per-key execution gates).** `unique=True` and `dedup_key` prevent *queueing* duplicates, but nothing caps concurrent *execution* for a logical resource. If you need "at most 3 jobs for `user_id=42` at a time," that belongs upstream of ElephantQ today. Planned, not in this release.
+- **Recurring scheduler uses a Postgres session-scoped advisory lock.** PgBouncer deployments must run in session-pooling mode. Transaction-pooling releases the lock between statements and breaks the leader guarantee.
+- **Python-only consumers.** Workers are Python processes. Cross-language workers (Go, Node, etc.) need a broker like RabbitMQ instead.
+- **SQLite backend is single-writer.** Good enough for local dev and prototyping; PostgreSQL for anything production-shaped.
+
 ## When NOT to use ElephantQ
 
 - **You need 10k+ jobs/sec sustained throughput.** PostgreSQL row locking has limits. Redis-backed queues like Celery or Arq are built for this.

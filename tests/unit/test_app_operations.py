@@ -2,7 +2,7 @@
 Tests for ElephantQ app operations not covered elsewhere.
 
 Covers: close() error path, unregistered job error, transactional enqueue,
-schedule(), _warn_if_pool_too_small, hooks, get_pool, app as context manager.
+schedule(), _check_pool_sizing, hooks, get_pool, app as context manager.
 """
 
 import pytest

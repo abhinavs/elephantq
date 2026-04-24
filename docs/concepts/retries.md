@@ -139,4 +139,4 @@ async def long_running_migration():
     ...
 ```
 
-Change the global default with `ELEPHANTQ_JOB_TIMEOUT` or `elephantq.configure(job_timeout=600)`. Set to `0` to disable timeouts globally.
+Change the global default with `ELEPHANTQ_JOB_TIMEOUT` or `await elephantq.configure(job_timeout=600)`. Set to `0` to disable timeouts globally.

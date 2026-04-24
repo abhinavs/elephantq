@@ -36,17 +36,18 @@ def _normalize_scheduled_time(
     """
     Normalize scheduled_at to a timezone-aware UTC datetime for database storage.
 
-    Users can pass datetimes in any timezone:
-    - Timezone-aware datetimes are converted to UTC automatically.
-    - Naive datetimes (no tzinfo) are interpreted as local machine time
-      and converted to UTC.
-    - timedelta and numeric values are treated as offsets from now.
+    Accepted inputs:
+    - Timezone-aware datetimes are converted to UTC.
+    - timedelta and numeric values are treated as offsets from now in UTC.
+    - Naive datetimes are rejected. A naive datetime is ambiguous across hosts
+      in different timezones, so silently treating it as local time produced
+      schedules that drifted per deployment target.
 
     Args:
-        scheduled_at: datetime, timedelta, or seconds from now (int/float)
+        scheduled_at: datetime (with tzinfo), timedelta, or seconds from now.
 
     Returns:
-        Timezone-aware UTC datetime suitable for TIMESTAMPTZ storage, or None
+        Timezone-aware UTC datetime suitable for TIMESTAMPTZ storage, or None.
     """
     if scheduled_at is None:
         return None
@@ -59,12 +60,12 @@ def _normalize_scheduled_time(
     if isinstance(scheduled_at, (int, float)):
         return datetime.now(timezone.utc) + timedelta(seconds=scheduled_at)
 
-    if scheduled_at.tzinfo is not None:
-        # Timezone-aware: convert to UTC
-        return scheduled_at.astimezone(timezone.utc)
-    else:
-        # Naive datetime: treat as local time, convert to UTC.
-        # This is user-friendly — datetime.now() and datetime(2025, 3, 23, 14, 0)
-        # are interpreted in the user's local timezone.
-        local_dt = scheduled_at.astimezone()  # attach local tz
-        return local_dt.astimezone(timezone.utc)
+    if scheduled_at.tzinfo is None:
+        raise ValueError(
+            "scheduled_at must be timezone-aware. "
+            "Pass datetime.now(timezone.utc) or attach tzinfo. "
+            "Naive datetimes are ambiguous across hosts and were silently "
+            "interpreted as local time."
+        )
+
+    return scheduled_at.astimezone(timezone.utc)

@@ -23,7 +23,7 @@ from tests.db_utils import TEST_DATABASE_URL
 
 @pytest.mark.asyncio
 async def test_snooze_requeues_with_attempts_unchanged_against_postgres():
-    elephantq.configure(database_url=TEST_DATABASE_URL)
+    await elephantq.configure(database_url=TEST_DATABASE_URL)
     global_app = elephantq._get_global_app()
     set_current_context(DatabaseContext.from_instance(global_app))
     await global_app._ensure_initialized()

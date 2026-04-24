@@ -48,38 +48,18 @@ class TestNormalizeScheduledTime:
         # 14:30 EST = 19:30 UTC
         assert result == datetime(2025, 6, 15, 19, 30, tzinfo=timezone.utc)
 
-    def test_naive_datetime_treated_as_local_time(self):
-        """Naive datetimes should be interpreted as local machine time, not UTC."""
+    def test_naive_datetime_rejected(self):
+        """Naive datetimes are rejected: they're ambiguous across hosts."""
         local_now = datetime.now()
-        result = _normalize_scheduled_time(local_now)
-        assert result.tzinfo == timezone.utc
+        with pytest.raises(ValueError, match="timezone-aware"):
+            _normalize_scheduled_time(local_now)
 
-        # The result should be close to UTC now
-        utc_now = datetime.now(timezone.utc)
-        diff = abs((result - utc_now).total_seconds())
-        assert diff < 2, (
-            f"Naive datetime not correctly converted to UTC. "
-            f"Result: {result}, UTC now: {utc_now}, diff: {diff}s"
-        )
-
-    def test_naive_datetime_not_assumed_utc(self):
-        """Verify naive datetimes are NOT treated as UTC (the old broken behavior)."""
-        import time
-
-        local_offset_seconds = -time.timezone if time.daylight == 0 else -time.altzone
-        if local_offset_seconds == 0:
-            pytest.skip("Machine is in UTC — cannot test local vs UTC difference")
-
+    def test_naive_datetime_rejection_message_is_actionable(self):
+        """The error tells the user how to fix their call."""
         naive = datetime(2025, 6, 15, 10, 0, 0)
-        result = _normalize_scheduled_time(naive)
-
-        # Result should be timezone-aware UTC
-        assert result.tzinfo == timezone.utc
-        # If we're NOT in UTC, the hour should differ from the input
-        assert result.replace(tzinfo=None) != naive, (
-            "Naive datetime was passed through unchanged — "
-            "it should be converted from local to UTC"
-        )
+        with pytest.raises(ValueError) as exc_info:
+            _normalize_scheduled_time(naive)
+        assert "timezone.utc" in str(exc_info.value) or "tzinfo" in str(exc_info.value)
 
 
 class TestSchedulingBuilderTimezones:

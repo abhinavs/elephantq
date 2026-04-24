@@ -49,7 +49,7 @@ async def clean_test_state():
     ):
         await global_app.close()
 
-    elephantq.configure(database_url=_TEST_DATABASE_URL)
+    await elephantq.configure(database_url=_TEST_DATABASE_URL)
 
     # Get pool and clear any existing jobs (use global app's pool for consistency)
     global_app = elephantq._get_global_app()

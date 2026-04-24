@@ -215,4 +215,35 @@ async def test_capabilities():
 
     backend = MemoryBackend()
     assert backend.supports_push_notify is False
+
+
+@pytest.mark.asyncio
+async def test_result_persisted_and_retrieved_memory():
+    """Memory backend persists handler return value through mark_job_done."""
+    from elephantq.backends.memory import MemoryBackend
+
+    backend = MemoryBackend()
+    await backend.initialize()
+
+    job_id = str(uuid.uuid4())
+    await backend.create_job(
+        job_id=job_id,
+        job_name="test.result",
+        args="{}",
+        args_hash=None,
+        max_attempts=3,
+        priority=100,
+        queue="default",
+        unique=False,
+        dedup_key=None,
+        scheduled_at=None,
+    )
+    await backend.fetch_and_lock_job(queues=["default"], worker_id=None)
+    await backend.mark_job_done(
+        job_id, result_ttl=3600, result={"count": 7, "label": "done"}
+    )
+
+    job = await backend.get_job(job_id)
+    assert job["status"] == "done"
+    assert job["result"] == {"count": 7, "label": "done"}
     assert backend.supports_transactional_enqueue is False

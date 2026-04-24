@@ -212,28 +212,21 @@ async def test_registry_edge_cases():
 
 @pytest.mark.asyncio
 async def test_timezone_and_datetime_handling():
-    """Test scheduling with different timezone scenarios"""
-    # Test naive datetime scheduling
-    future_time = datetime.now() + timedelta(minutes=30)
-    naive_job = await elephantq.enqueue(
-        simple_job, message="naive", scheduled_at=future_time
-    )
-
-    # Test timezone-aware datetime scheduling
+    """Naive datetimes are rejected; timezone-aware datetimes are accepted."""
     from datetime import timezone
 
+    # Naive datetimes are ambiguous across hosts and must raise.
+    naive = datetime.now() + timedelta(minutes=30)
+    with pytest.raises(ValueError, match="timezone-aware"):
+        await elephantq.enqueue(simple_job, message="naive", scheduled_at=naive)
+
+    # Timezone-aware datetimes continue to work.
     tz_time = datetime.now(timezone.utc) + timedelta(minutes=30)
     tz_job = await elephantq.enqueue(
         simple_job, message="timezone", scheduled_at=tz_time
     )
-
-    # Verify both jobs were scheduled
-    naive_status = await elephantq.get_job_status(naive_job)
     tz_status = await elephantq.get_job_status(tz_job)
-
-    assert naive_status["scheduled_at"] is not None
     assert tz_status["scheduled_at"] is not None
-    assert naive_status["status"] == "queued"
     assert tz_status["status"] == "queued"
 
 

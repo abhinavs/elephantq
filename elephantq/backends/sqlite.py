@@ -88,6 +88,7 @@ class SQLiteBackend:
                 scheduled_at TEXT,
                 expires_at TEXT,
                 last_error TEXT,
+                result TEXT,
                 worker_id TEXT,
                 created_at TEXT,
                 updated_at TEXT
@@ -111,6 +112,15 @@ class SQLiteBackend:
             );
             """
         )
+
+        # Upgrade existing databases that predate the `result` column.
+        cursor = await self._conn.execute("PRAGMA table_info(elephantq_jobs)")
+        columns = {row[1] for row in await cursor.fetchall()}
+        if "result" not in columns:
+            await self._conn.execute(
+                "ALTER TABLE elephantq_jobs ADD COLUMN result TEXT"
+            )
+
         await self._conn.commit()
 
     # --- Job CRUD ---
@@ -247,9 +257,12 @@ class SQLiteBackend:
         else:
             ttl = result_ttl if result_ttl is not None else 3600
             expires = (datetime.now(timezone.utc) + timedelta(seconds=ttl)).isoformat()
+            result_json = (
+                json.dumps(result, default=str) if result is not None else None
+            )
             await self._conn.execute(
-                "UPDATE elephantq_jobs SET status='done', expires_at=?, updated_at=? WHERE id=?",
-                (expires, _now_iso(), job_id),
+                "UPDATE elephantq_jobs SET status='done', result=?, expires_at=?, updated_at=? WHERE id=?",
+                (result_json, expires, _now_iso(), job_id),
             )
         await self._conn.commit()
 
@@ -497,6 +510,12 @@ def _sqlite_row_to_dict(row: Any) -> dict:
     if isinstance(d.get("args"), str):
         try:
             d["args"] = json.loads(d["args"])
+        except (json.JSONDecodeError, TypeError):
+            pass
+    # Parse JSON result if present
+    if "result" in d and isinstance(d["result"], str):
+        try:
+            d["result"] = json.loads(d["result"])
         except (json.JSONDecodeError, TypeError):
             pass
     return d

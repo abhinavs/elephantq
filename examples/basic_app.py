@@ -2,7 +2,7 @@ from fastapi import FastAPI
 
 import elephantq
 
-elephantq.configure(database_url="postgresql://localhost/myapp")
+await elephantq.configure(database_url="postgresql://localhost/myapp")
 
 app = FastAPI()
 

@@ -65,12 +65,12 @@ Feature flags (all `False` by default):
 ## Global configure()
 
 If you prefer the module-level API (`import elephantq`) over creating an instance,
-configure settings with `elephantq.configure()`:
+configure settings with `await elephantq.configure()`:
 
 ```python
 import elephantq
 
-elephantq.configure(
+await elephantq.configure(
     database_url="postgresql://localhost/myapp",
     concurrency=8,
     max_retries=5,

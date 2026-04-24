@@ -46,6 +46,15 @@ def _row_to_dict(row: asyncpg.Record) -> dict:
 
 def _job_row_to_dict(row: asyncpg.Record) -> dict:
     """Convert a job row to the standard dict format."""
+    raw_result = row["result"] if "result" in row.keys() else None
+    if isinstance(raw_result, str):
+        try:
+            parsed_result = json.loads(raw_result)
+        except (TypeError, ValueError):
+            parsed_result = raw_result
+    else:
+        parsed_result = raw_result
+
     return {
         "id": str(row["id"]),
         "job_name": row["job_name"],
@@ -61,6 +70,7 @@ def _job_row_to_dict(row: asyncpg.Record) -> dict:
             row["scheduled_at"].isoformat() if row["scheduled_at"] else None
         ),
         "last_error": row["last_error"],
+        "result": parsed_result,
         "created_at": row["created_at"].isoformat() if row["created_at"] else None,
         "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
     }
@@ -421,6 +431,7 @@ class PostgresBackend:
         result: Any = None,
     ) -> None:
         uid = uuid.UUID(job_id)
+        result_json = json.dumps(result, default=str) if result is not None else None
         async with self.pool.acquire() as conn:
             async with conn.transaction():
                 if result_ttl is not None and result_ttl == 0:
@@ -434,12 +445,14 @@ class PostgresBackend:
                         """
                         UPDATE elephantq_jobs
                         SET status = 'done',
+                            result = $3::jsonb,
                             expires_at = NOW() + ($2 || ' seconds')::INTERVAL,
                             updated_at = NOW()
                         WHERE id = $1
                         """,
                         uid,
                         str(ttl),
+                        result_json,
                     )
 
     async def mark_job_failed(
@@ -583,7 +596,7 @@ class PostgresBackend:
             row = await conn.fetchrow(
                 """
                 SELECT id, job_name, args, status, attempts, max_attempts,
-                       queue, priority, scheduled_at, last_error,
+                       queue, priority, scheduled_at, last_error, result,
                        created_at, updated_at
                 FROM elephantq_jobs
                 WHERE id = $1

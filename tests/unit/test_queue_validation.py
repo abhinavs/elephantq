@@ -85,8 +85,16 @@ def test_normalize_timezone_aware_datetime():
     assert result.hour == 17  # 12 EST → 17 UTC
 
 
-def test_normalize_naive_datetime():
-    """Naive datetime should be treated as local time and converted to UTC."""
+def test_normalize_naive_datetime_rejected():
+    """Naive datetime is ambiguous across hosts and must be rejected explicitly."""
     dt = datetime(2025, 6, 15, 12, 0, 0)
+    with pytest.raises(ValueError, match="timezone-aware"):
+        _normalize_scheduled_time(dt)
+
+
+def test_normalize_aware_datetime_still_accepted():
+    """Regression guard: timezone-aware datetimes continue to work."""
+    dt = datetime(2025, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
     result = _normalize_scheduled_time(dt)
+    assert result == dt
     assert result.tzinfo == timezone.utc

@@ -51,7 +51,9 @@ async def _move_sample_job_to_dlq(tag: str) -> str:
 @pytest.mark.asyncio
 async def test_delete_dead_letter_job_returns_in_bounded_time():
     """delete_dead_letter_job exercises _rows_affected; must complete in <5s."""
-    elephantq.configure(database_url=TEST_DATABASE_URL, dead_letter_queue_enabled=True)
+    await elephantq.configure(
+        database_url=TEST_DATABASE_URL, dead_letter_queue_enabled=True
+    )
     global_app = elephantq._get_global_app()
     set_current_context(DatabaseContext.from_instance(global_app))
     await dead_letter.setup_dead_letter_queue()
@@ -76,7 +78,9 @@ async def test_delete_dead_letter_job_returns_in_bounded_time():
 @pytest.mark.asyncio
 async def test_bulk_delete_returns_exact_count_in_bounded_time():
     """bulk_delete exercises _rows_affected; must return accurate count in <5s."""
-    elephantq.configure(database_url=TEST_DATABASE_URL, dead_letter_queue_enabled=True)
+    await elephantq.configure(
+        database_url=TEST_DATABASE_URL, dead_letter_queue_enabled=True
+    )
     global_app = elephantq._get_global_app()
     set_current_context(DatabaseContext.from_instance(global_app))
     await dead_letter.setup_dead_letter_queue()
@@ -106,7 +110,9 @@ async def test_bulk_delete_returns_exact_count_in_bounded_time():
 @pytest.mark.asyncio
 async def test_move_then_single_dlq_row_exists():
     """Guard that move_to_dead_letter produces exactly one DLQ row, no more."""
-    elephantq.configure(database_url=TEST_DATABASE_URL, dead_letter_queue_enabled=True)
+    await elephantq.configure(
+        database_url=TEST_DATABASE_URL, dead_letter_queue_enabled=True
+    )
     global_app = elephantq._get_global_app()
     set_current_context(DatabaseContext.from_instance(global_app))
     await dead_letter.setup_dead_letter_queue()

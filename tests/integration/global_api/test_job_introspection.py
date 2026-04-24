@@ -219,9 +219,9 @@ class TestJobListing:
         """Test filtering jobs by status"""
         # Enqueue jobs - one will be processed, one scheduled for future
         await elephantq.enqueue(simple_task, message="immediate_job")
-        from datetime import datetime, timedelta
+        from datetime import datetime, timedelta, timezone
 
-        future_time = datetime.now() + timedelta(hours=1)
+        future_time = datetime.now(timezone.utc) + timedelta(hours=1)
         await elephantq.enqueue(
             simple_task, message="future_job", scheduled_at=future_time
         )

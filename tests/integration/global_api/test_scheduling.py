@@ -4,7 +4,7 @@ Test suite for job scheduling functionality
 
 import os
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -26,7 +26,7 @@ async def test_immediate_vs_scheduled_jobs():
     immediate_job_id = await elephantq.enqueue(scheduled_job, message="immediate")
 
     # Enqueue job scheduled for future
-    future_time = datetime.now() + timedelta(hours=1)
+    future_time = datetime.now(timezone.utc) + timedelta(hours=1)
     scheduled_job_id = await elephantq.enqueue(
         scheduled_job, scheduled_at=future_time, message="future"
     )
@@ -104,7 +104,7 @@ async def test_schedule_run_in_and_schedule_run_at():
 async def test_unified_schedule_function():
     """Test the new unified schedule() function with different time formats"""
     # Test with datetime object (absolute time)
-    future_datetime = datetime.now() + timedelta(minutes=15)
+    future_datetime = datetime.now(timezone.utc) + timedelta(minutes=15)
     datetime_job_id = await elephantq.schedule(
         scheduled_job, run_at=future_datetime, message="scheduled with datetime"
     )
