@@ -4,6 +4,63 @@ All notable changes to Soniq are documented in this file.
 
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Breaking changes
+
+- **`Soniq.enqueue` shape replaced.** `app.enqueue(my_func, x=1)` is
+  removed; use `app.enqueue("task.name", args={"x": 1})`. Function
+  args travel as an explicit `args=` dict; enqueue options
+  (`queue`, `priority`, `scheduled_at`, `unique`, `dedup_key`,
+  `connection`) stay at the top level. Module-level
+  `soniq.enqueue` follows the same shape.
+- **`@app.job(name=...)` is mandatory.** Module-derived names
+  (`module.qualname`) are removed. `@app.job()` without `name=` raises
+  `SoniqError(SONIQ_INVALID_TASK_NAME)` at decoration time.
+  `@app.periodic` derives `name=func.__name__` when you don't pass one.
+
+### Added
+
+- Cross-service enqueue via task names. Service A can enqueue jobs
+  service B owns and executes; both share a Postgres database, neither
+  imports the other's code.
+- `Soniq(producer_only=True)` flag. Refuses `run_worker`, the
+  recurring scheduler entry point, and `@app.job` registration;
+  allows enqueue, schedule, and the read-only management API.
+  Suppresses the recurring-scheduler startup warning.
+- `SONIQ_ENQUEUE_VALIDATION` setting (`"strict"` / `"warn"` /
+  `"none"`). Governs how `enqueue()` handles a string name not
+  registered locally. Default `"strict"` raises
+  `SONIQ_UNKNOWN_TASK_NAME`. `"warn"` emits a rate-limited
+  per-process warning.
+- `SONIQ_TASK_NAME_PATTERN` setting. Default rejects whitespace,
+  uppercase, and leading/trailing dots. Validates at registration and
+  enqueue time.
+- New error codes: `SONIQ_UNKNOWN_TASK_NAME`,
+  `SONIQ_INVALID_TASK_NAME`, `SONIQ_TASK_ARGS_INVALID`,
+  `SONIQ_PRODUCER_ONLY`.
+- `soniq migrate-enqueue` codemod. AST-based rewrite of the old
+  shapes to the new ones. Refuses to invent canonical names by
+  default; callers supply a `migrate-enqueue.toml` mapping or pass
+  `--use-derived-names` for a quick-start fallback.
+
+### Documentation
+
+- New cross-service jobs guide at
+  `docs/guides/cross-service-jobs.md`.
+- New migration guide at
+  `docs/migration/0.0.x-to-cross-service.md`.
+- README cross-service section.
+
+### Migration
+
+```bash
+soniq migrate-enqueue --use-derived-names .
+```
+
+Or supply explicit canonical names in `migrate-enqueue.toml`. See
+the migration guide for the full walkthrough.
+
 ## [0.0.2] - 2026-04-25
 
 First public release.

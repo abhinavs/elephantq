@@ -1,0 +1,147 @@
+# Cross-service jobs
+
+Soniq enqueues by **task name**, not by Python function reference. That
+means service A can enqueue a job that service B owns and executes,
+provided both share a Postgres database. Neither service needs to
+import the other's code.
+
+## The minimal shape
+
+**Producer (service A)** writes by name:
+
+```python
+from soniq import Soniq
+
+producer = Soniq(
+    database_url="postgresql://shared-pg/jobs",
+    producer_only=True,
+    enqueue_validation="none",  # producer has no local registry
+)
+
+await producer.enqueue(
+    "billing.invoices.send.v2",
+    args={"order_id": "o1", "customer": "acme"},
+)
+```
+
+**Consumer (service B)** registers and runs:
+
+```python
+from soniq import Soniq
+from pydantic import BaseModel
+
+consumer = Soniq(database_url="postgresql://shared-pg/jobs")
+
+class InvoiceArgs(BaseModel):
+    order_id: str
+    customer: str
+
+@consumer.job(name="billing.invoices.send.v2", validate=InvoiceArgs)
+async def send_invoice(order_id: str, customer: str):
+    ...
+
+await consumer.run_worker()
+```
+
+Two repositories, one shared Postgres, one task name. The producer
+writes the row; the consumer's worker picks it up because both agree
+on the name.
+
+## Validation modes
+
+Producers that have no local registry should set
+`SONIQ_ENQUEUE_VALIDATION` explicitly. The setting governs what
+`enqueue()` does when the name is not registered locally.
+
+| Mode | Behaviour | When to use |
+| --- | --- | --- |
+| `strict` (default) | Raise `SONIQ_UNKNOWN_TASK_NAME`. No row written. | Single-repo deployments where every name is registered locally. |
+| `warn` | Rate-limited WARN per unknown name; row is written. | Producer services that occasionally enqueue cross-service. |
+| `none` | Silent passthrough. | Pure-producer services with no local registry by design. |
+
+The default is `strict` because typos in async systems surface hours
+later in dead-letter queues. Producers that genuinely cannot validate
+locally make that explicit by setting `=warn` or `=none` in their
+deployment environment.
+
+## Naming conventions
+
+Names are protocol identifiers. The recommended format is dotted
+lowercase with a version suffix:
+
+```
+billing.invoices.send.v2
+```
+
+The default pattern (`SONIQ_TASK_NAME_PATTERN`) enforces ASCII,
+dot-separated, lowercase, no whitespace, no leading or trailing
+dots. Names that violate this raise `SONIQ_INVALID_TASK_NAME` at
+both registration time and enqueue time.
+
+## Failure semantics
+
+- **Unknown name in strict mode:** producer raises before writing.
+- **Unknown name in warn/none mode:** row is written; the consumer
+  worker receives it, can't find the registered handler, and
+  dead-letters it with `Job <name> not registered.` as the error
+  reason. Other queue work is unaffected.
+- **Args fail consumer's `args_model`:** dead-letter with the
+  validation error. Producer sees nothing - validation is consumer-side
+  unless the producer also has a local model (typically via a shared
+  stub package; see phase 2 of the soniq roadmap).
+- **Consumer registers the name later:** rows queued before
+  registration are picked up normally once the consumer comes online.
+
+## At-least-once delivery and idempotency
+
+Soniq is **at-least-once**. A successful `enqueue` means the row is
+durably committed; it does not mean the handler ran exactly once.
+The handler can run more than once because of:
+
+- Producer retries after a network blip
+- Worker crashes mid-execution (the row is requeued)
+- Manual retry via `app.retry_job(...)` or the dashboard
+
+**Handlers must be idempotent.** The recommended pattern is an
+application-level idempotency key threaded through `dedup_key`:
+
+```python
+@app.job(name="billing.invoices.send.v2", validate=InvoiceArgs)
+async def send_invoice(order_id: str, customer: str):
+    if await invoice_already_sent(order_id):
+        return  # idempotent short-circuit
+    await send(order_id, customer)
+    await mark_invoice_sent(order_id)
+```
+
+`dedup_key` and `unique=True` are operational helpers, not delivery
+guarantees. They reduce duplicate work; they do not eliminate it.
+
+## Producer-only mode
+
+Pass `producer_only=True` on a producer-side `Soniq` instance to
+prevent accidental consumption:
+
+```python
+producer = Soniq(database_url="...", producer_only=True)
+```
+
+What this changes:
+
+- `run_worker(...)` raises `SONIQ_PRODUCER_ONLY`.
+- The recurring scheduler entry point raises `SONIQ_PRODUCER_ONLY`.
+- `@app.job(name=...)` registration raises `SONIQ_PRODUCER_ONLY`.
+- The "@periodic jobs detected without scheduler" startup warning
+  is suppressed.
+
+Everything else (enqueue, schedule, get_job, list_jobs, retry, cancel,
+delete, get_queue_stats, _setup) works normally. A producer service
+may legitimately own its half of the shared DB and run migrations
+via `_setup()`.
+
+## Migrating from earlier versions
+
+If your project still uses the old `enqueue(callable, **kwargs)` shape
+or `@app.job()` without an explicit name, the
+[migration guide](../migration/0.0.x-to-cross-service.md) walks you
+through the rewrite and describes the `soniq migrate-enqueue` codemod.

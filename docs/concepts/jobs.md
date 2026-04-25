@@ -9,13 +9,13 @@ from soniq import Soniq
 
 app = Soniq(database_url="postgresql://localhost/myapp")
 
-@app.job()
+@app.job(name="users.send_welcome_email")
 async def send_welcome_email(user_id: int, template: str = "default"):
     user = await get_user(user_id)
     await send_email(user.email, template)
 ```
 
-The `@app.job()` decorator registers the function and returns a wrapped version you pass to `enqueue()`.
+The `@app.job(name=...)` decorator registers the function under an explicit, dotted task name. The name is the wire protocol once queues cross repo boundaries; module-derived names are not supported.
 
 ## Decorator options
 
@@ -53,11 +53,11 @@ Soniq provides two ways to register jobs.
 ```python
 import soniq
 
-@soniq.job()
+@soniq.job(name="users.send_welcome_email")
 async def send_welcome_email(user_id: int):
     ...
 
-await soniq.enqueue(send_welcome_email, user_id=42)
+await soniq.enqueue("users.send_welcome_email", args={"user_id": 42})
 ```
 
 **Instance API** -- explicit app object, recommended for FastAPI and multi-instance setups:

@@ -59,3 +59,19 @@ class TestDeliverySemantics:
         """Retries doc should mention idempotency."""
         content = (DOCS_DIR / "concepts" / "retries.md").read_text().lower()
         assert "idempoten" in content
+
+    def test_cross_service_guide_covers_at_least_once_and_idempotent(self):
+        """The cross-service guide must explain at-least-once delivery and
+        idempotency in the same paragraph (TODO 1.9)."""
+        content = (DOCS_DIR / "guides" / "cross-service-jobs.md").read_text().lower()
+        assert "at-least-once" in content or "at least once" in content
+        assert "idempoten" in content
+
+    def test_migration_guide_exists_and_explains_delivery_semantics(self):
+        """The migration guide must exist and link the at-least-once /
+        idempotency framing so users adopting the new shape see it."""
+        path = DOCS_DIR / "migration" / "0.0.x-to-cross-service.md"
+        assert path.exists(), f"missing migration guide at {path}"
+        content = path.read_text().lower()
+        assert "at-least-once" in content or "at least once" in content
+        assert "idempoten" in content
