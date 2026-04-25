@@ -10,6 +10,7 @@ import logging
 import time
 from typing import Any, List, Optional
 
+from ..backends import StorageBackend
 from ..settings import SoniqSettings, get_settings
 from .processor import process_job_via_backend
 from .registry import JobRegistry
@@ -28,7 +29,7 @@ class Worker:
 
     def __init__(
         self,
-        backend: Any,
+        backend: StorageBackend,
         registry: JobRegistry,
         settings: Optional[SoniqSettings] = None,
         hooks: Optional[dict] = None,
@@ -36,7 +37,7 @@ class Worker:
         retry_policy: Optional[Any] = None,
         metrics_sink: Optional[Any] = None,
     ):
-        self._backend = backend
+        self._backend: StorageBackend = backend
         self._registry = registry
         self._settings = settings or get_settings()
         self._last_cleanup = 0.0

@@ -127,15 +127,7 @@ class PostgresBackend:
         return True
 
     @property
-    def supports_connection_pool(self) -> bool:
-        return True
-
-    @property
     def supports_advisory_locks(self) -> bool:
-        return True
-
-    @property
-    def supports_migrations(self) -> bool:
         return True
 
     # --- Lifecycle ---

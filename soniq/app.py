@@ -8,6 +8,7 @@ Enables multiple isolated Soniq instances with independent configurations.
 import logging
 from typing import Any, List, Optional
 
+from .backends import StorageBackend
 from .core.registry import JobRegistry
 from .errors import SoniqError
 from .settings import SoniqSettings
@@ -120,7 +121,9 @@ class Soniq:
             backend = self._resolve_backend_name(backend, database_url)
         elif backend is None and database_url:
             backend = self._auto_detect_backend(database_url)
-        self._backend = backend
+        # Typed as Optional[StorageBackend]: None until _ensure_initialized()
+        # constructs a lazy PostgresBackend.
+        self._backend: Optional[StorageBackend] = backend
 
         # Pluggable extension points. Defaults are wired so callers that
         # never touch these fields keep the existing behavior verbatim.
@@ -332,13 +335,15 @@ class Soniq:
     def _check_pool_sizing(self, concurrency: int) -> None:
         """Refuse to start a worker that would deadlock on a too-small pool.
 
-        Only applies to backends that use an asyncpg connection pool. Memory
-        and SQLite backends have no pool and skip the check. A warning here
-        was what we had before; operators missed it and workers stalled in
-        production. Promoting to a hard error puts the misconfiguration in
-        front of them at startup instead of at 3am.
+        Only applies to ``PostgresBackend``. Memory and SQLite backends
+        have no asyncpg pool and skip the check. A warning here was what
+        we had before; operators missed it and workers stalled in
+        production. Promoting to a hard error puts the misconfiguration
+        in front of them at startup instead of at 3am.
         """
-        if not self._backend.supports_connection_pool:  # type: ignore[union-attr]
+        from .backends.postgres import PostgresBackend
+
+        if not isinstance(self._backend, PostgresBackend):
             return
         err = _pool_sizing_error(
             concurrency=concurrency,
@@ -851,8 +856,10 @@ class Soniq:
         producer_id = resolve_producer_id(self._settings.producer_id)
 
         if connection is not None:
-            if self._backend.supports_transactional_enqueue:
-                txn_id: str = await self._backend.create_job_transactional(
+            from .backends.postgres import PostgresBackend
+
+            if isinstance(self._backend, PostgresBackend):
+                txn_id = await self._backend.create_job_transactional(
                     connection=connection,
                     job_id=job_id,
                     job_name=job_name,
@@ -866,7 +873,7 @@ class Soniq:
                     scheduled_at=scheduled_at,
                     producer_id=producer_id,
                 )
-                return txn_id
+                return txn_id or job_id
             raise ValueError(
                 f"Transactional enqueue (connection=) is not supported by "
                 f"{type(self._backend).__name__}. Use PostgresBackend for this feature."
@@ -914,10 +921,12 @@ class Soniq:
         access (test fixtures, advanced integration). Public callers
         should go through ``app.backend.acquire()``.
         """
+        from .backends.postgres import PostgresBackend
+
         await self._ensure_initialized()
-        if not self._backend.supports_connection_pool:  # type: ignore[union-attr]
+        if not isinstance(self._backend, PostgresBackend):
             return None
-        return self._backend._pool  # type: ignore[union-attr]
+        return self._backend._pool
 
     def _get_job_registry(self) -> JobRegistry:
         """Get job registry."""
@@ -942,6 +951,7 @@ class Soniq:
             await app.run_worker(concurrency=2, queues=["high", "default"])
         """
         await self._ensure_initialized()
+        assert self._backend is not None  # narrowed after _ensure_initialized
 
         self._check_pool_sizing(concurrency)
 
@@ -1172,11 +1182,13 @@ class Soniq:
         Returns:
             Number of migrations applied (0 for SQLite/Memory)
         """
+        from .backends.postgres import PostgresBackend
+
         await self._ensure_initialized()
         assert self._backend is not None  # narrow type after init
 
-        # SQLite and Memory backends create tables on initialize() - nothing to migrate
-        if not self._backend.supports_migrations:
+        # SQLite and Memory backends create tables on initialize() - nothing to migrate.
+        if not isinstance(self._backend, PostgresBackend):
             return 0
 
         # PostgreSQL: attempt to create the database, then run migrations

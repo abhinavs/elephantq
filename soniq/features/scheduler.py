@@ -334,9 +334,9 @@ class Scheduler:
         # and a real connection pool. Everything else (Memory, SQLite) keeps
         # schedules in-process: they are single-writer and have no DDL for
         # this feature.
-        if getattr(backend, "supports_connection_pool", False) and getattr(
-            backend, "supports_advisory_locks", False
-        ):
+        from soniq.backends.postgres import PostgresBackend
+
+        if isinstance(backend, PostgresBackend):
             self._store = _SqlStore(backend)
         else:
             self._store = _MemoryStore()
