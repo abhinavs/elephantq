@@ -3,22 +3,22 @@
 Everything about defining, enqueueing, scheduling, and inspecting jobs.
 
 
-## @app.job() decorator
+## @app.job decorator
 
-Registers a function as a job. Works on both instance and global APIs.
+Registers a function as a job. Works on both instance and global APIs. Both `@app.job` (no parens) and `@app.job(...)` (with kwargs) are accepted.
 
 ```python
 # Instance API
 app = Soniq(database_url="postgresql://localhost/myapp")
 
-@app.job()
+@app.job
 async def send_email(to: str, subject: str, body: str):
     ...
 
 # Global API
 import soniq
 
-@soniq.job()
+@soniq.job
 async def send_email(to: str, subject: str, body: str):
     ...
 ```
@@ -29,6 +29,7 @@ All parameters are optional.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
+| `name` | `str \| None` | `None` | Explicit task name. When omitted, derived from `f"{module}.{qualname}"` (Celery-style). Pass an explicit value for cross-service deployments where the name is a wire-protocol identifier. |
 | `retries` | `int` | `3` | Maximum retry attempts on failure. Alias: `max_retries`. |
 | `priority` | `int` | `100` | Lower number = higher priority. Range: 1--1000. |
 | `queue` | `str` | `"default"` | Queue name for this job. |
@@ -57,26 +58,31 @@ async def process_payment(order_id: int, amount: float):
 Dispatches a registered job for processing.
 
 ```python
-job_id = await app.enqueue(send_email, to="a@b.com", subject="Hi", body="Hello")
+job_id = await app.enqueue(
+    "myapp.tasks.send_email",
+    args={"to": "a@b.com", "subject": "Hi", "body": "Hello"},
+)
 ```
 
 ### Signature
 
 ```python
 async def enqueue(
-    job_func,           # The decorated job function
-    connection=None,    # Optional asyncpg connection for transactional enqueue
+    name_or_ref,        # Task name string, or a TaskRef (see below)
     *,
-    priority: int,      # Override the job's default priority
-    queue: str,         # Override the job's default queue
-    scheduled_at: datetime,  # Run at a specific time (UTC)
-    unique: bool,       # Override the job's default uniqueness
-    dedup_key: str,     # Custom deduplication key (instead of args hash)
-    **kwargs,           # Arguments passed to the job function
-) -> str               # Returns job UUID
+    args: dict | None = None,  # Arguments passed to the job function
+    priority: int = None,      # Override the job's default priority
+    queue: str = None,         # Override the job's default queue
+    scheduled_at: datetime = None,  # Run at a specific time (UTC)
+    unique: bool = None,       # Override the job's default uniqueness
+    dedup_key: str = None,     # Custom deduplication key (instead of args hash)
+    connection = None,         # Asyncpg connection for transactional enqueue
+) -> str                       # Returns job UUID
 ```
 
-All option parameters are optional. When omitted, the values from `@app.job()` apply.
+`args` defaults to `{}`. All option parameters are optional. When omitted, the values from the `@app.job` registration apply (or system defaults if no local registration).
+
+`name_or_ref` accepts a string task name or a `TaskRef` (typed cross-service stub). When a `TaskRef` is passed, its `args_model` validates `args` and its `default_queue` is used if `queue=` is not passed explicitly.
 
 ### Transactional enqueue
 
@@ -88,7 +94,11 @@ pool = await app.get_pool()
 async with pool.acquire() as conn:
     async with conn.transaction():
         await conn.execute("INSERT INTO orders (id) VALUES ($1)", order_id)
-        await app.enqueue(fulfill_order, connection=conn, order_id=order_id)
+        await app.enqueue(
+            "myapp.tasks.fulfill_order",
+            args={"order_id": order_id},
+            connection=conn,
+        )
 ```
 
 Transactional enqueue requires the PostgreSQL backend.
@@ -161,7 +171,7 @@ async def cleanup_old_sessions():
 | `every_seconds` | `int` | Run every N seconds. |
 | `every_minutes` | `int` | Run every N minutes. |
 | `every_hours` | `int` | Run every N hours. |
-| `**job_kwargs` | | Any parameter accepted by `@app.job()` (queue, priority, retries, etc.). |
+| `**job_kwargs` | | Any parameter accepted by `@app.job` (name, queue, priority, retries, etc.). |
 
 Rules:
 - Specify exactly one of `cron` or one `every_*` parameter.
@@ -180,7 +190,7 @@ type annotation `JobContext` and Soniq fills it in automatically.
 ```python
 from soniq import JobContext
 
-@app.job()
+@app.job
 async def process_order(order_id: int, ctx: JobContext):
     print(f"Job {ctx.job_id}, attempt {ctx.attempt} of {ctx.max_attempts}")
 ```

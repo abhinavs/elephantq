@@ -24,7 +24,7 @@ async def send_welcome(to: str):
 ## 3. Enqueue
 
 ```python
-await app.enqueue(send_welcome, to="dev@example.com")
+await app.enqueue("jobs.send_welcome", args={"to": "dev@example.com"})
 ```
 
 ## 4. Set up the database

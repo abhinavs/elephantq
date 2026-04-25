@@ -50,7 +50,7 @@ Enqueue a job inside your database transaction. If the transaction rolls back, t
 async with pool.acquire() as conn:
     async with conn.transaction():
         await conn.execute("INSERT INTO orders ...")
-        await app.enqueue(send_invoice, connection=conn, order_id=order_id)
+        await app.enqueue("jobs.send_invoice", args={"order_id": order_id}, connection=conn)
         # Both commit together, or neither does
 ```
 

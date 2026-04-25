@@ -15,7 +15,7 @@ async def send_welcome_email(user_id: int):
 async def charge_subscription(account_id: str, amount: int):
     ...
 
-@app.job()  # defaults to "default" queue
+@app.job  # defaults to "default" queue
 async def process_thumbnail(image_id: str):
     ...
 ```
@@ -23,7 +23,11 @@ async def process_thumbnail(image_id: str):
 You can also override the queue at enqueue time:
 
 ```python
-await app.enqueue(send_welcome_email, user_id=42, queue="urgent")
+await app.enqueue(
+    "myapp.tasks.send_welcome_email",
+    args={"user_id": 42},
+    queue="urgent",
+)
 ```
 
 ## Priority ordering
@@ -35,7 +39,7 @@ Within a queue, jobs are processed by priority. Lower number means higher priori
 | 1 | Urgent -- user-facing, time-sensitive |
 | 10 | High -- important but not blocking |
 | 50 | Normal -- default for most workloads |
-| 100 | Default -- the `@app.job()` default |
+| 100 | Default -- the `@app.job` default |
 
 ```python
 @app.job(queue="billing", priority=10)
@@ -43,7 +47,11 @@ async def charge_subscription(account_id: str, amount: int):
     ...
 
 # One-off priority override
-await app.enqueue(charge_subscription, account_id="acct_123", amount=999, priority=1)
+await app.enqueue(
+    "myapp.tasks.charge_subscription",
+    args={"account_id": "acct_123", "amount": 999},
+    priority=1,
+)
 ```
 
 ## Running workers on specific queues
