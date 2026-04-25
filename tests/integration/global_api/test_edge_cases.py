@@ -238,25 +238,21 @@ async def test_timezone_and_datetime_handling():
 
 @pytest.mark.asyncio
 async def test_cli_integration():
-    """Test CLI commands integration"""
-    # Test CLI imports don't crash
-    from soniq.cli.commands.core import register_core_commands
-    from soniq.cli.commands.database import register_database_commands
-    from soniq.cli.main import main
-    from soniq.cli.registry import get_cli_registry
+    """Smoke test: the top-level CLI parser wires the core subcommands
+    and ``main`` is callable. Detailed coverage lives in
+    ``tests/unit/test_cli_commands.py``."""
+    import argparse
 
-    # Register both core and database commands
-    register_core_commands()
-    register_database_commands()
-    registry = get_cli_registry()
+    from soniq.cli.main import build_parser, main
 
-    commands = registry.get_all_commands()
-    command_names = [cmd.name for cmd in commands]
+    parser = build_parser()
+    sub_action = next(
+        a for a in parser._actions if isinstance(a, argparse._SubParsersAction)
+    )
+    command_names = set(sub_action.choices.keys())
 
-    assert "setup" in command_names  # Database setup command (database.py)
-    assert "start" in command_names  # Worker start command (core.py)
-
-    # Test that main function exists and is callable
+    assert "setup" in command_names
+    assert "start" in command_names
     assert callable(main)
 
 

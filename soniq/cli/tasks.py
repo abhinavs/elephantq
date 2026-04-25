@@ -1,23 +1,21 @@
-"""
-`soniq tasks list` and `soniq tasks check` CLIs.
+"""``soniq tasks-list`` and ``soniq tasks-check``.
 
 Two thin commands over the cross-service observability surface:
 
-- ``list`` prints the in-process registry (everything the current
+- ``tasks-list`` prints the in-process registry (everything the current
   process registered after importing ``SONIQ_JOBS_MODULES``). It does
-  *not* read the soniq_task_registry DB table; that table is
-  fleet-wide observability shown in the dashboard.
+  *not* read the soniq_task_registry DB table; that table is fleet-wide
+  observability shown in the dashboard.
 
-- ``check`` compares the TaskRef declarations in a stub package
+- ``tasks-check`` compares the TaskRef declarations in a stub package
   against the soniq_task_registry table populated by running workers.
-  Drift (refs without a corresponding worker row, or vice versa) is
-  reported and exits non-zero so CI can block deploys.
+  Drift exits non-zero so CI can block deploys.
 
-The two commands deliberately read from different sources so an
-operator running ``soniq tasks list`` on a producer-only instance does
-not see an empty list and conclude the registry is empty - they see
-what the current process registered, which is the right scope for a
-local listing.
+The commands deliberately read from different sources so an operator
+running ``tasks-list`` on a producer-only deployment does not see an
+empty list and conclude the registry is empty - they see what the
+current process registered, which is the right scope for a local
+listing.
 """
 
 from __future__ import annotations
@@ -28,15 +26,55 @@ import os
 import sys
 from typing import Any, Dict, List, Optional
 
-# Both commands share these option names with the rest of the soniq CLI.
+from ._helpers import database_url_argument
+
+
+def add_tasks_cmd(subparsers) -> None:
+    """Register ``tasks-list`` and ``tasks-check``.
+
+    The CLI surface stays flat (no nested subgroup) so existing
+    invocations - ``soniq tasks-list``, ``soniq tasks-check`` - keep
+    working unchanged.
+    """
+    list_parser = subparsers.add_parser(
+        "tasks-list",
+        help=(
+            "List task names registered by the current process "
+            "(in-process registry only)"
+        ),
+        description=(
+            "Lists task names registered by the current (in-process) "
+            "registry after importing SONIQ_JOBS_MODULES. To see what is in "
+            "the shared registry table across the fleet, use the dashboard."
+        ),
+    )
+    list_parser.set_defaults(func=handle_tasks_list)
+
+    check_parser = subparsers.add_parser(
+        "tasks-check",
+        help="Compare stub-package TaskRefs against the shared registry table",
+        description=(
+            "Compares stub-package TaskRefs against the shared registry "
+            "table populated by running workers. Drift exits non-zero so CI "
+            "can block deploys. Requires SONIQ_DATABASE_URL to read the "
+            "registry table."
+        ),
+    )
+    check_parser.add_argument(
+        "package",
+        nargs="?",
+        help=("Stub package path or dotted module containing TaskRef declarations"),
+    )
+    database_url_argument(check_parser)
+    check_parser.set_defaults(func=handle_tasks_check)
 
 
 def _load_in_process_jobs() -> List[Dict[str, Any]]:
     """Discover and return registered jobs in the current process.
 
     Imports modules listed in SONIQ_JOBS_MODULES (comma-separated) so
-    decorator-time registrations populate the global registry. Then
-    reads from soniq._get_global_app()._get_job_registry().
+    decorator-time registrations populate the global registry, then
+    reads from ``soniq._get_global_app().registry``.
     """
     modules = os.environ.get("SONIQ_JOBS_MODULES", "")
     for mod in [m.strip() for m in modules.split(",") if m.strip()]:
@@ -44,14 +82,14 @@ def _load_in_process_jobs() -> List[Dict[str, Any]]:
             importlib.import_module(mod)
         except Exception as e:
             print(
-                f"soniq tasks list: failed to import {mod!r}: {e}",
+                f"soniq tasks-list: failed to import {mod!r}: {e}",
                 file=sys.stderr,
             )
 
     import soniq
 
     app = soniq._get_global_app()
-    registry = app._get_job_registry()
+    registry = app.registry
     rows = []
     for name, meta in registry.list_jobs().items():
         args_model = meta.get("args_model")
@@ -71,11 +109,10 @@ def _load_in_process_jobs() -> List[Dict[str, Any]]:
 
 
 def handle_tasks_list(args) -> int:
-    """argparse handler for `soniq tasks list`.
+    """Print the in-process registry as JSON.
 
-    Lists task names registered by the current process after importing
-    SONIQ_JOBS_MODULES. To see what is in the shared registry table
-    across the fleet, use the dashboard.
+    To see fleet-wide registrations across all running workers, use the
+    dashboard or query ``soniq_task_registry`` directly.
     """
     rows = _load_in_process_jobs()
     print(json.dumps(rows, indent=2, sort_keys=True))
@@ -84,14 +121,12 @@ def handle_tasks_list(args) -> int:
 
 def _load_task_refs_from_package(package_path: str) -> List[Dict[str, Any]]:
     """Import a Python package directory or module and collect TaskRef
-    instances declared inside it. Returns a list of dicts with name,
-    args_model, and source location."""
+    instances declared inside it. Returns dicts with name, args_model,
+    and default_queue."""
     import inspect
 
     from soniq.task_ref import TaskRef
 
-    # Make package importable: add the parent dir to sys.path if package_path
-    # is a directory; if it's a dotted module name, just import it.
     abs_path = os.path.abspath(package_path)
     if os.path.isdir(abs_path):
         parent = os.path.dirname(abs_path)
@@ -122,7 +157,6 @@ def _load_task_refs_from_package(package_path: str) -> List[Dict[str, Any]]:
                 seen_names.add(value.name)
 
     visit(module)
-    # Walk submodules (one level - keep this simple).
     if hasattr(module, "__path__"):
         import pkgutil
 
@@ -131,22 +165,21 @@ def _load_task_refs_from_package(package_path: str) -> List[Dict[str, Any]]:
                 visit(importlib.import_module(info.name))
             except Exception as e:
                 print(
-                    f"soniq tasks check: skipped {info.name}: {e}",
+                    f"soniq tasks-check: skipped {info.name}: {e}",
                     file=sys.stderr,
                 )
     return found
 
 
 async def _load_registry_table_names(database_url: Optional[str]) -> List[str]:
-    """Fetch the task names registered in the soniq_task_registry DB
-    table for the configured Postgres database."""
+    """Fetch the task names registered in the soniq_task_registry table."""
     from soniq.app import Soniq
 
     app = Soniq(database_url=database_url) if database_url else Soniq()
     await app._ensure_initialized()
     try:
-        backend = app._backend
-        assert backend is not None  # narrow after init
+        backend = app.backend
+        assert backend is not None
         rows = await backend.list_registered_task_names()
         return sorted({r["task_name"] for r in rows})
     finally:
@@ -154,15 +187,13 @@ async def _load_registry_table_names(database_url: Optional[str]) -> List[str]:
 
 
 def handle_tasks_check(args) -> int:
-    """argparse handler for `soniq tasks check`.
+    """Compare stub-package TaskRefs against the registry table.
 
-    Compares stub-package TaskRefs against the shared registry table
-    populated by running workers. Drift exits non-zero so CI can block
-    deploys.
+    Drift exits non-zero so CI can block deploys.
     """
     if not args.package:
         print(
-            "soniq tasks check: a stub package path or dotted module is required",
+            "soniq tasks-check: a stub package path or dotted module is required",
             file=sys.stderr,
         )
         return 2
@@ -170,7 +201,7 @@ def handle_tasks_check(args) -> int:
     db_url = os.environ.get("SONIQ_DATABASE_URL") or args.database_url
     if not db_url:
         print(
-            "soniq tasks check: requires SONIQ_DATABASE_URL to read the "
+            "soniq tasks-check: requires SONIQ_DATABASE_URL to read the "
             "shared task registry; set it in the environment or pass "
             "--database-url.",
             file=sys.stderr,
@@ -191,9 +222,9 @@ def handle_tasks_check(args) -> int:
 
     if not drift_count:
         print(
-            f"soniq tasks check: OK - {len(ref_names)} TaskRef(s) match "
+            f"soniq tasks-check: OK - {len(ref_names)} TaskRef(s) match "
             f"{len(table_names)} registered name(s) in the soniq_task_registry "
-            f"table.",
+            "table.",
             file=sys.stdout,
         )
         return 0
@@ -215,70 +246,3 @@ def handle_tasks_check(args) -> int:
         for n in in_table_not_stub:
             print(f"  - {n}", file=sys.stderr)
     return 2
-
-
-def register_tasks_commands():
-    """Register `tasks list` and `tasks check` on the global CLI registry.
-
-    The CLI infrastructure here is flat (no native subgroups), so we
-    expose two top-level commands with explicit names.
-    """
-    from ..registry import CLICommand, get_cli_registry
-
-    registry = get_cli_registry()
-
-    registry.register_command(
-        CLICommand(
-            name="tasks-list",
-            help=(
-                "List task names registered by the current process "
-                "(in-process registry only)"
-            ),
-            description=(
-                "Lists task names registered by the current (in-process) "
-                "registry after importing SONIQ_JOBS_MODULES. To see what is "
-                "in the shared registry table across the fleet, use the "
-                "dashboard."
-            ),
-            handler=handle_tasks_list,
-            arguments=[],
-            category="observability",
-        )
-    )
-
-    registry.register_command(
-        CLICommand(
-            name="tasks-check",
-            help="Compare stub-package TaskRefs against the shared registry table",
-            description=(
-                "Compares stub-package TaskRefs against the shared registry "
-                "table populated by running workers. Drift exits non-zero so "
-                "CI can block deploys. Requires SONIQ_DATABASE_URL to read the "
-                "registry table."
-            ),
-            handler=handle_tasks_check,
-            arguments=[
-                {
-                    "args": ["package"],
-                    "kwargs": {
-                        "nargs": "?",
-                        "help": (
-                            "Stub package path or dotted module containing "
-                            "TaskRef declarations"
-                        ),
-                    },
-                },
-                {
-                    "args": ["--database-url"],
-                    "kwargs": {
-                        "default": None,
-                        "help": (
-                            "Postgres URL for the shared registry table "
-                            "(falls back to SONIQ_DATABASE_URL)"
-                        ),
-                    },
-                },
-            ],
-            category="observability",
-        )
-    )

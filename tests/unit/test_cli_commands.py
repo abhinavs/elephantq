@@ -1,82 +1,56 @@
 """
-Tests for cli/commands/core.py, database.py, and features.py - command
-registration.
+Tests that the top-level CLI parser wires every subcommand.
+
+After the flat-CLI rewrite (S8) there is no global registry; each
+``add_X_cmd(subparsers)`` registers exactly one subcommand. The
+contract is the parser: if a subcommand is missing from
+``build_parser``, the tests below fail.
 """
 
-from soniq.cli.registry import CLIRegistry
+from __future__ import annotations
+
+import pytest
+
+from soniq.cli.main import build_parser
+
+EXPECTED_SUBCOMMANDS = {
+    "start",
+    "setup",
+    "status",
+    "workers",
+    "migrate-status",
+    "dashboard",
+    "scheduler",
+    "metrics",
+    "dead-letter",
+    "tasks-list",
+    "tasks-check",
+}
 
 
-class TestCoreCommandRegistration:
-    def test_register_core_commands_populates_registry(self):
-        from soniq.cli.commands.core import register_core_commands
+def _registered_subcommands(parser) -> set[str]:
+    import argparse
 
-        registry = CLIRegistry()
-        # We need to temporarily replace the global registry
-        import soniq.cli.registry as reg_mod
-
-        original = reg_mod._registry
-        reg_mod._registry = registry
-        try:
-            register_core_commands()
-            commands = registry.get_all_commands()
-            assert len(commands) > 0
-            names = [c.name for c in commands]
-            assert "start" in names
-            assert "status" in names
-            assert "workers" in names
-        finally:
-            reg_mod._registry = original
-
-    def test_core_commands_have_handlers(self):
-        from soniq.cli.commands.core import register_core_commands
-
-        registry = CLIRegistry()
-        import soniq.cli.registry as reg_mod
-
-        original = reg_mod._registry
-        reg_mod._registry = registry
-        try:
-            register_core_commands()
-            for cmd in registry.get_all_commands():
-                assert cmd.handler is not None, f"Command {cmd.name} has no handler"
-        finally:
-            reg_mod._registry = original
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            return set(action.choices.keys())
+    raise AssertionError("no subparsers on parser")
 
 
-class TestDatabaseCommandRegistration:
-    def test_register_database_commands_populates_registry(self):
-        from soniq.cli.commands.database import register_database_commands
-
-        registry = CLIRegistry()
-        import soniq.cli.registry as reg_mod
-
-        original = reg_mod._registry
-        reg_mod._registry = registry
-        try:
-            register_database_commands()
-            names = [c.name for c in registry.get_all_commands()]
-            assert "setup" in names
-            assert "migrate-status" in names
-        finally:
-            reg_mod._registry = original
+def test_every_subcommand_is_registered():
+    parser = build_parser()
+    assert _registered_subcommands(parser) == EXPECTED_SUBCOMMANDS
 
 
-class TestFeatureCommandRegistration:
-    def test_register_feature_commands_populates_registry(self):
-        from soniq.cli.commands.features import register_feature_commands
-
-        registry = CLIRegistry()
-        import soniq.cli.registry as reg_mod
-
-        original = reg_mod._registry
-        reg_mod._registry = registry
-        try:
-            register_feature_commands()
-            commands = registry.get_all_commands()
-            assert len(commands) > 0
-            names = [c.name for c in commands]
-            assert any(
-                n in names for n in ["dashboard", "scheduler", "metrics", "dead-letter"]
-            )
-        finally:
-            reg_mod._registry = original
+@pytest.mark.parametrize("name", sorted(EXPECTED_SUBCOMMANDS))
+def test_subcommand_attaches_handler(name):
+    """Every subcommand must call ``set_defaults(func=...)`` so ``main``
+    can dispatch to it. ``dead-letter`` requires a positional ``action``,
+    so we feed it a valid one."""
+    parser = build_parser()
+    extra: list[str] = []
+    if name == "dead-letter":
+        extra = ["list"]
+    args = parser.parse_args([name, *extra])
+    assert args.command == name
+    assert callable(args.func)

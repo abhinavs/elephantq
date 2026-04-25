@@ -1,17 +1,23 @@
 """
-Tests for cli/commands/core.py handler functions.
+Tests for shared CLI helpers in ``soniq.cli._helpers``.
 
-Covers: resolve_soniq_instance, handle_cli_debug_command.
+The flat-CLI rewrite (S8) consolidated ``resolve_soniq_instance`` into
+this one module so every subcommand resolves ``--database-url`` the
+same way. The decision branches under test are:
+
+1. No ``database_url`` attribute on args → return ``None`` (operator
+   wants the global app).
+2. Empty ``database_url`` → also ``None`` (an unset env var resolves
+   to "" via argparse defaults in some shells).
+3. A populated ``database_url`` → a fresh ``Soniq`` instance carrying
+   it through to settings.
 """
 
 import argparse
 
 import pytest
 
-from soniq.cli.commands.core import (
-    handle_cli_debug_command,
-    resolve_soniq_instance,
-)
+from soniq.cli._helpers import resolve_soniq_instance
 
 
 class TestResolveSoniqInstance:
@@ -44,18 +50,3 @@ class TestResolveSoniqInstance:
         args = argparse.Namespace(database_url="postgresql://localhost/any")
         result = await resolve_soniq_instance(args)
         assert result is not None
-
-
-class TestHandleCliDebugCommand:
-    @pytest.mark.asyncio
-    async def test_returns_zero(self, capsys):
-        from soniq.cli.commands.core import register_core_commands
-
-        register_core_commands()
-        args = argparse.Namespace()
-        result = await handle_cli_debug_command(args)
-        assert result == 0
-
-        captured = capsys.readouterr()
-        assert "Command Registry" in captured.out
-        assert "Total commands" in captured.out

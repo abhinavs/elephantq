@@ -133,34 +133,24 @@ async def test_dsl_usage_examples_compliance():
 
 @pytest.mark.asyncio
 async def test_cli_commands_compliance():
-    """Test CLI commands match specification"""
-    # Test that CLI module exists and has correct structure
-    from soniq.cli.main import main
+    """Top-level CLI parser must expose the core subcommands per spec."""
+    import argparse
+
+    from soniq.cli.main import build_parser, main
 
     assert main is not None
 
-    # Test CLI commands exist
-    from soniq.cli.commands.core import register_core_commands
-    from soniq.cli.commands.database import register_database_commands
-    from soniq.cli.registry import get_cli_registry
+    parser = build_parser()
+    sub_action = next(
+        a for a in parser._actions if isinstance(a, argparse._SubParsersAction)
+    )
+    command_names = set(sub_action.choices.keys())
 
-    # Register core + database commands and verify they exist
-    register_core_commands()
-    register_database_commands()
-    registry = get_cli_registry()
-    commands = registry.get_all_commands()
-    command_names = [cmd.name for cmd in commands]
-
-    # Test database setup command (registered by database.py)
     assert "setup" in command_names
-
-    # Test worker start command (registered by core.py)
     assert "start" in command_names
 
-    # Verify command structure includes expected features
-    start_cmd = next((cmd for cmd in commands if cmd.name == "start"), None)
-    assert start_cmd is not None
-    assert start_cmd.help == "Start Soniq worker"
+    start_help = sub_action.choices["start"].format_help()
+    assert "worker" in start_help.lower()
 
 
 @pytest.mark.asyncio

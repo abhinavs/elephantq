@@ -1,72 +1,79 @@
 """
-Soniq CLI - Simplified main module with consolidated commands
+Soniq CLI - flat dispatch.
+
+Each subcommand lives in its own module and exposes one
+``add_X_cmd(subparsers)`` function that creates the subparser and
+attaches its handler via ``parser.set_defaults(func=...)``. ``main``
+just lists them and dispatches whichever the user picked.
 """
 
 import argparse
 import asyncio
 
 from .colors import print_status
+from .dashboard import add_dashboard_cmd
+from .dead_letter import add_dead_letter_cmd
+from .metrics import add_metrics_cmd
+from .migrate_status import add_migrate_status_cmd
+from .scheduler import add_scheduler_cmd
+from .setup import add_setup_cmd
+from .start import add_start_cmd
+from .status import add_status_cmd
+from .tasks import add_tasks_cmd
+from .workers import add_workers_cmd
 
-# Import extensible command system
-from .commands.core import register_core_commands
-from .commands.database import register_database_commands
-from .commands.features import register_feature_commands
-from .commands.tasks import register_tasks_commands
-from .registry import get_cli_registry
 
+def build_parser() -> argparse.ArgumentParser:
+    """Construct the top-level parser with every subcommand wired in.
 
-def main():
-    """Main CLI entry point with organized command structure"""
+    Exposed for tests so they can introspect the parser without
+    invoking ``main``.
+    """
     parser = argparse.ArgumentParser(
-        description="Soniq CLI - Unified Interface",
+        description="Soniq CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  soniq start --concurrency 4 --queues default,urgen
+  soniq start --concurrency 4 --queues default,urgent
   soniq setup
   soniq status --verbose --jobs
 
 For more information, visit: https://github.com/abhinavs/soniq
         """,
     )
+    sub = parser.add_subparsers(dest="command", title="Commands")
 
-    subparsers = parser.add_subparsers(dest="command", title="Available commands")
+    add_start_cmd(sub)
+    add_setup_cmd(sub)
+    add_status_cmd(sub)
+    add_workers_cmd(sub)
+    add_migrate_status_cmd(sub)
+    add_dashboard_cmd(sub)
+    add_scheduler_cmd(sub)
+    add_metrics_cmd(sub)
+    add_dead_letter_cmd(sub)
+    add_tasks_cmd(sub)
 
-    # Register core commands (start, status, workers, cli-debug)
-    register_core_commands()
+    return parser
 
-    # Register database commands (setup, migrate-status)
-    register_database_commands()
 
-    # Register feature commands (dashboard, scheduler, metrics, dead-letter)
-    register_feature_commands()
-
-    # Register task observability commands (tasks list / tasks check)
-    register_tasks_commands()
-
-    # Add all registered commands to the parser
-    registry = get_cli_registry()
-    registry.add_to_parser(subparsers)
-
-    # Parse arguments
+def main() -> int:
+    parser = build_parser()
     args = parser.parse_args()
 
     if not args.command:
         parser.print_help()
         return 1
 
-    # Execute the command
     try:
         if hasattr(args, "func"):
-            # Core command handler
             if asyncio.iscoroutinefunction(args.func):
-                return asyncio.run(args.func(args))
+                rc = asyncio.run(args.func(args))
             else:
-                return args.func(args)
-        else:
-            print_status(f"Command '{args.command}' has no handler", "error")
-            return 1
-
+                rc = args.func(args)
+            return int(rc) if rc is not None else 0
+        print_status(f"Command '{args.command}' has no handler", "error")
+        return 1
     except KeyboardInterrupt:
         print_status("Operation interrupted by user", "info")
         return 0
@@ -76,4 +83,4 @@ For more information, visit: https://github.com/abhinavs/soniq
 
 
 if __name__ == "__main__":
-    exit(main())
+    raise SystemExit(main())
