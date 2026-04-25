@@ -4,7 +4,7 @@ All notable changes to Soniq are documented in this file.
 
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.0.2] - unreleased
+## [0.0.2] - 2026-04-25
 
 First public release.
 
@@ -19,6 +19,7 @@ First public release.
 - CLI: `soniq setup`, `soniq start`, `soniq scheduler`, `soniq dashboard`, `soniq status`, `soniq workers`, dead-letter management.
 - Optional web dashboard (`soniq dashboard`), behind a feature flag.
 - Structured logging, webhook delivery, and metrics behind optional extras.
+- Pluggable extension points: `RetryPolicy`, `Serializer`, `LogSink`, and `MetricsSink`. Each ships a default and a `Soniq(...)` constructor parameter. `PrometheusMetricsSink` (under `pip install soniq[monitoring]`) emits `soniq_jobs_started_total`, `soniq_jobs_completed_total`, `soniq_job_duration_seconds`, and `soniq_jobs_in_progress` against a configurable registry / prefix.
 
 ### Operational notes
 
