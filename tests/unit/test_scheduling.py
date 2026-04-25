@@ -35,30 +35,6 @@ def enable_scheduling_features(monkeypatch):
     yield
 
 
-class DummyPool:
-    """Simple pool stub that satisfies async context manager usage."""
-
-    class DummyTx:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-    class DummyConn:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-        def transaction(self):
-            return DummyPool.DummyTx()
-
-    def acquire(self):
-        return DummyPool.DummyConn()
-
-
 # ---------------------------------------------------------------------------
 # JobScheduleBuilder core tests
 # ---------------------------------------------------------------------------
@@ -72,19 +48,7 @@ async def test_job_schedule_builder_records_metadata(monkeypatch):
         captured.append(kwargs)
         return "job-id"
 
-    stored_timeouts = []
-
-    async def fake_store_job_timeout(job_id, timeout, conn):
-        stored_timeouts.append((job_id, timeout))
-
-    async def fake_get_context_pool():
-        return DummyPool()
-
     monkeypatch.setattr(scheduling, "enqueue", fake_enqueue)
-    monkeypatch.setattr(
-        "soniq.features.timeout_processor.store_job_timeout", fake_store_job_timeout
-    )
-    monkeypatch.setattr("soniq.db.context.get_context_pool", fake_get_context_pool)
 
     async def dummy_job(message: str):
         return message
@@ -105,7 +69,9 @@ async def test_job_schedule_builder_records_metadata(monkeypatch):
     assert captured[0]["priority"] == 7
     assert captured[0]["queue"] == "critical"
     assert "scheduled_at" in captured[0]
-    assert stored_timeouts[0][1] == 45
+    # `with_timeout(...)` is captured in scheduler metadata only; it is not
+    # persisted to a DB table or enforced at the per-call level. The
+    # processor enforces timeouts via the registry value, not this metadata.
     metadata = scheduling.get_job_metadata("job-id")
     assert metadata["timeout"] == 45
     assert metadata["tags"] == ["batch"]

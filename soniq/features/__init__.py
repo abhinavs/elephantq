@@ -7,7 +7,6 @@ from . import (
     recurring,
     scheduling,
     signing,
-    timeout_processor,
     webhooks,
 )
 from .managers import SoniqFeatures, features
@@ -17,7 +16,6 @@ __all__ = [
     "features",
     "recurring",
     "scheduling",
-    "timeout_processor",
     "dead_letter",
     "logging",
     "metrics",

@@ -87,14 +87,8 @@ def test_scheduling_flag_required():
     with pytest.raises(RuntimeError, match="Recurring scheduler"):
         recurring.daily()
 
-
-@pytest.mark.asyncio
-async def test_timeouts_flag_required():
-    _clear_soniq_env()
-    _disable_all_feature_flags()
-    _reset_settings_cache()
-
-    from soniq.features.timeout_processor import run_worker_with_timeout
-
-    with pytest.raises(RuntimeError, match="Timeout processing"):
-        await run_worker_with_timeout()
+    # The dedicated timeout-processor module was removed in 0.0.2; timeouts
+    # are now enforced inline in the core processor via asyncio.wait_for,
+    # gated by the per-job `timeout` registry value or the global
+    # `SONIQ_JOB_TIMEOUT` setting. There is no separate flag-gated entry
+    # point anymore.

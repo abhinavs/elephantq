@@ -141,32 +141,14 @@ class JobScheduleBuilder:
         # Add job arguments
         enqueue_kwargs.update(kwargs)
 
-        if self._timeout:
-            # Use a transaction for job row + timeout metadata
-            from soniq.db.context import get_context_pool
-
-            pool = await get_context_pool()
-
-            if connection is not None:
-                job_id = await enqueue(
-                    self.job_func, **enqueue_kwargs, connection=connection
-                )
-                from .timeout_processor import store_job_timeout
-
-                await store_job_timeout(job_id, self._timeout, connection)
-            else:
-                async with pool.acquire() as conn:
-                    async with conn.transaction():
-                        job_id = await enqueue(
-                            self.job_func, **enqueue_kwargs, connection=conn
-                        )
-                        from .timeout_processor import store_job_timeout
-
-                        await store_job_timeout(job_id, self._timeout, conn)
-        else:
-            if connection is not None:
-                enqueue_kwargs["connection"] = connection
-            job_id = await enqueue(self.job_func, **enqueue_kwargs)
+        # Per-call `with_timeout(...)` is captured in the in-memory metadata
+        # below. Enforcement happens at the registry level via
+        # `@app.job(timeout=...)`; the processor reads the per-job-meta
+        # value, which `JobScheduleBuilder` does not currently override.
+        # See the per-call timeout note in scheduling docs.
+        if connection is not None:
+            enqueue_kwargs["connection"] = connection
+        job_id = await enqueue(self.job_func, **enqueue_kwargs)
 
         # Store additional metadata (tags, timeout, etc.)
         if any([self._tags, self._timeout, self._retries is not None]):
