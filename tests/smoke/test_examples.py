@@ -38,12 +38,12 @@ def test_recurring_jobs_uses_real_api():
         "recurring_jobs.py calls soniq.schedule() with a cron string, "
         "but soniq.schedule() requires run_at or run_in keyword arguments"
     )
-    # The pre-S3 fluent terminal `.schedule(fn)` is gone; the new
-    # cron-string DSL returns plain strings that flow into
-    # `@app.periodic(cron=...)` or `app.scheduler.add(...)`.
+    # The cron-string DSL returns plain strings; there is no `.schedule(fn)`
+    # terminal. Schedules are wired via `@app.periodic(cron=...)` or
+    # `app.scheduler.add(...)`.
     assert ").schedule(" not in source, (
-        "recurring_jobs.py calls a `.schedule(...)` terminal which no longer "
-        "exists. Use `@app.periodic(cron=...)` or `app.scheduler.add(...)`."
+        "recurring_jobs.py calls a `.schedule(...)` terminal which does not "
+        "exist. Use `@app.periodic(cron=...)` or `app.scheduler.add(...)`."
     )
 
 

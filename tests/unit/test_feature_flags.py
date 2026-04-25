@@ -70,14 +70,10 @@ def test_feature_managers_enabled():
     assert features.dead_letter is not None
     assert features.signing is not None
 
-    # As of S3, the cron-string DSL (`soniq.schedules.daily/weekly/...`) is
-    # pure-Python and does not gate on a feature flag - it builds strings.
-    # The Scheduler service itself only requires croniter for cron entries
-    # (raised on add()), and there is no flag wall in front of it. The old
-    # `JobScheduleBuilder` and `Advanced scheduling` flag are gone.
-
-    # The dedicated timeout-processor module was removed in 0.0.2; timeouts
-    # are now enforced inline in the core processor via asyncio.wait_for,
-    # gated by the per-job `timeout` registry value or the global
-    # `SONIQ_JOB_TIMEOUT` setting. There is no separate flag-gated entry
-    # point anymore.
+    # The cron-string DSL in `soniq.schedules` is pure Python with no flag
+    # gating - it builds strings. The Scheduler service requires croniter
+    # only when a cron schedule is added.
+    #
+    # Timeouts are enforced inline in the core processor via
+    # asyncio.wait_for, gated per-job by the registry's `timeout` or the
+    # global `SONIQ_JOB_TIMEOUT` setting. No separate flag.

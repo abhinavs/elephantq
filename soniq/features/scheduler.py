@@ -183,10 +183,9 @@ class _MemoryStore:
 class _SqlStore:
     """Schedule storage backed by the `soniq_recurring_jobs` Postgres table.
 
-    Schema is unchanged from the pre-S3 code so old rows keep working: the
-    table's `id` is a UUID, but we key the API on the schedule's stable
-    `name` (the task name). When a schedule with the same name is added
-    again, the existing row is updated in place rather than duplicated.
+    The table's `id` is a UUID, but the public API keys schedules by their
+    stable task `name`. Re-adding the same name updates the existing row
+    in place rather than duplicating it.
     """
 
     def __init__(self, backend: Any) -> None:
@@ -217,12 +216,9 @@ class _SqlStore:
         )
 
     async def upsert(self, sched: _Schedule) -> None:
-        # The 001 baseline does not declare a UNIQUE on job_name (PK is id),
-        # so we cannot use ON CONFLICT here without a schema migration -
-        # see todo.md S10. Do the existence check ourselves: replace any
-        # existing row(s) for this name in one transaction so re-adding the
-        # same schedule stays idempotent without depending on schema we
-        # haven't shipped.
+        # `job_name` has no UNIQUE constraint (PK is `id`), so we replace
+        # any existing rows for this name in one transaction instead of
+        # using ON CONFLICT. Keeps re-adds idempotent without a migration.
         async with self._conn() as conn:
             async with conn.transaction():
                 await conn.execute(

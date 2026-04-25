@@ -60,9 +60,3 @@ class TestNormalizeScheduledTime:
         with pytest.raises(ValueError) as exc_info:
             _normalize_scheduled_time(naive)
         assert "timezone.utc" in str(exc_info.value) or "tzinfo" in str(exc_info.value)
-
-
-# The pre-S3 `JobScheduleBuilder` is gone; one-off scheduling now flows
-# through `app.schedule(target, run_at=...)` which calls
-# `_normalize_scheduled_time` directly. The behavior under test was the
-# normalizer itself, exercised above.
