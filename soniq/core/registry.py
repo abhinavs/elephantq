@@ -26,6 +26,8 @@ class JobRegistry:
     def register_job(
         self,
         func: Callable[..., Any],
+        *,
+        name: str,
         retries: int = 3,
         max_retries: Optional[int] = None,
         args_model: Optional[Type[BaseModel]] = None,
@@ -43,8 +45,17 @@ class JobRegistry:
         """
         Register a job function with this registry.
 
+        `name` is a mandatory keyword argument: a stable, dotted protocol
+        identifier owned by the consumer service (e.g.
+        ``billing.invoices.send.v2``). Module-derived names were removed
+        because once queues cross repo boundaries, the name is the wire
+        protocol; treating ``module.qualname`` as authoritative made every
+        rename a wire-protocol migration. Use the explicit ``name=`` form.
+
         Args:
             func: Job function to register
+            name: Required dotted task identifier (validated against
+                ``SONIQ_TASK_NAME_PATTERN``).
             retries: Number of retry attempts (default: 3)
             args_model: Pydantic model for argument validation (alias: validate)
             priority: Job priority (lower = higher priority)
@@ -62,13 +73,18 @@ class JobRegistry:
 
         Returns:
             The wrapped job function
+
+        Raises:
+            SoniqError(SONIQ_INVALID_TASK_NAME): name missing, empty, or
+                violating the configured task name pattern.
         """
+        from .naming import validate_task_name
+
+        job_name = validate_task_name(name)
 
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             return func(*args, **kwargs)
-
-        job_name = f"{func.__module__}.{func.__name__}"
 
         # validate is the preferred alias for args_model
         effective_args_model = validate or args_model

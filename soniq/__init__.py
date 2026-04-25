@@ -195,8 +195,12 @@ def job(**kwargs):
     """
     Global job decorator.
 
-    Equivalent to app.job() but uses the global Soniq instance.
-    Jobs are automatically re-registered if the global instance is recreated.
+    Equivalent to ``app.job()`` but uses the global Soniq instance. Jobs
+    are automatically re-registered if the global instance is recreated.
+
+    Requires an explicit ``name=`` keyword argument (see ``Soniq.job`` for
+    the rationale and example). ``@soniq.job()`` without ``name=`` raises
+    ``SoniqError(SONIQ_INVALID_TASK_NAME)`` at decoration time.
     """
 
     def decorator(func):

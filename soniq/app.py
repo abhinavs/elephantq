@@ -344,14 +344,28 @@ class Soniq:
         """
         Job decorator for this Soniq instance.
 
+        Requires an explicit ``name=`` keyword argument: a stable, dotted
+        protocol identifier (e.g. ``billing.invoices.send.v2``) validated
+        against ``SONIQ_TASK_NAME_PATTERN``. Module-derived names were
+        removed because the name is the wire protocol once queues cross
+        repo boundaries.
+
+        Example::
+
+            @app.job(name="billing.invoices.send.v2", validate=InvoiceArgs)
+            async def send_v2(order_id: str, customer: str): ...
+
         Args:
-            **kwargs: Job configuration options
+            **kwargs: Job configuration options. ``name`` is required;
+                see ``JobRegistry.register_job`` for the full list.
 
         Returns:
             Job decorator function. The decorated callable preserves its
-            original signature (typecheckers see `f(...)` after `@app.job()`
-            with the same parameters as the underlying function), via
-            ParamSpec on the inner type annotation.
+            original signature via ParamSpec on the inner type annotation.
+
+        Raises:
+            SoniqError(SONIQ_INVALID_TASK_NAME): ``name`` missing or
+                violating the configured task name pattern.
         """
         from typing import Callable, ParamSpec, TypeVar
 
