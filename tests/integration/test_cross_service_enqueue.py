@@ -30,7 +30,6 @@ from tests.db_utils import TEST_DATABASE_URL
 os.environ.setdefault("SONIQ_DATABASE_URL", TEST_DATABASE_URL)
 
 from soniq import Soniq  # noqa: E402
-from soniq.errors import SONIQ_PRODUCER_ONLY, SoniqError  # noqa: E402
 from soniq.testing.memory_backend import MemoryBackend  # noqa: E402
 
 
@@ -44,14 +43,13 @@ async def test_cross_service_enqueue_end_to_end():
 
     producer = Soniq(
         backend=shared_backend,
-        producer_only=True,
         enqueue_validation="none",
     )
 
-    # Producer registry isolation: producer_only=True refuses @app.job, so
-    # there is no way for a stray import to accidentally populate the
-    # producer's registry. This pins the assumption that the test is
-    # validating cross-service plumbing rather than an in-process route.
+    # Producer registry isolation: as a producer service convention this
+    # instance never sees @app.job, so the registry stays empty. This pins
+    # the assumption that the test is validating cross-service plumbing
+    # rather than an in-process route.
     assert len(producer._job_registry) == 0
 
     consumer = Soniq(backend=shared_backend)
@@ -79,13 +77,3 @@ async def test_cross_service_enqueue_end_to_end():
     # Job marked done.
     final = await consumer.get_job(job_id)
     assert final["status"] == "done"
-
-
-@pytest.mark.asyncio
-async def test_producer_only_run_worker_raises_producer_only():
-    """The producer instance's run_worker is refused; one-line check that
-    we don't accidentally start a worker on the producer side."""
-    producer = Soniq(backend=MemoryBackend(), producer_only=True)
-    with pytest.raises(SoniqError) as exc_info:
-        await producer.run_worker(run_once=True)
-    assert exc_info.value.error_code == SONIQ_PRODUCER_ONLY

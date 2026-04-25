@@ -14,7 +14,6 @@ from soniq import Soniq
 
 producer = Soniq(
     database_url="postgresql://shared-pg/jobs",
-    producer_only=True,
     enqueue_validation="none",  # producer has no local registry
 )
 
@@ -130,27 +129,13 @@ async def send_invoice(order_id: str, customer: str):
 `dedup_key` and `unique=True` are operational helpers, not delivery
 guarantees. They reduce duplicate work; they do not eliminate it.
 
-## Producer-only mode
+## Producer / consumer split
 
-Pass `producer_only=True` on a producer-side `Soniq` instance to
-prevent accidental consumption:
-
-```python
-producer = Soniq(database_url="...", producer_only=True)
-```
-
-What this changes:
-
-- `run_worker(...)` raises `SONIQ_PRODUCER_ONLY`.
-- The recurring scheduler entry point raises `SONIQ_PRODUCER_ONLY`.
-- `@app.job(name=...)` registration raises `SONIQ_PRODUCER_ONLY`.
-- The "@periodic jobs detected without scheduler" startup warning
-  is suppressed.
-
-Everything else (enqueue, schedule, get_job, list_jobs, retry, cancel,
-delete, get_queue_stats, _setup) works normally. A producer service
-may legitimately own its half of the shared DB and run migrations
-via `_setup()`.
+Producer-vs-consumer is a deployment convention, not a class. The same
+`Soniq` runs in both roles; what differs is whether the deployment
+imports handler modules and runs `run_worker(...)`. See
+[Deployment shapes](../production/deployment-shapes.md) for the
+producer service, consumer service, and shared-library patterns.
 
 ## Migrating from earlier versions
 

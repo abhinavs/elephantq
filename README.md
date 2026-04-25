@@ -62,7 +62,6 @@ Service A enqueues; service B owns and runs the handler. Both share a Postgres d
 # Producer (service A) - no local registry
 producer = Soniq(
     database_url="postgresql://shared-pg/jobs",
-    producer_only=True,
     enqueue_validation="none",
 )
 await producer.enqueue("billing.invoices.send.v2", args={"order_id": "o1"})

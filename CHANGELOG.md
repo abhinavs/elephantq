@@ -31,10 +31,6 @@ unchanged.
   Cross-service deployments should pass `name=` explicitly; explicit
   names are validated against `SONIQ_TASK_NAME_PATTERN`.
 
-- `Soniq(producer_only=True)` flag for pure-producer services.
-  Refuses `run_worker`, the recurring scheduler entry point, and
-  `@app.job` registration; allows enqueue, schedule, and the read-only
-  management API. Suppresses the recurring-scheduler startup warning.
 - `SONIQ_ENQUEUE_VALIDATION` setting (`"strict"` / `"warn"` /
   `"none"`). Governs how `enqueue("string-name", ...)` handles a name
   not registered locally. Default `"strict"` raises
@@ -44,8 +40,7 @@ unchanged.
   uppercase, and leading/trailing dots. Validates explicit `name=`
   values at registration and string targets at enqueue time.
 - New error codes: `SONIQ_UNKNOWN_TASK_NAME`,
-  `SONIQ_INVALID_TASK_NAME`, `SONIQ_TASK_ARGS_INVALID`,
-  `SONIQ_PRODUCER_ONLY`.
+  `SONIQ_INVALID_TASK_NAME`, `SONIQ_TASK_ARGS_INVALID`.
 - `soniq migrate-enqueue` codemod for projects that want to switch
   from the callable form to the by-name form (e.g. when carving a
   consumer service out of a monolith). Optional - the callable form

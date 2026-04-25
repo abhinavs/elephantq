@@ -78,7 +78,6 @@ class Soniq:
         serializer: Optional[Any] = None,
         log_sink: Optional[Any] = None,
         metrics_sink: Optional[Any] = None,
-        producer_only: bool = False,
         **settings_overrides,
     ):
         """
@@ -110,23 +109,11 @@ class Soniq:
                 via `prometheus_client`. The sink is invoked by the
                 worker around each job's execution.
                 Also settable post-construct via ``app.metrics_sink = ...``.
-            producer_only: When True, this instance can enqueue and
-                manage jobs but cannot run a worker or scheduler.
-                ``run_worker(...)`` and the recurring scheduler entry
-                point raise ``SoniqError(SONIQ_PRODUCER_ONLY)``.
-                ``@app.job`` registration is also refused (per plan
-                section 15: with the back-compat constraint dropped
-                there is no single-repo convenience to preserve, so a
-                producer-only instance has no business registering job
-                handlers). The recurring-scheduler startup warning is
-                suppressed. Use this in pure-producer services that
-                should not accidentally consume.
             **settings_overrides: Override any SoniqSettings field
         """
         # Core instance state
         self._initialized = False
         self._closed = False
-        self._producer_only = bool(producer_only)
 
         # Resolve backend: explicit string name, auto-detect from URL, or None (lazy Postgres)
         if isinstance(backend, str):
@@ -433,17 +420,6 @@ class Soniq:
                 passed and violates the configured task name pattern.
         """
         from typing import Callable, ParamSpec, TypeVar
-
-        from .errors import SONIQ_PRODUCER_ONLY, SoniqError
-
-        if self._producer_only:
-            raise SoniqError(
-                "Cannot register @app.job on a producer_only=True instance. "
-                "Producer-only instances exist to enqueue and manage jobs, "
-                "not to run handlers; if you need to register, drop the "
-                "producer_only flag.",
-                SONIQ_PRODUCER_ONLY,
-            )
 
         _P = ParamSpec("_P")
         _R = TypeVar("_R")
@@ -929,16 +905,6 @@ class Soniq:
             app = Soniq(database_url="postgresql://localhost/myapp")
             await app.run_worker(concurrency=2, queues=["high", "default"])
         """
-        from .errors import SONIQ_PRODUCER_ONLY, SoniqError
-
-        if self._producer_only:
-            raise SoniqError(
-                "run_worker is not allowed on a producer_only=True instance. "
-                "Producer-only instances cannot consume jobs; drop the flag "
-                "to start a worker.",
-                SONIQ_PRODUCER_ONLY,
-            )
-
         await self._ensure_initialized()
 
         self._check_pool_sizing(concurrency)
@@ -975,14 +941,7 @@ class Soniq:
         Suppressible with `SONIQ_SCHEDULER_SUPPRESS_WARNING=1` for
         deployments that intentionally split scheduler and worker but
         don't want this WARN cluttering the worker's logs.
-
-        Also suppressed unconditionally when ``producer_only=True`` -
-        such instances refuse ``@app.job`` and ``run_worker`` outright
-        so a periodic-without-scheduler warning would be redundant noise.
         """
-        if self._producer_only:
-            return
-
         import os
 
         if os.environ.get("SONIQ_SCHEDULER_SUPPRESS_WARNING", "").lower() in {
