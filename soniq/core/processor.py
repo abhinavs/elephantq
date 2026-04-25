@@ -221,8 +221,17 @@ async def process_job_via_backend(
                     capped,
                     job_id,
                 )
-            # Roll attempts back to the pre-claim value so the snooze does
-            # not consume a retry slot.
+            # Snooze invariant: the dequeue path bumps `attempts` by one
+            # the moment a worker claims the job (see fetch_and_lock_job in
+            # each backend). A handler that returns Snooze(...) is asking
+            # to defer, *not* to consume a retry slot. We undo the dequeue
+            # bump by handing the backend `attempts - 1`, floored at 0.
+            #
+            # Concrete consequence: a job with max_retries=3 (max_attempts=4)
+            # can snooze any number of times and still get its full 4
+            # attempts when it eventually runs and either succeeds or
+            # actually fails. Without this rollback, every snooze would
+            # silently shrink the retry budget.
             restored_attempts = max(attempts - 1, 0)
             await backend.reschedule_job(
                 job_id,
