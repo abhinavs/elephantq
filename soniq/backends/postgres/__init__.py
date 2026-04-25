@@ -18,7 +18,7 @@ import asyncpg
 
 from soniq.db.helpers import rows_affected as _rows_affected
 
-from ..core.leadership import advisory_key
+from ...core.leadership import advisory_key
 
 logger = logging.getLogger(__name__)
 

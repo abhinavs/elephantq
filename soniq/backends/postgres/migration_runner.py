@@ -11,11 +11,11 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import asyncpg
 
-from ..core.leadership import advisory_key
+from ...core.leadership import advisory_key
 
 if TYPE_CHECKING:
-    from ..backends.postgres import PostgresBackend
-    from ..plugin import MigrationSource
+    from ...plugin import MigrationSource
+    from . import PostgresBackend
 
 # Reused across concurrent migration runs. Parallel deploys (two CI nodes
 # calling `soniq setup` at once) used to race on non-idempotent DDL or
@@ -81,21 +81,30 @@ class MigrationRunner:
         """
         )
 
-    def discover_migrations(self) -> List[Tuple[str, str, Path]]:
+    def discover_migrations(
+        self, version_filter: Optional[str] = None
+    ) -> List[Tuple[str, str, Path]]:
         """
         Discover all migration files in the core directory plus any
         registered plugin sources.
 
+        Args:
+            version_filter: Optional prefix string. When set, only
+                migrations whose version starts with this prefix are
+                returned. ``"000"`` selects core migrations
+                ``0001``-``0009``; ``"0010"`` selects only the
+                ``0010_*`` slice (scheduler).
+
         Returns:
             List of (version, name, file_path) tuples sorted by version
 
-        Core migrations live in ``soniq/db/migrations/`` and use raw
-        ``NNN_*.sql`` filenames (versions ``001``-``099``). Plugin
-        migrations live inside the plugin package and use a 4-digit
-        version derived from ``prefix + last-three-of-filename`` so the
-        per-plugin range stays contiguous in the sort. ``soniq-stripe``
-        with prefix ``"0100"`` and a file ``002_events.sql`` registers
-        as version ``0100002``.
+        Core migrations live in ``soniq/backends/postgres/migrations/``
+        and use ``NNNN_*.sql`` filenames (versions ``0001``-``0099``).
+        Plugin migrations live inside the plugin package and use a
+        4-digit version derived from ``prefix + last-three-of-filename``
+        so the per-plugin range stays contiguous in the sort.
+        ``soniq-stripe`` with prefix ``"0100"`` and a file
+        ``002_events.sql`` registers as version ``0100002``.
         """
         migrations: List[Tuple[str, str, Path]] = []
 
@@ -122,7 +131,10 @@ class MigrationRunner:
                 if entry is not None:
                     migrations.append(entry)
 
-        # Sort by version. Core ``001`` and plugin ``0100002`` both sort
+        if version_filter is not None:
+            migrations = [m for m in migrations if m[0].startswith(version_filter)]
+
+        # Sort by version. Core ``0001`` and plugin ``0100002`` both sort
         # numerically; lexicographic also works because every version is
         # a left-padded digit string.
         migrations.sort(key=lambda x: x[0])
@@ -195,9 +207,22 @@ class MigrationRunner:
             logger.error(f"Failed to apply migration {version}: {name} - {e}")
             raise MigrationError(f"Migration {version} failed: {e}") from e
 
-    async def run_migrations(self, conn: asyncpg.Connection = None) -> int:
+    async def run_migrations(
+        self,
+        conn: asyncpg.Connection = None,
+        version_filter: Optional[str] = None,
+    ) -> int:
         """
         Run all pending migrations.
+
+        Args:
+            conn: Optional connection. Falls back to the runner's
+                configured backend pool.
+            version_filter: Optional prefix-match on the 4-digit version.
+                ``version_filter="0010"`` applies only ``0010_*``;
+                ``version_filter=None`` applies everything. Used by
+                feature-scoped setup() calls so a deployment that does
+                not use a feature does not get its tables.
 
         Returns:
             Number of migrations applied
@@ -209,11 +234,19 @@ class MigrationRunner:
                     "MigrationRunner(backend=...) explicitly."
                 )
             async with self._backend.acquire() as conn:
-                return await self._run_migrations_with_connection(conn)
+                return await self._run_migrations_with_connection(
+                    conn, version_filter=version_filter
+                )
         else:
-            return await self._run_migrations_with_connection(conn)
+            return await self._run_migrations_with_connection(
+                conn, version_filter=version_filter
+            )
 
-    async def _run_migrations_with_connection(self, conn: asyncpg.Connection) -> int:
+    async def _run_migrations_with_connection(
+        self,
+        conn: asyncpg.Connection,
+        version_filter: Optional[str] = None,
+    ) -> int:
         """Internal method to run migrations with a provided connection.
 
         Holds a session-scoped `pg_advisory_lock` for the whole run so two
@@ -232,8 +265,10 @@ class MigrationRunner:
             # Ensure migration tracking table exists
             await self.ensure_migration_table(conn)
 
-            # Discover available migrations
-            available_migrations = self.discover_migrations()
+            # Discover available migrations (optionally narrowed to a slice)
+            available_migrations = self.discover_migrations(
+                version_filter=version_filter
+            )
             if not available_migrations:
                 logger.info("No migration files found")
                 return 0
@@ -267,7 +302,11 @@ class MigrationRunner:
         finally:
             await conn.fetchval("SELECT pg_advisory_unlock($1)", _MIGRATION_LOCK_KEY)
 
-    async def get_migration_status(self, conn: asyncpg.Connection = None) -> dict:
+    async def get_migration_status(
+        self,
+        conn: asyncpg.Connection = None,
+        version_filter: Optional[str] = None,
+    ) -> dict:
         """
         Get current migration status.
 
@@ -281,17 +320,23 @@ class MigrationRunner:
                     "MigrationRunner(backend=...) explicitly."
                 )
             async with self._backend.acquire() as conn:
-                return await self._get_migration_status_with_connection(conn)
+                return await self._get_migration_status_with_connection(
+                    conn, version_filter=version_filter
+                )
         else:
-            return await self._get_migration_status_with_connection(conn)
+            return await self._get_migration_status_with_connection(
+                conn, version_filter=version_filter
+            )
 
     async def _get_migration_status_with_connection(
-        self, conn: asyncpg.Connection
+        self,
+        conn: asyncpg.Connection,
+        version_filter: Optional[str] = None,
     ) -> dict:
         """Internal method to get migration status with a provided connection"""
         await self.ensure_migration_table(conn)
 
-        available_migrations = self.discover_migrations()
+        available_migrations = self.discover_migrations(version_filter=version_filter)
         applied_migrations = await self.get_applied_migrations(conn)
         applied_set = set(applied_migrations)
 
@@ -313,12 +358,16 @@ class MigrationRunner:
 _migration_runner = MigrationRunner()
 
 
-async def run_migrations(conn: asyncpg.Connection = None) -> int:
+async def run_migrations(
+    conn: asyncpg.Connection = None,
+    version_filter: Optional[str] = None,
+) -> int:
     """
     Run all pending database migrations.
 
     Args:
         conn: Optional database connection. If not provided, creates one.
+        version_filter: Optional prefix-match on the 4-digit version.
 
     Returns:
         Number of migrations applied
@@ -326,17 +375,23 @@ async def run_migrations(conn: asyncpg.Connection = None) -> int:
     Raises:
         MigrationError: If any migration fails
     """
-    return await _migration_runner.run_migrations(conn)
+    return await _migration_runner.run_migrations(conn, version_filter=version_filter)
 
 
-async def get_migration_status(conn: asyncpg.Connection = None) -> dict:
+async def get_migration_status(
+    conn: asyncpg.Connection = None,
+    version_filter: Optional[str] = None,
+) -> dict:
     """
     Get current database migration status.
 
     Args:
         conn: Optional database connection. If not provided, creates one.
+        version_filter: Optional prefix-match on the 4-digit version.
 
     Returns:
         Dictionary with migration status information
     """
-    return await _migration_runner.get_migration_status(conn)
+    return await _migration_runner.get_migration_status(
+        conn, version_filter=version_filter
+    )

@@ -1,8 +1,8 @@
 """
-Tests for db/migrations.py — MigrationRunner basics.
+Tests for backends/postgres/migration_runner.py - MigrationRunner basics.
 """
 
-from soniq.db.migrations import MigrationRunner
+from soniq.backends.postgres.migration_runner import MigrationRunner
 
 
 class TestMigrationRunner:

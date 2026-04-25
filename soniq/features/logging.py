@@ -756,6 +756,22 @@ class LogService:
         self._app = app
         self.analyzer = LogAnalyzer(app)
 
+    async def setup(self) -> int:
+        """Apply log migrations (``0022_*``).
+
+        Idempotent. Memory and SQLite backends are no-ops.
+        """
+        await self._app.ensure_initialized()
+        from soniq.backends.postgres import PostgresBackend
+        from soniq.backends.postgres.migration_runner import MigrationRunner
+
+        backend = self._app.backend
+        if not isinstance(backend, PostgresBackend):
+            return 0
+        return await MigrationRunner(backend=backend).run_migrations(
+            version_filter="0022"
+        )
+
     async def get_error_summary(self, hours: int = 24) -> Dict[str, Any]:
         return await self.analyzer.get_error_summary(hours)
 

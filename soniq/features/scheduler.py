@@ -321,6 +321,25 @@ class Scheduler:
         self._running = False
         self._check_interval = 30
 
+    async def setup(self) -> int:
+        """Apply scheduler migrations (``0010_*``).
+
+        Idempotent. Safe to call repeatedly; the migration runner
+        records applied versions in ``soniq_migrations`` and skips
+        anything already there. Memory and SQLite backends are no-ops -
+        the scheduler keeps state in-process there.
+        """
+        await self._app.ensure_initialized()
+        from soniq.backends.postgres import PostgresBackend
+        from soniq.backends.postgres.migration_runner import MigrationRunner
+
+        backend = self._app.backend
+        if not isinstance(backend, PostgresBackend):
+            return 0
+        return await MigrationRunner(backend=backend).run_migrations(
+            version_filter="0010"
+        )
+
     # ------------------------------------------------------------------
     # Storage selection and cache maintenance
     # ------------------------------------------------------------------

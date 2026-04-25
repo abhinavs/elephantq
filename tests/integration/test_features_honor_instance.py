@@ -18,7 +18,7 @@ import pytest
 
 import soniq
 from soniq import Soniq
-from soniq.db.migrations import run_migrations
+from soniq.backends.postgres.migration_runner import run_migrations
 from tests.db_utils import TEST_DATABASE_URL
 
 DB_A = "soniq_pr4_db_a"

@@ -10,7 +10,11 @@ from pathlib import Path
 def test_postgres_backend_pool_has_init_callback():
     """PostgresBackend must pass init= to create_pool."""
     backend_path = (
-        Path(__file__).parent.parent.parent / "soniq" / "backends" / "postgres.py"
+        Path(__file__).parent.parent.parent
+        / "soniq"
+        / "backends"
+        / "postgres"
+        / "__init__.py"
     )
     source = backend_path.read_text()
     tree = ast.parse(source)
@@ -25,7 +29,7 @@ def test_postgres_backend_pool_has_init_callback():
                         break
 
     assert found_init, (
-        "asyncpg.create_pool() in postgres.py must include init= callback "
+        "asyncpg.create_pool() in PostgresBackend must include init= callback "
         "for connection-level UTC timezone initialization"
     )
 

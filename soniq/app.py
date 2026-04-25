@@ -1273,26 +1273,40 @@ class Soniq:
         await self._ensure_initialized()
         return await self._backend.get_queue_stats()
 
-    async def _get_migration_status(self) -> dict:
+    async def _get_migration_status(self, version_filter: str | None = None) -> dict:
         """
         Get current database migration status for this instance.
+
+        Args:
+            version_filter: Optional 4-digit version prefix; ``"000"``
+                limits the report to the core ``0001``-``0009`` slice
+                that ``setup()`` applies.
 
         Returns:
             Dictionary with migration status information
         """
         await self._ensure_initialized()
 
-        from .db.migrations import MigrationRunner
+        from .backends.postgres.migration_runner import MigrationRunner
 
         migration_runner = MigrationRunner(
             plugin_sources=self._migrations.list_sources()
         )
         async with self._backend.acquire() as conn:  # type: ignore[union-attr]
-            return await migration_runner._get_migration_status_with_connection(conn)
+            return await migration_runner._get_migration_status_with_connection(
+                conn, version_filter=version_filter
+            )
 
-    async def _run_migrations(self) -> int:
+    async def _run_migrations(self, version_filter: str | None = None) -> int:
         """
         Run all pending database migrations for this instance.
+
+        Args:
+            version_filter: Optional 4-digit version prefix. ``"000"``
+                applies the core ``0001``-``0009`` slice; ``"0010"``
+                applies only the scheduler slice. ``None`` applies
+                everything (used by tests; production uses the scoped
+                form so each feature opts in).
 
         Returns:
             Number of migrations applied
@@ -1302,13 +1316,15 @@ class Soniq:
         """
         await self._ensure_initialized()
 
-        from .db.migrations import MigrationRunner
+        from .backends.postgres.migration_runner import MigrationRunner
 
         migration_runner = MigrationRunner(
             plugin_sources=self._migrations.list_sources()
         )
         async with self._backend.acquire() as conn:  # type: ignore[union-attr]
-            return await migration_runner._run_migrations_with_connection(conn)
+            return await migration_runner._run_migrations_with_connection(
+                conn, version_filter=version_filter
+            )
 
     async def setup(self) -> int:
         """
@@ -1332,9 +1348,12 @@ class Soniq:
 
         applied = 0
         if isinstance(self._backend, PostgresBackend):
-            # PostgreSQL: attempt to create the database, then run migrations
+            # PostgreSQL: attempt to create the database, then run migrations.
+            # Only the core 0001-0009 slice runs here; optional features
+            # (scheduler, dead_letter, webhooks, logs) opt in via their
+            # own setup() call or `soniq setup --features=...`.
             await self._ensure_postgres_database_exists()
-            applied = await self._run_migrations()
+            applied = await self._run_migrations(version_filter="000")
         # else: SQLite / Memory create tables on initialize() - skip.
 
         await self._run_plugin_startup_hooks()

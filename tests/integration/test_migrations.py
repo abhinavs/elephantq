@@ -1,7 +1,7 @@
 import asyncpg
 import pytest
 
-from soniq.db.migrations import MigrationRunner
+from soniq.backends.postgres.migration_runner import MigrationRunner
 from tests.db_utils import make_test_db_url, run_createdb, run_dropdb
 
 MIGRATIONS_DB = "soniq_migrations_test"

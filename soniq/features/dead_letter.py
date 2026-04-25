@@ -179,6 +179,22 @@ class DeadLetterService:
         """Verify dead letter table exists. Tables are created by migrations."""
         pass  # Tables created by soniq setup / migrations
 
+    async def setup(self) -> int:
+        """Apply dead letter migrations (``0020_*``).
+
+        Idempotent. Memory and SQLite backends are no-ops.
+        """
+        await self._app.ensure_initialized()
+        from soniq.backends.postgres import PostgresBackend
+        from soniq.backends.postgres.migration_runner import MigrationRunner
+
+        backend = self._app.backend
+        if not isinstance(backend, PostgresBackend):
+            return 0
+        return await MigrationRunner(backend=backend).run_migrations(
+            version_filter="0020"
+        )
+
     async def move_job_to_dead_letter(
         self,
         job_id: str,

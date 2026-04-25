@@ -17,7 +17,7 @@ from urllib.parse import urlparse, urlunparse
 import asyncpg
 import pytest
 
-from soniq.db.migrations import MigrationRunner
+from soniq.backends.postgres.migration_runner import MigrationRunner
 from tests.db_utils import TEST_DATABASE_URL
 
 DB_NAME = "soniq_pr5_migration_race"

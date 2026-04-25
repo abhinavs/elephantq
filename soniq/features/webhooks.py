@@ -683,6 +683,22 @@ class WebhookService:
         """The transport this service routes deliveries through."""
         return self.dispatcher.transport
 
+    async def setup(self) -> int:
+        """Apply webhook migrations (``0021_*``).
+
+        Idempotent. Memory and SQLite backends are no-ops.
+        """
+        await self._app.ensure_initialized()
+        from soniq.backends.postgres import PostgresBackend
+        from soniq.backends.postgres.migration_runner import MigrationRunner
+
+        backend = self._app.backend
+        if not isinstance(backend, PostgresBackend):
+            return 0
+        return await MigrationRunner(backend=backend).run_migrations(
+            version_filter="0021"
+        )
+
     def _acquire(self):
         return self.registry._acquire()
 
