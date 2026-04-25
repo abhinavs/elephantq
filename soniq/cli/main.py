@@ -11,7 +11,6 @@ from .colors import print_status
 from .commands.core import register_core_commands
 from .commands.database import register_database_commands
 from .commands.features import register_feature_commands
-from .commands.migrate_enqueue import register_migrate_enqueue_command
 from .commands.tasks import register_tasks_commands
 from .registry import get_cli_registry
 
@@ -41,9 +40,6 @@ For more information, visit: https://github.com/abhinavs/soniq
 
     # Register feature commands (dashboard, scheduler, metrics, dead-letter)
     register_feature_commands()
-
-    # Register migration commands (migrate-enqueue codemod)
-    register_migrate_enqueue_command()
 
     # Register task observability commands (tasks list / tasks check)
     register_tasks_commands()

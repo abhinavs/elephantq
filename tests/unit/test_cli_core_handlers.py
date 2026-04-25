@@ -14,7 +14,7 @@ from soniq.cli.commands.core import (
 )
 
 
-class TestResolveElephantqInstance:
+class TestResolveSoniqInstance:
     @pytest.mark.asyncio
     async def test_returns_none_without_database_url(self):
         args = argparse.Namespace()

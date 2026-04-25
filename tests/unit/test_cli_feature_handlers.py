@@ -48,7 +48,7 @@ class TestWithContext:
             await _with_context(args, handler)
 
 
-class TestWithElephantqContextDecorator:
+class TestWithSoniqContextDecorator:
     def test_decorator_wraps_handler(self):
         async def handler(args):
             return 0
