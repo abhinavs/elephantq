@@ -7,10 +7,11 @@ import json
 import logging
 import re
 import uuid
+from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional, Tuple
 
 from soniq.core.registry import get_job
 from soniq.db.helpers import rows_affected as _rows_affected
@@ -150,10 +151,11 @@ class DeadLetterFilter:
 class DeadLetterService:
     """Service for dead letter queue operations bound to a Soniq instance.
 
-    Pool access goes through ``self._app.backend.pool`` so a custom
-    ``Soniq(...)`` instance writes to its own database. The historical name
-    ``DeadLetterManager`` is preserved as an alias below for backwards
-    compatibility within this session; the public surface delegates here.
+    Connections come from ``self._app.backend.acquire()`` so a custom
+    ``Soniq(...)`` instance writes to its own database. The historical
+    name ``DeadLetterManager`` is preserved as an alias below for
+    backwards compatibility within this session; the public surface
+    delegates here.
     """
 
     def __init__(
@@ -167,9 +169,11 @@ class DeadLetterService:
         self._app = app
         self.table_name = table_name
 
-    async def _pool(self):
+    @asynccontextmanager
+    async def _acquire(self) -> AsyncIterator[Any]:
         await self._app._ensure_initialized()
-        return self._app.backend.pool
+        async with self._app.backend.acquire() as conn:
+            yield conn
 
     async def setup_database(self):
         """Verify dead letter table exists. Tables are created by migrations."""
@@ -182,8 +186,7 @@ class DeadLetterService:
         tags: Optional[Dict[str, str]] = None,
     ) -> bool:
         """Move a job to the dead letter queue"""
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             async with conn.transaction():
                 # Get the job record
                 job_record = await conn.fetchrow(
@@ -249,8 +252,7 @@ class DeadLetterService:
         new_queue: Optional[str] = None,
     ) -> Optional[str]:
         """Resurrect a job from the dead letter queue"""
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             async with conn.transaction():
                 # Get dead letter job
                 dead_job = await conn.fetchrow(
@@ -341,8 +343,7 @@ class DeadLetterService:
 
     async def delete_dead_letter_job(self, dead_letter_id: str) -> bool:
         """Permanently delete a dead letter job"""
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             result = await conn.execute(
                 f"""
                 DELETE FROM {self.table_name} WHERE id = $1
@@ -363,8 +364,7 @@ class DeadLetterService:
         if conditions:
             where_clause = "WHERE " + " AND ".join(conditions)
 
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             result = await conn.execute(
                 f"""
                 DELETE FROM {self.table_name} {where_clause}
@@ -398,8 +398,7 @@ class DeadLetterService:
         offset_param = f"${param_count}"
         params.append(filter_criteria.offset)
 
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             records = await conn.fetch(
                 f"""
                 SELECT * FROM {self.table_name}
@@ -437,8 +436,7 @@ class DeadLetterService:
         filter_criteria = DeadLetterFilter()
         filter_criteria.limit = 1
 
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             record = await conn.fetchrow(
                 f"""
                 SELECT * FROM {self.table_name} WHERE id = $1
@@ -470,8 +468,7 @@ class DeadLetterService:
         self, hours: Optional[int] = None
     ) -> DeadLetterStats:
         """Get dead letter queue statistics"""
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             # Base query conditions
             time_condition = ""
             params = []
@@ -583,8 +580,7 @@ class DeadLetterService:
 
     async def cleanup_old_dead_letter_jobs(self, days: int = 30) -> int:
         """Clean up dead letter jobs older than specified days"""
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             result = await conn.execute(
                 f"""
                 DELETE FROM {self.table_name}
@@ -601,8 +597,7 @@ class DeadLetterService:
 
     async def add_tags_to_job(self, dead_letter_id: str, tags: Dict[str, str]) -> bool:
         """Add tags to a dead letter job"""
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             # Get current tags
             current_tags = await conn.fetchval(
                 f"""

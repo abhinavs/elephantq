@@ -50,6 +50,7 @@ __all__ = [
     "enqueue",
     "schedule",
     "run_worker",
+    "setup",
     "_setup",
     "_reset",
     "configure",
@@ -335,10 +336,15 @@ async def run_worker(
     )
 
 
-async def _setup() -> int:
+async def setup() -> int:
     """Set up Soniq — create database (if needed) and run migrations."""
     app = _get_global_app()
-    return await app._setup()  # type: ignore[no-any-return]
+    return await app.setup()  # type: ignore[no-any-return]
+
+
+# Underscore alias kept for compatibility with code that imported the
+# private name; new callers should use ``soniq.setup``.
+_setup = setup
 
 
 async def _reset() -> None:

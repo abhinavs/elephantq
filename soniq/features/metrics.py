@@ -8,9 +8,10 @@ import json
 import statistics
 import time
 from collections import defaultdict, deque
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional
 
 import asyncpg
 
@@ -169,20 +170,23 @@ class MetricsAnalyzer:
         self.collector = collector
         self._app = app
 
-    async def _pool(self):
+    @asynccontextmanager
+    async def _acquire(self) -> AsyncIterator[Any]:
         if self._app is not None:
             await self._app._ensure_initialized()
-            return self._app.backend.pool
+            async with self._app.backend.acquire() as conn:
+                yield conn
+            return
         import soniq
 
         app = soniq._get_global_app()
         await app._ensure_initialized()
-        return app.backend.pool
+        async with app.backend.acquire() as conn:
+            yield conn
 
     async def get_system_metrics(self, timeframe_hours: int = 1) -> SystemMetrics:
         """Get comprehensive system metrics"""
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             # Get job counts by status
             status_counts = await conn.fetch(
                 """
@@ -345,8 +349,7 @@ class MetricsAnalyzer:
         system_metrics = await self.get_system_metrics(timeframe_hours)
 
         # Analyze trends
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             # Get hourly job completion trends
             hourly_trends = await conn.fetch(
                 """
@@ -513,7 +516,7 @@ class MetricsService:
 
     Bundles a ``MetricsCollector``, ``MetricsAnalyzer``, and ``AlertManager``
     against a single app. The collector is in-memory only; the analyzer and
-    alert manager use ``app.backend.pool`` for queries.
+    alert manager use ``app.backend.acquire()`` for queries.
     """
 
     def __init__(self, app: "Soniq", *, retention_hours: int = 24):

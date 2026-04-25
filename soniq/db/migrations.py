@@ -7,11 +7,14 @@ for safe schema evolution without data loss.
 
 import logging
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import asyncpg
 
 from ..core.leadership import advisory_key
+
+if TYPE_CHECKING:
+    from ..backends.postgres import PostgresBackend
 
 # Reused across concurrent migration runs. Parallel deploys (two CI nodes
 # calling `soniq setup` at once) used to race on non-idempotent DDL or
@@ -30,21 +33,21 @@ class MigrationError(Exception):
 class MigrationRunner:
     """Manages database schema migrations for Soniq.
 
-    The runner is pool-agnostic: callers always pass a connection (or a
-    pool) explicitly. There is no global-pool fallback - migrations run
-    against the connection that the caller already holds (Soniq's
-    backend pool, in practice).
+    The runner is connection-agnostic: callers always pass a connection
+    or a ``PostgresBackend`` explicitly. There is no global-pool
+    fallback - migrations run against the connection that the caller
+    already holds (Soniq's backend, in practice).
     """
 
     def __init__(
         self,
         migrations_dir: Optional[Path] = None,
-        pool: Optional[asyncpg.Pool] = None,
+        backend: Optional["PostgresBackend"] = None,
     ):
         if migrations_dir is None:
             migrations_dir = Path(__file__).parent / "migrations"
         self.migrations_dir = migrations_dir
-        self._pool = pool
+        self._backend = backend
 
     async def ensure_migration_table(self, conn: asyncpg.Connection) -> None:
         """Create the migration tracking table if it doesn't exist"""
@@ -156,12 +159,12 @@ class MigrationRunner:
             Number of migrations applied
         """
         if conn is None:
-            if self._pool is None:
+            if self._backend is None:
                 raise MigrationError(
-                    "MigrationRunner has no pool; pass conn= or construct "
-                    "MigrationRunner(pool=...) explicitly."
+                    "MigrationRunner has no backend; pass conn= or construct "
+                    "MigrationRunner(backend=...) explicitly."
                 )
-            async with self._pool.acquire() as conn:
+            async with self._backend.acquire() as conn:
                 return await self._run_migrations_with_connection(conn)
         else:
             return await self._run_migrations_with_connection(conn)
@@ -228,12 +231,12 @@ class MigrationRunner:
             Dictionary with migration status information
         """
         if conn is None:
-            if self._pool is None:
+            if self._backend is None:
                 raise MigrationError(
-                    "MigrationRunner has no pool; pass conn= or construct "
-                    "MigrationRunner(pool=...) explicitly."
+                    "MigrationRunner has no backend; pass conn= or construct "
+                    "MigrationRunner(backend=...) explicitly."
                 )
-            async with self._pool.acquire() as conn:
+            async with self._backend.acquire() as conn:
                 return await self._get_migration_status_with_connection(conn)
         else:
             return await self._get_migration_status_with_connection(conn)

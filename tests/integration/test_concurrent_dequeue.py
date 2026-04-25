@@ -85,7 +85,7 @@ async def test_unique_job_concurrent_enqueue():
     only 1 job should exist in the database.
     """
     app = soniq._get_global_app()
-    pool = await app.get_pool()
+    pool = await app._get_pool()
 
     # Launch 10 concurrent enqueues with same args
     async def try_enqueue():

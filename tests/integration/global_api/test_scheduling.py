@@ -35,7 +35,7 @@ async def test_immediate_vs_scheduled_jobs():
 
     # Process jobs - only immediate should run
     global_app = soniq._get_global_app()
-    app_pool = await global_app.get_pool()
+    app_pool = await global_app._get_pool()
 
     processed = await soniq.run_worker(run_once=True)
     assert processed is True  # Immediate job processed
@@ -66,7 +66,7 @@ async def test_priority_ordering(clean_db):
 
     # Verify jobs are queued in database in priority order
     global_app = soniq._get_global_app()
-    app_pool = await global_app.get_pool()
+    app_pool = await global_app._get_pool()
 
     async with app_pool.acquire() as conn:
         # Get all jobs in processing priority order
@@ -132,7 +132,7 @@ async def test_unified_schedule_function():
 
     # Verify all jobs are scheduled correctly
     global_app = soniq._get_global_app()
-    app_pool = await global_app.get_pool()
+    app_pool = await global_app._get_pool()
 
     async with app_pool.acquire() as conn:
         datetime_record = await conn.fetchrow(

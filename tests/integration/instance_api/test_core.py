@@ -40,7 +40,7 @@ async def test_enqueue_and_run_job():
         return x + y
 
     # Clear test table using instance pool to ensure consistency
-    instance_pool = await app.get_pool()
+    instance_pool = await app._get_pool()
     async with instance_pool.acquire() as conn:
         await conn.execute("DELETE FROM soniq_jobs")
 
@@ -79,7 +79,7 @@ async def test_enqueue_job_invalid_args():
 
     # Clear test table using global app pool
     global_app = soniq._get_global_app()
-    global_pool = await global_app.get_pool()
+    global_pool = await global_app._get_pool()
     async with global_pool.acquire() as conn:
         await conn.execute("DELETE FROM soniq_jobs")
 
@@ -118,7 +118,7 @@ async def test_retry_mechanism():
 
     # Clear test table using global app pool
     global_app = soniq._get_global_app()
-    global_pool = await global_app.get_pool()
+    global_pool = await global_app._get_pool()
     async with global_pool.acquire() as conn:
         await conn.execute("DELETE FROM soniq_jobs")
 
@@ -171,7 +171,7 @@ async def test_run_worker_processes_job():
 
     # Clear test table using global app pool
     global_app = soniq._get_global_app()
-    global_pool = await global_app.get_pool()
+    global_pool = await global_app._get_pool()
     async with global_pool.acquire() as conn:
         await conn.execute("DELETE FROM soniq_jobs")
 
@@ -222,7 +222,7 @@ async def test_task_discovery():
 
     # Clear test table using global app pool
     global_app = soniq._get_global_app()
-    global_pool = await global_app.get_pool()
+    global_pool = await global_app._get_pool()
     async with global_pool.acquire() as conn:
         await conn.execute("DELETE FROM soniq_jobs")
 

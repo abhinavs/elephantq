@@ -32,7 +32,7 @@ async def test_webhook_delivery_smoke():
     await soniq_app._ensure_initialized()
 
     try:
-        async with soniq_app.backend.pool.acquire() as conn:
+        async with soniq_app.backend._pool.acquire() as conn:
             await conn.execute(
                 "TRUNCATE TABLE soniq_webhook_deliveries, soniq_webhook_endpoints RESTART IDENTITY CASCADE"
             )

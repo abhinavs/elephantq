@@ -297,7 +297,7 @@ async def handle_status_command(args):
 
         # 1. Health Check
         try:
-            async with app.backend.pool.acquire() as conn:
+            async with app.backend.acquire() as conn:
                 result = await conn.fetchval("SELECT 1")
             if result == 1:
                 print_status("Database connection: OK", "success")

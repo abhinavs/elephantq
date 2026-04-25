@@ -46,7 +46,7 @@ async def clean_test_state():
     await soniq.configure(database_url=_TEST_DATABASE_URL)
 
     global_app = soniq._get_global_app()
-    app_pool = await global_app.get_pool()
+    app_pool = await global_app._get_pool()
     await clear_table(app_pool)
 
     yield

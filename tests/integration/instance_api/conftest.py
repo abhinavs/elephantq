@@ -54,7 +54,7 @@ async def clean_db():
     from soniq.app import Soniq
 
     app = Soniq(database_url=TEST_DATABASE_URL)
-    pool = await app.get_pool()
+    pool = await app._get_pool()
     await clear_table(pool)
     await app.close()
     return None

@@ -99,7 +99,7 @@ async def test_worker_listener_cleanup_handles_errors():
 
     app = soniq._get_global_app()
     await app._ensure_initialized()
-    pool = app.backend.pool
+    pool = app.backend._pool
     conn = await pool.acquire()
 
     try:

@@ -19,6 +19,7 @@ import sys
 import time
 import traceback
 import uuid
+from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -26,6 +27,7 @@ from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
+    AsyncIterator,
     Dict,
     List,
     Optional,
@@ -212,8 +214,9 @@ class DatabaseLogHandler(logging.Handler):
         self._consumer_task: Optional[asyncio.Task] = None
         self._dropped_warned = False
 
-    async def _resolve_pool(self):
-        """Return the asyncpg pool for log writes.
+    @asynccontextmanager
+    async def _acquire(self) -> AsyncIterator[Any]:
+        """Borrow an asyncpg connection for log writes.
 
         Falls back to the global Soniq app when no instance was wired in.
         Tests construct the handler without an app and rely on this fallback;
@@ -221,12 +224,15 @@ class DatabaseLogHandler(logging.Handler):
         """
         if self._app is not None:
             await self._app._ensure_initialized()
-            return self._app.backend.pool
+            async with self._app.backend.acquire() as conn:
+                yield conn
+            return
         import soniq
 
         app = soniq._get_global_app()
         await app._ensure_initialized()
-        return app.backend.pool
+        async with app.backend.acquire() as conn:
+            yield conn
 
     async def setup_database(self):
         """Tables are created by migrations. No-op."""
@@ -290,8 +296,7 @@ class DatabaseLogHandler(logging.Handler):
             return
 
         try:
-            pool = await self._resolve_pool()
-            async with pool.acquire() as conn:
+            async with self._acquire() as conn:
                 values = []
                 for entry in batch:
                     # JSONB columns: pass dict directly, the pool codec
@@ -611,20 +616,23 @@ class LogAnalyzer:
         self._app = app
         self.table_name = table_name
 
-    async def _pool(self):
+    @asynccontextmanager
+    async def _acquire(self) -> AsyncIterator[Any]:
         if self._app is not None:
             await self._app._ensure_initialized()
-            return self._app.backend.pool
+            async with self._app.backend.acquire() as conn:
+                yield conn
+            return
         import soniq
 
         app = soniq._get_global_app()
         await app._ensure_initialized()
-        return app.backend.pool
+        async with app.backend.acquire() as conn:
+            yield conn
 
     async def get_error_summary(self, hours: int = 24) -> Dict[str, Any]:
         """Get error summary for the specified time period"""
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             error_counts = await conn.fetch(
                 f"""
                 SELECT
@@ -665,8 +673,7 @@ class LogAnalyzer:
         self, job_name: Optional[str] = None, hours: int = 24
     ) -> List[Dict]:
         """Get performance logs with duration metrics"""
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             conditions = [
                 "performance_data IS NOT NULL",
                 "timestamp >= NOW() - ($1 || ' hours')::INTERVAL",
@@ -702,8 +709,7 @@ class LogAnalyzer:
         hours: int = 24,
     ) -> List[Dict]:
         """Search logs with filters"""
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             conditions = ["timestamp >= NOW() - ($1 || ' hours')::INTERVAL"]
             params: list = [str(hours)]
             param_idx = 2

@@ -28,7 +28,7 @@ async def test_dead_letter_move_creates_record():
     )
     assert moved is True
 
-    async with global_app.backend.pool.acquire() as conn:
+    async with global_app.backend._pool.acquire() as conn:
         job_row = await conn.fetchrow(
             "SELECT status FROM soniq_jobs WHERE id = $1", job_id
         )

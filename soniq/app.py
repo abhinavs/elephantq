@@ -92,7 +92,7 @@ class Soniq:
                 `retry_delay` / `retry_backoff` / `retry_max_delay` /
                 `retry_jitter` set via the `@app.job(...)` decorator.
                 Also settable post-construct via ``app.retry_policy = ...``
-                up until ``await app._setup()`` runs.
+                up until ``await app.setup()`` runs.
             serializer: Optional `soniq.utils.serialization.Serializer`
                 instance. Defaults to `JSONSerializer`. Custom serializers
                 are advisory only at present: backends store via JSONB /
@@ -142,13 +142,13 @@ class Soniq:
         self._settings = SoniqSettings(**settings_overrides)
 
         # Instance components (initialized lazily)
-        self._pool: Optional[Any] = None
         self._job_registry = JobRegistry()
         self._hooks: dict[str, list] = {
             "before_job": [],
             "after_job": [],
             "on_error": [],
         }
+        self._middleware: list[Any] = []
         self._scheduler: Optional[Any] = None
         self._webhooks: Optional[Any] = None
         self._dead_letter: Optional[Any] = None
@@ -171,7 +171,7 @@ class Soniq:
             raise SoniqError(
                 f"Cannot set {attr} after Soniq.setup() has run. "
                 f"Configure pluggable extension points before the first "
-                f"async call (or ``await app._setup()``).",
+                f"async call (or ``await app.setup()``).",
                 "SONIQ_APP_FROZEN",
             )
 
@@ -259,7 +259,7 @@ class Soniq:
         """Public accessor for the storage backend.
 
         Feature services (`WebhookService`, `DeadLetterService`, ...) take a
-        `Soniq` and reach the database through `app.backend.pool`. Returns
+        `Soniq` and reach the database through `app.backend.acquire()`. Returns
         `None` until `_ensure_initialized()` has run; lazy backends create
         their pool there. The accessor is intentionally untyped because
         `StorageBackend` becomes a Protocol in a later session.
@@ -267,13 +267,29 @@ class Soniq:
         return self._backend
 
     @property
+    def registry(self) -> JobRegistry:
+        """Public accessor for this instance's job registry."""
+        return self._job_registry
+
+    @property
+    def is_initialized(self) -> bool:
+        """Whether the app has been initialized (backend connected)."""
+        return self._initialized
+
+    @property
+    def is_closed(self) -> bool:
+        """Whether the app has been closed."""
+        return self._closed
+
+    # Underscore-prefixed aliases kept for back-compat within the package
+    # while call sites are migrated. Public callers should read
+    # ``is_initialized`` / ``is_closed``.
+    @property
     def _is_initialized(self) -> bool:
-        """Check if app is initialized."""
         return self._initialized
 
     @property
     def _is_closed(self) -> bool:
-        """Check if app is closed."""
         return self._closed
 
     async def _ensure_initialized(self):
@@ -302,11 +318,6 @@ class Soniq:
                 )
 
             await self._backend.initialize()
-
-            # Expose the backend's pool for code paths that need raw access
-            # (migration runner, dashboard data layer, listener cleanup).
-            if self._backend.supports_connection_pool:
-                self._pool = self._backend.pool
 
             self._initialized = True
             logger.debug("Soniq application initialized successfully")
@@ -361,7 +372,6 @@ class Soniq:
             # Close backend (which closes its pool)
             if self._backend:
                 await self._backend.close()
-                self._pool = None
                 logger.debug("Closed backend")
 
             self._closed = True
@@ -570,6 +580,25 @@ class Soniq:
     def on_error(self, fn):
         """Register a hook called when a job fails."""
         self._hooks["on_error"].append(fn)
+        return fn
+
+    def middleware(self, fn):
+        """Register a middleware that wraps every job's execution.
+
+        Middleware are async callables matching the
+        ``soniq.core.middleware.Middleware`` Protocol::
+
+            @app.middleware
+            async def trace(ctx, call_next):
+                with tracer.start_span(ctx.job_name):
+                    return await call_next(ctx)
+
+        Middleware run in registration order (first registered is the
+        outermost wrapper). The handler return value flows back through
+        the chain. For one-shot side effects without wrapping, prefer
+        ``before_job`` / ``after_job`` / ``on_error``.
+        """
+        self._middleware.append(fn)
         return fn
 
     async def enqueue(
@@ -878,10 +907,17 @@ class Soniq:
         """
         return await self.enqueue(target, args=args, scheduled_at=run_at, **kwargs)
 
-    async def get_pool(self) -> Any:
-        """Get database connection pool."""
+    async def _get_pool(self) -> Any:
+        """Internal: get the underlying asyncpg pool, if any.
+
+        Reserved for the few internal call sites that need raw pool
+        access (test fixtures, advanced integration). Public callers
+        should go through ``app.backend.acquire()``.
+        """
         await self._ensure_initialized()
-        return self._pool  # type: ignore[return-value]
+        if not self._backend.supports_connection_pool:  # type: ignore[union-attr]
+            return None
+        return self._backend._pool  # type: ignore[union-attr]
 
     def _get_job_registry(self) -> JobRegistry:
         """Get job registry."""
@@ -916,6 +952,7 @@ class Soniq:
             registry=self._job_registry,
             settings=self._settings,
             hooks=self._hooks,
+            middleware=self._middleware,
             retry_policy=self._retry_policy,
             metrics_sink=self._metrics_sink,
         )
@@ -1100,11 +1137,10 @@ class Soniq:
         """
         await self._ensure_initialized()
 
-        # Use the migration runner with our instance's connection pool
         from .db.migrations import MigrationRunner
 
         migration_runner = MigrationRunner()
-        async with self._pool.acquire() as conn:  # type: ignore[union-attr]
+        async with self._backend.acquire() as conn:  # type: ignore[union-attr]
             return await migration_runner._get_migration_status_with_connection(conn)
 
     async def _run_migrations(self) -> int:
@@ -1119,14 +1155,13 @@ class Soniq:
         """
         await self._ensure_initialized()
 
-        # Use the migration runner with our instance's connection pool
         from .db.migrations import MigrationRunner
 
         migration_runner = MigrationRunner()
-        async with self._pool.acquire() as conn:  # type: ignore[union-attr]
+        async with self._backend.acquire() as conn:  # type: ignore[union-attr]
             return await migration_runner._run_migrations_with_connection(conn)
 
-    async def _setup(self) -> int:
+    async def setup(self) -> int:
         """
         Set up Soniq — create database (if needed) and run migrations.
 
@@ -1147,6 +1182,11 @@ class Soniq:
         # PostgreSQL: attempt to create the database, then run migrations
         await self._ensure_postgres_database_exists()
         return await self._run_migrations()
+
+    # Underscore-prefixed alias preserved for in-package callers and the
+    # global module facade. Public callers should use ``setup()``.
+    async def _setup(self) -> int:
+        return await self.setup()
 
     async def _ensure_postgres_database_exists(self) -> None:
         """Create the PostgreSQL database if it doesn't exist."""
@@ -1204,8 +1244,7 @@ class Soniq:
     async def _cleanup_on_error(self):
         """Cleanup resources after initialization error."""
         try:
-            if self._pool:
-                await self._pool.close()
-                self._pool = None
+            if self._backend is not None:
+                await self._backend.close()
         except Exception as e:
             logger.debug(f"Error during cleanup: {e}")

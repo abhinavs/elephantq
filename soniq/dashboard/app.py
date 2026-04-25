@@ -8,8 +8,9 @@ the global app's pool through a shared context.
 """
 
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional
 
 if TYPE_CHECKING:
     from soniq.app import Soniq
@@ -18,8 +19,8 @@ if TYPE_CHECKING:
 class DashboardService:
     """Dashboard data layer bound to a Soniq instance.
 
-    Read methods (``get_job_stats``, ``get_recent_jobs``, ...) issue
-    queries against ``self._app.backend.pool``. Write methods
+    Read methods (``get_job_stats``, ``get_recent_jobs``, ...) borrow a
+    pooled connection via ``self._app.backend.acquire()``. Write methods
     (``retry_job``, ``delete_job``, ``cancel_job``) just hit the backend;
     HTTP-level authorization for writes is enforced in
     ``fastapi_app._require_write_authorization``.
@@ -28,13 +29,14 @@ class DashboardService:
     def __init__(self, app: "Soniq"):
         self._app = app
 
-    async def _pool(self):
+    @asynccontextmanager
+    async def _acquire(self) -> AsyncIterator[Any]:
         await self._app._ensure_initialized()
-        return self._app.backend.pool
+        async with self._app.backend.acquire() as conn:
+            yield conn
 
     async def get_job_stats(self) -> Dict[str, int]:
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             stats = await conn.fetchrow(
                 """
                 SELECT
@@ -57,8 +59,7 @@ class DashboardService:
     async def get_recent_jobs(
         self, limit: int = 50, queue: Optional[str] = None
     ) -> List[Dict[str, Any]]:
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             if queue:
                 query = """
                     SELECT id, job_name, status, queue, priority, attempts, max_attempts,
@@ -81,8 +82,7 @@ class DashboardService:
             return [dict(row) for row in rows]
 
     async def get_queue_stats(self) -> List[Dict[str, Any]]:
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             rows = await conn.fetch(
                 """
                 SELECT
@@ -102,8 +102,7 @@ class DashboardService:
             return [dict(row) for row in rows]
 
     async def get_job_metrics(self, hours: int = 24) -> Dict[str, Any]:
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             since = datetime.now() - timedelta(hours=hours)
             metrics = await conn.fetchrow(
                 """
@@ -138,8 +137,7 @@ class DashboardService:
             }
 
     async def get_job_details(self, job_id: str) -> Optional[Dict[str, Any]]:
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             try:
                 job_uuid = uuid.UUID(job_id)
             except ValueError:
@@ -151,8 +149,7 @@ class DashboardService:
             return dict(job) if job else None
 
     async def retry_job(self, job_id: str) -> bool:
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             try:
                 job_uuid = uuid.UUID(job_id)
             except ValueError:
@@ -172,8 +169,7 @@ class DashboardService:
             return result == "UPDATE 1"  # type: ignore[no-any-return]
 
     async def delete_job(self, job_id: str) -> bool:
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             try:
                 job_uuid = uuid.UUID(job_id)
             except ValueError:
@@ -185,8 +181,7 @@ class DashboardService:
             return result == "DELETE 1"  # type: ignore[no-any-return]
 
     async def cancel_job(self, job_id: str) -> bool:
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             try:
                 job_uuid = uuid.UUID(job_id)
             except ValueError:
@@ -204,8 +199,7 @@ class DashboardService:
             return result == "UPDATE 1"  # type: ignore[no-any-return]
 
     async def get_worker_stats(self) -> Dict[str, Any]:
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             active_jobs = await conn.fetchval(
                 """
                 SELECT COUNT(*) FROM soniq_jobs
@@ -232,8 +226,7 @@ class DashboardService:
             }
 
     async def get_job_timeline(self, hours: int = 24) -> List[Dict[str, Any]]:
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             since = datetime.now() - timedelta(hours=hours)
             timeline = await conn.fetch(
                 """
@@ -262,8 +255,7 @@ class DashboardService:
             ]
 
     async def get_job_types_stats(self) -> List[Dict[str, Any]]:
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             stats = await conn.fetch(
                 """
                 SELECT
@@ -313,8 +305,7 @@ class DashboardService:
         limit: int = 100,
         offset: int = 0,
     ) -> Dict[str, Any]:
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             conditions = []
             params = []
             param_count = 0
@@ -371,8 +362,7 @@ class DashboardService:
             }
 
     async def get_system_health(self) -> Dict[str, Any]:
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             db_healthy = True
             try:
                 await conn.fetchval("SELECT 1")
@@ -425,8 +415,7 @@ class DashboardService:
         not. The query joins soniq_jobs.job_name against
         soniq_task_registry.task_name and surfaces the unmatched names.
         """
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             rows = await conn.fetch(
                 """
                 SELECT

@@ -27,7 +27,7 @@ from tests.db_utils import TEST_DATABASE_URL
 async def app():
     a = Soniq(database_url=TEST_DATABASE_URL)
     await a._ensure_initialized()
-    pool = await a.get_pool()
+    pool = await a._get_pool()
     async with pool.acquire() as conn:
         await conn.execute("DELETE FROM soniq_recurring_jobs")
     try:
@@ -58,7 +58,7 @@ async def test_concurrent_claim_only_one_advances(app):
     # both think it is due right now. Then invalidate the cache so the
     # subsequent get() calls reflect the DB-truth `past` and not the
     # cached "now+60s" value that add() seeded.
-    pool = await app.get_pool()
+    pool = await app._get_pool()
     async with pool.acquire() as conn:
         await conn.execute(
             "UPDATE soniq_recurring_jobs SET next_run = $1 WHERE job_name = $2",

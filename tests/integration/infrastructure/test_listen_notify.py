@@ -42,7 +42,7 @@ async def clean_app():
 
     app = Soniq(database_url=TEST_DATABASE_URL)
 
-    pool = await app.get_pool()
+    pool = await app._get_pool()
     await clear_table(pool)
 
     yield app
@@ -62,7 +62,7 @@ async def test_listen_setup_verification(test_db, clean_app):
         processed_jobs.append({"processed": True})
 
     # Create a connection to monitor LISTEN setup
-    pool = await app.get_pool()
+    pool = await app._get_pool()
     monitor_conn = await pool.acquire()
 
     try:
@@ -115,7 +115,7 @@ async def test_notify_sent_verification(test_db, clean_app):
         processed_jobs.append({"message": message})
 
     # Set up a separate connection to capture notifications
-    pool = await app.get_pool()
+    pool = await app._get_pool()
     notification_conn = await pool.acquire()
 
     notifications_received = []
@@ -183,7 +183,7 @@ async def test_queue_specific_notifications(test_db, clean_app):
     async def low_priority_job(message: str):
         processed_jobs.append({"queue": "low", "message": message})
 
-    pool = await app.get_pool()
+    pool = await app._get_pool()
     notification_conn = await pool.acquire()
 
     notifications_received = []

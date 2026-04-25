@@ -10,10 +10,20 @@ import json
 import logging
 import time
 import uuid
+from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol, runtime_checkable
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncIterator,
+    Dict,
+    List,
+    Optional,
+    Protocol,
+    runtime_checkable,
+)
 
 try:
     import aiohttp
@@ -222,9 +232,10 @@ class WebhookRegistry:
     """Registry for webhook endpoints.
 
     Holds the in-memory endpoint cache and persists changes to Postgres
-    through ``self._app.backend.pool``. Constructed by ``WebhookService``;
-    code that wants to drop in a custom backend can pass any ``Soniq``-like
-    object exposing a ``backend.pool`` property.
+    through ``self._app.backend.acquire()``. Constructed by
+    ``WebhookService``; code that wants to drop in a custom backend can
+    pass any ``Soniq``-like object whose ``backend`` exposes
+    ``acquire()``.
     """
 
     def __init__(self, app: "Soniq"):
@@ -232,9 +243,11 @@ class WebhookRegistry:
         self.endpoints: Dict[str, WebhookEndpoint] = {}
         self._lock = asyncio.Lock()
 
-    async def _pool(self):
+    @asynccontextmanager
+    async def _acquire(self) -> AsyncIterator[Any]:
         await self._app._ensure_initialized()
-        return self._app.backend.pool
+        async with self._app.backend.acquire() as conn:
+            yield conn
 
     async def register_endpoint(self, endpoint: WebhookEndpoint) -> str:
         """Register a webhook endpoint"""
@@ -294,8 +307,7 @@ class WebhookRegistry:
 
     async def _save_endpoint_to_db(self, endpoint: WebhookEndpoint):
         """Save endpoint configuration to database"""
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             await conn.execute(
                 """
                 INSERT INTO soniq_webhook_endpoints (
@@ -323,8 +335,7 @@ class WebhookRegistry:
 
     async def _delete_endpoint_from_db(self, endpoint_id: str):
         """Delete endpoint from database"""
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             await conn.execute(
                 "DELETE FROM soniq_webhook_endpoints WHERE id = $1", endpoint_id
             )
@@ -332,8 +343,7 @@ class WebhookRegistry:
     async def load_endpoints_from_db(self):
         """Load endpoints from database on startup"""
         try:
-            pool = await self._pool()
-            async with pool.acquire() as conn:
+            async with self._acquire() as conn:
                 endpoints = await conn.fetch(
                     """
                     SELECT * FROM soniq_webhook_endpoints WHERE active = true
@@ -384,8 +394,8 @@ class WebhookDispatcher:
         self._running = False
         self.transport: WebhookTransport = transport or HTTPTransport()
 
-    async def _pool(self):
-        return await self.registry._pool()
+    def _acquire(self):
+        return self.registry._acquire()
 
     async def start(self):
         """Start webhook delivery workers"""
@@ -570,8 +580,7 @@ class WebhookDispatcher:
         while self._running:
             try:
                 # Find deliveries ready for retry
-                pool = await self._pool()
-                async with pool.acquire() as conn:
+                async with self._acquire() as conn:
                     deliveries = await conn.fetch(
                         """
                         SELECT * FROM soniq_webhook_deliveries
@@ -613,8 +622,7 @@ class WebhookDispatcher:
     async def _save_delivery_record(self, delivery: WebhookDelivery):
         """Save delivery record to database"""
         try:
-            pool = await self._pool()
-            async with pool.acquire() as conn:
+            async with self._acquire() as conn:
                 await conn.execute(
                     """
                     INSERT INTO soniq_webhook_deliveries (
@@ -675,8 +683,8 @@ class WebhookService:
         """The transport this service routes deliveries through."""
         return self.dispatcher.transport
 
-    async def _pool(self):
-        return await self.registry._pool()
+    def _acquire(self):
+        return self.registry._acquire()
 
     async def start(self):
         """Start webhook system"""
@@ -733,8 +741,7 @@ class WebhookService:
 
     async def get_delivery_stats(self, hours: int = 24) -> Dict[str, Any]:
         """Get webhook delivery statistics"""
-        pool = await self._pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             stats = await conn.fetchrow(
                 """
                 SELECT

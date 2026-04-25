@@ -89,8 +89,8 @@ async def test_global_get_queue_stats():
 async def test_global_setup():
     await soniq.configure(database_url="postgresql://test@localhost/test")
     app = soniq._get_global_app()
-    with patch.object(app, "_setup", new_callable=AsyncMock) as mock:
-        await soniq._setup()
+    with patch.object(app, "setup", new_callable=AsyncMock) as mock:
+        await soniq.setup()
         mock.assert_called_once()
 
 

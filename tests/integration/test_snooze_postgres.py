@@ -44,7 +44,7 @@ async def test_snooze_requeues_with_attempts_unchanged_against_postgres():
 
     # Reset and requeue via full processor path instead - need to unclaim first.
     # Roll back the claim so we can re-drive through the processor cleanly.
-    async with global_app.backend.pool.acquire() as conn:
+    async with global_app.backend._pool.acquire() as conn:
         await conn.execute(
             "UPDATE soniq_jobs SET status='queued', attempts=0 WHERE id=$1",
             job_id,
@@ -55,7 +55,7 @@ async def test_snooze_requeues_with_attempts_unchanged_against_postgres():
     )
     assert result is True
 
-    async with global_app.backend.pool.acquire() as conn:
+    async with global_app.backend._pool.acquire() as conn:
         row = await conn.fetchrow(
             "SELECT status, attempts, scheduled_at, last_error FROM soniq_jobs WHERE id=$1",
             job_id,
@@ -75,7 +75,7 @@ async def test_snooze_requeues_with_attempts_unchanged_against_postgres():
     )
     assert result is True
 
-    async with global_app.backend.pool.acquire() as conn:
+    async with global_app.backend._pool.acquire() as conn:
         row = await conn.fetchrow(
             "SELECT status, attempts FROM soniq_jobs WHERE id=$1", job_id
         )

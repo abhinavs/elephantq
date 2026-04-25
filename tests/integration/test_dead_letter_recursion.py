@@ -59,7 +59,7 @@ async def test_delete_dead_letter_job_returns_in_bounded_time():
     )
     assert deleted is True
 
-    pool = global_app.backend.pool
+    pool = global_app.backend._pool
     async with pool.acquire() as conn:
         remaining = await conn.fetchval(
             "SELECT COUNT(*) FROM soniq_dead_letter_jobs WHERE id = $1",
@@ -89,7 +89,7 @@ async def test_bulk_delete_returns_exact_count_in_bounded_time():
     )
     assert count == 1
 
-    pool = global_app.backend.pool
+    pool = global_app.backend._pool
     async with pool.acquire() as conn:
         total = await conn.fetchval(
             "SELECT COUNT(*) FROM soniq_dead_letter_jobs WHERE id = ANY($1)",
@@ -111,7 +111,7 @@ async def test_move_then_single_dlq_row_exists():
         timeout=TIME_BOUND_SECONDS,
     )
 
-    pool = global_app.backend.pool
+    pool = global_app.backend._pool
     async with pool.acquire() as conn:
         count = await conn.fetchval(
             "SELECT COUNT(*) FROM soniq_dead_letter_jobs WHERE id = $1",

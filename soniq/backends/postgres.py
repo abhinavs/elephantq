@@ -154,14 +154,21 @@ class PostgresBackend:
             await self._pool.close()
             self._pool = None
 
-    @property
-    def pool(self) -> asyncpg.Pool:
-        """Access the underlying pool. Used by features and migrations."""
+    @asynccontextmanager
+    async def acquire(self) -> AsyncIterator[asyncpg.Connection]:
+        """Lend a pooled connection scoped to the ``async with`` block.
+
+        The pool itself is private. Callers that need raw SQL outside the
+        ``StorageBackend`` method surface (migration runner, dashboard
+        data, listener cleanup) go through this contract. The connection
+        is released on exit, so forgetting to release is impossible.
+        """
         if self._pool is None:
             raise RuntimeError(
                 "PostgresBackend not initialized. Call initialize() first."
             )
-        return self._pool
+        async with self._pool.acquire() as conn:
+            yield conn
 
     # --- Job CRUD ---
 
@@ -180,7 +187,7 @@ class PostgresBackend:
         scheduled_at: Optional[datetime] = None,
         producer_id: Optional[str] = None,
     ) -> Optional[str]:
-        async with self.pool.acquire() as conn:
+        async with self.acquire() as conn:
             return await self._create_job_on_conn(
                 conn,
                 job_id=job_id,
@@ -352,7 +359,7 @@ class PostgresBackend:
         return job_id
 
     async def notify_new_job(self, queue: str) -> None:
-        async with self.pool.acquire() as conn:
+        async with self.acquire() as conn:
             await conn.execute(
                 "SELECT pg_notify($1, $2)",
                 "soniq_new_job",
@@ -363,11 +370,16 @@ class PostgresBackend:
         self,
         callback: Any,
         channel: str = "soniq_new_job",
-    ) -> asyncpg.Connection:
-        """Start listening. Returns the LISTEN connection (caller must release)."""
-        conn = await self.pool.acquire()
+    ) -> "_PostgresListenerHandle":
+        """Start listening. Returns a handle whose ``close()`` removes the
+        listener and releases the pinned connection back to the pool."""
+        if self._pool is None:
+            raise RuntimeError(
+                "PostgresBackend not initialized. Call initialize() first."
+            )
+        conn = await self._pool.acquire()
         await conn.add_listener(channel, callback)
-        return conn
+        return _PostgresListenerHandle(self._pool, conn, channel, callback)
 
     # --- Worker dequeue ---
 
@@ -381,7 +393,7 @@ class PostgresBackend:
 
         lock_clause = "" if skip_lock else "FOR UPDATE SKIP LOCKED"
 
-        async with self.pool.acquire() as conn:
+        async with self.acquire() as conn:
             async with conn.transaction():
                 if queues is None:
                     job_record = await conn.fetchrow(
@@ -463,7 +475,7 @@ class PostgresBackend:
         # `result` column write entirely when the job returned None: the
         # vast majority of jobs are `-> None`, and storing JSON null on
         # every row is wasted bytes plus a wasted write.
-        async with self.pool.acquire() as conn:
+        async with self.acquire() as conn:
             async with conn.transaction():
                 if result_ttl is not None and result_ttl == 0:
                     await conn.execute(
@@ -508,7 +520,7 @@ class PostgresBackend:
         retry_delay: Optional[float] = None,
     ) -> None:
         uid = uuid.UUID(job_id)
-        async with self.pool.acquire() as conn:
+        async with self.acquire() as conn:
             async with conn.transaction():
                 if retry_delay and retry_delay > 0:
                     await conn.execute(
@@ -550,7 +562,7 @@ class PostgresBackend:
         error: str,
     ) -> None:
         uid = uuid.UUID(job_id)
-        async with self.pool.acquire() as conn:
+        async with self.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(
                     """
@@ -579,7 +591,7 @@ class PostgresBackend:
         # tooling can distinguish snoozes from real failures without a schema
         # change. scheduled_at is computed server-side to avoid client clock skew.
         reason_text = f"SNOOZE: {reason}" if reason else "SNOOZE"
-        async with self.pool.acquire() as conn:
+        async with self.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(
                     """
@@ -599,7 +611,7 @@ class PostgresBackend:
 
     async def cancel_job(self, job_id: str) -> bool:
         uid = uuid.UUID(job_id)
-        async with self.pool.acquire() as conn:
+        async with self.acquire() as conn:
             result = await conn.execute(
                 """
                 UPDATE soniq_jobs
@@ -612,7 +624,7 @@ class PostgresBackend:
 
     async def retry_job(self, job_id: str) -> bool:
         uid = uuid.UUID(job_id)
-        async with self.pool.acquire() as conn:
+        async with self.acquire() as conn:
             result = await conn.execute(
                 """
                 UPDATE soniq_jobs
@@ -625,7 +637,7 @@ class PostgresBackend:
 
     async def delete_job(self, job_id: str) -> bool:
         uid = uuid.UUID(job_id)
-        async with self.pool.acquire() as conn:
+        async with self.acquire() as conn:
             result = await conn.execute(
                 "DELETE FROM soniq_jobs WHERE id = $1",
                 uid,
@@ -636,7 +648,7 @@ class PostgresBackend:
 
     async def get_job(self, job_id: str) -> Optional[dict]:
         uid = uuid.UUID(job_id)
-        async with self.pool.acquire() as conn:
+        async with self.acquire() as conn:
             row = await conn.fetchrow(
                 """
                 SELECT id, job_name, args, status, attempts, max_attempts,
@@ -693,12 +705,12 @@ class PostgresBackend:
             LIMIT {limit_param} OFFSET {offset_param}
         """
 
-        async with self.pool.acquire() as conn:
+        async with self.acquire() as conn:
             rows = await conn.fetch(query, *params)
             return [_job_row_to_dict(row) for row in rows]
 
     async def get_queue_stats(self) -> list[dict]:
-        async with self.pool.acquire() as conn:
+        async with self.acquire() as conn:
             rows = await conn.fetch(
                 """
                 SELECT
@@ -731,7 +743,7 @@ class PostgresBackend:
         See plan section 14.4 'Architectural boundary statement' and the
         boundary tests in tests/unit/test_enqueue.py.
         """
-        async with self.pool.acquire() as conn:
+        async with self.acquire() as conn:
             await conn.execute(
                 """
                 INSERT INTO soniq_task_registry
@@ -752,7 +764,7 @@ class PostgresBackend:
 
         Observability only. See ``register_task_name``.
         """
-        async with self.pool.acquire() as conn:
+        async with self.acquire() as conn:
             rows = await conn.fetch(
                 """
                 SELECT task_name, worker_id, last_seen_at, args_model_repr
@@ -773,7 +785,7 @@ class PostgresBackend:
         metadata: Optional[dict] = None,
     ) -> None:
         uid = uuid.UUID(worker_id)
-        async with self.pool.acquire() as conn:
+        async with self.acquire() as conn:
             await conn.execute(
                 """
                 INSERT INTO soniq_workers
@@ -803,7 +815,7 @@ class PostgresBackend:
         metadata: Optional[dict] = None,
     ) -> None:
         uid = uuid.UUID(worker_id)
-        async with self.pool.acquire() as conn:
+        async with self.acquire() as conn:
             await conn.execute(
                 """
                 UPDATE soniq_workers
@@ -816,7 +828,7 @@ class PostgresBackend:
 
     async def mark_worker_stopped(self, worker_id: str) -> None:
         uid = uuid.UUID(worker_id)
-        async with self.pool.acquire() as conn:
+        async with self.acquire() as conn:
             await conn.execute(
                 """
                 UPDATE soniq_workers
@@ -831,7 +843,7 @@ class PostgresBackend:
         command. Returns status counts, active workers with uptime, and
         any workers whose heartbeat is older than 5 minutes.
         """
-        async with self.pool.acquire() as conn:
+        async with self.acquire() as conn:
             status_counts = await conn.fetch(
                 "SELECT status, COUNT(*) as count FROM soniq_workers GROUP BY status"
             )
@@ -896,7 +908,7 @@ class PostgresBackend:
         self,
         stale_threshold_seconds: int,
     ) -> int:
-        async with self.pool.acquire() as conn:
+        async with self.acquire() as conn:
             async with conn.transaction():
                 stale_rows = await conn.fetch(
                     """
@@ -928,14 +940,14 @@ class PostgresBackend:
     # --- Maintenance ---
 
     async def delete_expired_jobs(self) -> int:
-        async with self.pool.acquire() as conn:
+        async with self.acquire() as conn:
             result = await conn.execute(
                 "DELETE FROM soniq_jobs WHERE status = 'done' AND expires_at < NOW()"
             )
             return _rows_affected(result)
 
     async def reset(self) -> None:
-        async with self.pool.acquire() as conn:
+        async with self.acquire() as conn:
             await conn.execute("TRUNCATE soniq_jobs CASCADE")
             await conn.execute("TRUNCATE soniq_workers CASCADE")
 
@@ -952,7 +964,7 @@ class PostgresBackend:
         released on exit (or automatically if the connection is lost).
         """
         key = advisory_key(name)
-        async with self.pool.acquire() as conn:
+        async with self.acquire() as conn:
             acquired = await conn.fetchval("SELECT pg_try_advisory_lock($1)", key)
             try:
                 yield bool(acquired)
@@ -964,3 +976,38 @@ class PostgresBackend:
                         logger.warning(
                             "Failed to release advisory lock %r: %s", name, e
                         )
+
+
+class _PostgresListenerHandle:
+    """ListenerHandle backed by a dedicated pooled asyncpg connection.
+
+    LISTEN ties the subscription to a single connection, so the connection
+    must outlive the listening period and be released back to the pool
+    when the listener is torn down. ``close()`` does both halves -
+    ``remove_listener`` then ``pool.release`` - in one call so the worker
+    shutdown path stays a single line.
+    """
+
+    def __init__(
+        self,
+        pool: asyncpg.Pool,
+        conn: asyncpg.Connection,
+        channel: str,
+        callback: Any,
+    ) -> None:
+        self._pool = pool
+        self._conn = conn
+        self._channel = channel
+        self._callback = callback
+
+    async def close(self) -> None:
+        try:
+            await self._conn.remove_listener(self._channel, self._callback)
+        except Exception:
+            logger.debug(
+                "remove_listener failed during listener shutdown", exc_info=True
+            )
+        try:
+            await self._pool.release(self._conn)
+        except Exception:
+            logger.debug("pool.release failed during listener shutdown", exc_info=True)

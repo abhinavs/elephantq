@@ -193,7 +193,7 @@ class _SqlStore:
 
     @asynccontextmanager
     async def _conn(self) -> AsyncIterator[Any]:
-        async with self._backend.pool.acquire() as conn:
+        async with self._backend.acquire() as conn:
             yield conn
 
     @staticmethod
@@ -635,7 +635,7 @@ class Scheduler:
 
             new_run_count = sched.run_count + 1
             actual_job_id: Optional[str] = None
-            async with backend.pool.acquire() as conn:
+            async with backend.acquire() as conn:
                 async with conn.transaction():
                     claim = await conn.execute(
                         """

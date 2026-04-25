@@ -32,7 +32,7 @@ async def _global_pool():
     """
     app = soniq._get_global_app()
     await app._ensure_initialized()
-    yield app.backend.pool
+    yield app.backend._pool
 
 
 # Get project root directory dynamically
@@ -276,7 +276,7 @@ if __name__ == "__main__":
             for attempt in range(max_attempts):
                 # Check how many jobs are still queued using global app pool
                 global_app = soniq._get_global_app()
-                app_pool = await global_app.get_pool()
+                app_pool = await global_app._get_pool()
 
                 async with app_pool.acquire() as conn:
                     queued_count = await conn.fetchval(
@@ -395,7 +395,7 @@ if __name__ == "__main__":
 
                 # Use global app pool for consistency
                 global_app = soniq._get_global_app()
-                app_pool = await global_app.get_pool()
+                app_pool = await global_app._get_pool()
 
                 async with app_pool.acquire() as verify_conn:
                     # Verify failing jobs eventually moved to failed/dead_letter status
@@ -535,7 +535,7 @@ if __name__ == "__main__":
                 for attempt in range(max_attempts):
                     # Check remaining jobs using global app pool
                     global_app = soniq._get_global_app()
-                    app_pool = await global_app.get_pool()
+                    app_pool = await global_app._get_pool()
 
                     async with app_pool.acquire() as conn:
                         queued_count = await conn.fetchval(

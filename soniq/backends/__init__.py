@@ -15,6 +15,22 @@ from typing import Any, Optional, Protocol, runtime_checkable
 
 
 @runtime_checkable
+class ListenerHandle(Protocol):
+    """Opaque handle returned by ``listen_for_jobs``.
+
+    Backends own the underlying transport (asyncpg connection,
+    in-process callback registry, etc.) and expose only ``close()`` so
+    callers cannot reach in and leak the connection. The worker shutdown
+    path calls ``await handle.close()``; backends without push-notify
+    return a no-op handle.
+    """
+
+    async def close(self) -> None:
+        """Tear down the listener and release any held resources."""
+        ...
+
+
+@runtime_checkable
 class StorageBackend(Protocol):
     """
     Interface for all storage operations Soniq needs.
@@ -132,12 +148,13 @@ class StorageBackend(Protocol):
         self,
         callback: Any,
         channel: str = "soniq_new_job",
-    ) -> Any:
+    ) -> "ListenerHandle":
         """
         Start listening for job notifications.
 
-        Returns a listener handle (for cleanup).
-        Backends without push notification return a no-op handle.
+        Returns a ``ListenerHandle`` whose ``close()`` tears down both
+        the subscription and any held connection. Backends without push
+        notification return a no-op handle.
         """
         ...
 
