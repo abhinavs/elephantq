@@ -490,17 +490,37 @@ class Soniq:
 
         from pydantic import ValidationError
 
+        # Resolve the task name and any TaskRef-supplied defaults. The
+        # TaskRef arm short-circuits the registry-validation step entirely:
+        # the ref *is* the local declaration of the name, so registry-based
+        # validation is replaced by the ref's own args_model check.
+        from .task_ref import TaskRef
         from .utils.hashing import compute_args_hash
 
-        # Phase 1: only string names. TaskRef arm is added in phase 2 / PR 13.
-        # Other types fall through to validate_task_name which raises
-        # SONIQ_INVALID_TASK_NAME with received_type in context.
-        job_name = validate_task_name(name_or_ref)
+        ref: Optional[TaskRef] = None
+        if isinstance(name_or_ref, TaskRef):
+            ref = name_or_ref
+            job_name = ref.name
+        else:
+            job_name = validate_task_name(name_or_ref)
 
         if args is None:
             args = {}
         elif not isinstance(args, dict):
             raise TypeError(f"enqueue() args must be a dict, got {type(args).__name__}")
+
+        # TaskRef args_model validation runs even when the name is also
+        # registered locally - the ref's model is the producer-side
+        # contract.
+        if ref is not None and ref.args_model is not None:
+            try:
+                ref.args_model(**args)
+            except ValidationError as e:
+                raise SoniqError(
+                    f"Invalid arguments for task {job_name!r}: {e}",
+                    SONIQ_TASK_ARGS_INVALID,
+                    context={"task_name": job_name},
+                ) from e
 
         job_meta = self._job_registry.get_job(job_name)
 
@@ -509,7 +529,11 @@ class Soniq:
         # soniq_task_registry DB table that phase 3 introduces. Do not add
         # a fallback path that reads from the DB - that would turn the
         # registry table into distributed coordination.
-        if job_meta is None:
+        #
+        # The TaskRef arm skips registry validation entirely: the ref is the
+        # local declaration of the name. SONIQ_ENQUEUE_VALIDATION governs
+        # only the string-name path.
+        if job_meta is None and ref is None:
             mode = self._settings.enqueue_validation
             if mode == "strict":
                 raise SoniqError(
@@ -539,7 +563,9 @@ class Soniq:
         # use registered defaults for unset enqueue options.
         if job_meta is not None:
             args_model = job_meta.get("args_model")
-            if args_model is not None:
+            # Skip the duplicate validation when the TaskRef arm already ran
+            # its own args_model check above.
+            if args_model is not None and ref is None:
                 try:
                     args_model(**args)
                 except ValidationError as e:
@@ -549,7 +575,16 @@ class Soniq:
                         context={"task_name": job_name},
                     ) from e
             final_priority = priority if priority is not None else job_meta["priority"]
-            final_queue = queue if queue is not None else job_meta["queue"]
+            # Queue precedence: explicit `queue=` > ref.default_queue >
+            # registered job_meta queue > system default. The TaskRef arm
+            # carries default_queue across the wire to the producer side
+            # without coupling to the consumer's registration.
+            if queue is not None:
+                final_queue = queue
+            elif ref is not None and ref.default_queue is not None:
+                final_queue = ref.default_queue
+            else:
+                final_queue = job_meta["queue"]
             final_unique = unique if unique is not None else job_meta["unique"]
             max_attempts = job_meta["max_retries"] + 1
         else:
@@ -557,7 +592,12 @@ class Soniq:
             # cannot silently change the on-the-wire shape for unregistered
             # names.
             final_priority = priority if priority is not None else 100
-            final_queue = queue if queue is not None else "default"
+            if queue is not None:
+                final_queue = queue
+            elif ref is not None and ref.default_queue is not None:
+                final_queue = ref.default_queue
+            else:
+                final_queue = "default"
             final_unique = unique if unique is not None else False
             max_attempts = self._settings.max_retries + 1
 

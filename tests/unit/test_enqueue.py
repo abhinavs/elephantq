@@ -315,3 +315,136 @@ async def test_app_module_does_not_import_registry_table_reader():
         "soniq/app.py must not reference list_registered_task_names; "
         "the registry table is observability only (plan section 14.4)."
     )
+
+
+# ---------------------------------------------------------------------------
+# TaskRef arm (PR 13 / TODO 2.2)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_enqueue_taskref_writes_row_using_ref_name():
+    from soniq import task_ref
+
+    app = make_app(enqueue_validation="strict")
+    ref = task_ref(name="billing.taskref.foo")
+
+    job_id = await app.enqueue(ref, args={"x": 1})
+    rows = await app.list_jobs()
+    row = next(r for r in rows if r["id"] == job_id)
+    assert row["job_name"] == "billing.taskref.foo"
+    assert row["args"] == {"x": 1}
+
+
+@pytest.mark.asyncio
+async def test_enqueue_taskref_skips_strict_registry_check():
+    """The TaskRef arm short-circuits SONIQ_ENQUEUE_VALIDATION. Even in
+    strict mode a TaskRef enqueue succeeds without registration."""
+    from soniq import task_ref
+
+    app = make_app(enqueue_validation="strict")
+    ref = task_ref(name="billing.taskref.unregistered")
+
+    # No @app.job for this name. The ref *is* the producer-side
+    # declaration, so strict mode does not block.
+    job_id = await app.enqueue(ref, args={})
+    assert job_id
+
+
+@pytest.mark.asyncio
+async def test_enqueue_taskref_args_model_invalid_raises():
+    from pydantic import BaseModel
+
+    from soniq import task_ref
+
+    class FooArgs(BaseModel):
+        order_id: str
+
+    app = make_app(enqueue_validation="strict")
+    ref = task_ref(name="billing.taskref.invoice", args_model=FooArgs)
+
+    with pytest.raises(SoniqError) as exc_info:
+        await app.enqueue(ref, args={"order_id": 12345})  # int, not str
+    assert exc_info.value.error_code == SONIQ_TASK_ARGS_INVALID
+
+    rows = await app.list_jobs()
+    assert not any(r["job_name"] == "billing.taskref.invoice" for r in rows)
+
+
+@pytest.mark.asyncio
+async def test_enqueue_taskref_args_model_valid_writes():
+    from pydantic import BaseModel
+
+    from soniq import task_ref
+
+    class FooArgs(BaseModel):
+        order_id: str
+
+    app = make_app(enqueue_validation="strict")
+    ref = task_ref(name="billing.taskref.valid", args_model=FooArgs)
+
+    job_id = await app.enqueue(ref, args={"order_id": "o1"})
+    assert job_id
+
+
+@pytest.mark.asyncio
+async def test_enqueue_taskref_queue_precedence_chain():
+    """Queue precedence: explicit queue= > ref.default_queue > system
+    default. Single test pinning all three sub-cases in one place so the
+    chain cannot fragment across files (per todo_multi.md 2.2)."""
+    from soniq import task_ref
+
+    app = make_app(enqueue_validation="none")
+
+    # Case 1: explicit queue= overrides ref.default_queue.
+    ref_with_default = task_ref(name="billing.q.case1", default_queue="billing")
+    job_id_1 = await app.enqueue(ref_with_default, args={}, queue="urgent")
+    rows = await app.list_jobs()
+    row = next(r for r in rows if r["id"] == job_id_1)
+    assert row["queue"] == "urgent"
+
+    # Case 2: ref.default_queue used when no explicit queue=.
+    ref_with_default_2 = task_ref(name="billing.q.case2", default_queue="billing")
+    job_id_2 = await app.enqueue(ref_with_default_2, args={})
+    rows = await app.list_jobs()
+    row = next(r for r in rows if r["id"] == job_id_2)
+    assert row["queue"] == "billing"
+
+    # Case 3: system default when ref has no default_queue and no
+    # explicit queue=.
+    ref_no_default = task_ref(name="billing.q.case3")
+    job_id_3 = await app.enqueue(ref_no_default, args={})
+    rows = await app.list_jobs()
+    row = next(r for r in rows if r["id"] == job_id_3)
+    assert row["queue"] == "default"
+
+
+@pytest.mark.asyncio
+async def test_enqueue_taskref_with_registered_handler_uses_ref_args_model():
+    """When both the consumer's @app.job(validate=...) AND the producer's
+    TaskRef(args_model=...) are present, the ref's model is the
+    producer-side contract. We exercise this by registering a handler
+    with a different (looser) model and watching the ref's model fail
+    first."""
+    from pydantic import BaseModel
+
+    from soniq import task_ref
+
+    class StrictArgs(BaseModel):
+        order_id: str
+
+    class LooserArgs(BaseModel):
+        order_id: object  # accepts any type
+
+    app = make_app(enqueue_validation="strict")
+
+    @app.job(name="billing.taskref.both", validate=LooserArgs)
+    async def handler(order_id):
+        pass
+
+    ref = task_ref(name="billing.taskref.both", args_model=StrictArgs)
+
+    # int order_id passes the looser model but fails the strict ref.
+    with pytest.raises(SoniqError) as exc_info:
+        await app.enqueue(ref, args={"order_id": 123})
+    assert exc_info.value.error_code == SONIQ_TASK_ARGS_INVALID
