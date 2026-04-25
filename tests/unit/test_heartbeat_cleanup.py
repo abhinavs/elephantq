@@ -26,7 +26,7 @@ def _make_pool_mock(conn_mock):
 
 @pytest.mark.asyncio
 async def test_cleanup_stale_workers_with_no_stale():
-    from elephantq.core.heartbeat import cleanup_stale_workers
+    from soniq.core.heartbeat import cleanup_stale_workers
 
     conn = AsyncMock()
     conn.fetch = AsyncMock(return_value=[])
@@ -38,7 +38,7 @@ async def test_cleanup_stale_workers_with_no_stale():
 
 @pytest.mark.asyncio
 async def test_cleanup_stale_workers_with_stale():
-    from elephantq.core.heartbeat import cleanup_stale_workers
+    from soniq.core.heartbeat import cleanup_stale_workers
 
     stale_rows = [{"id": "worker-1"}, {"id": "worker-2"}]
     conn = AsyncMock()
@@ -53,13 +53,13 @@ async def test_cleanup_stale_workers_with_stale():
 
 @pytest.mark.asyncio
 async def test_cleanup_uses_settings_default_threshold():
-    from elephantq.core.heartbeat import cleanup_stale_workers
+    from soniq.core.heartbeat import cleanup_stale_workers
 
     conn = AsyncMock()
     conn.fetch = AsyncMock(return_value=[])
     pool = _make_pool_mock(conn)
 
-    with patch("elephantq.settings.get_settings") as mock_settings:
+    with patch("soniq.settings.get_settings") as mock_settings:
         mock_settings.return_value.heartbeat_timeout = 600
         result = await cleanup_stale_workers(pool, stale_threshold_seconds=None)
 
@@ -72,7 +72,7 @@ async def test_cleanup_uses_settings_default_threshold():
 async def test_cleanup_handles_interface_error_pool_closing():
     import asyncpg
 
-    from elephantq.core.heartbeat import cleanup_stale_workers
+    from soniq.core.heartbeat import cleanup_stale_workers
 
     @asynccontextmanager
     async def failing_acquire():
@@ -88,7 +88,7 @@ async def test_cleanup_handles_interface_error_pool_closing():
 
 @pytest.mark.asyncio
 async def test_cleanup_handles_generic_exception():
-    from elephantq.core.heartbeat import cleanup_stale_workers
+    from soniq.core.heartbeat import cleanup_stale_workers
 
     @asynccontextmanager
     async def failing_acquire():
@@ -104,7 +104,7 @@ async def test_cleanup_handles_generic_exception():
 
 @pytest.mark.asyncio
 async def test_get_worker_status_returns_structure():
-    from elephantq.core.heartbeat import get_worker_status
+    from soniq.core.heartbeat import get_worker_status
 
     now = datetime.now(timezone.utc)
     conn = AsyncMock()
@@ -138,7 +138,7 @@ async def test_get_worker_status_returns_structure():
 
 @pytest.mark.asyncio
 async def test_get_worker_status_degraded_with_stale():
-    from elephantq.core.heartbeat import get_worker_status
+    from soniq.core.heartbeat import get_worker_status
 
     now = datetime.now(timezone.utc)
     conn = AsyncMock()
@@ -169,7 +169,7 @@ async def test_get_worker_status_degraded_with_stale():
 
 @pytest.mark.asyncio
 async def test_get_worker_status_handles_error():
-    from elephantq.core.heartbeat import get_worker_status
+    from soniq.core.heartbeat import get_worker_status
 
     @asynccontextmanager
     async def failing_acquire():

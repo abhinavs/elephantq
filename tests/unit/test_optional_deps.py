@@ -13,7 +13,7 @@ class TestOptionalDepGuards:
     def test_recurring_has_croniter_guard(self):
         """recurring.py should have a _require_croniter guard function."""
         pytest.importorskip("croniter")
-        from elephantq.features.recurring import _require_croniter
+        from soniq.features.recurring import _require_croniter
 
         # Since croniter is installed in dev, this should not raise
         _require_croniter()
@@ -21,7 +21,7 @@ class TestOptionalDepGuards:
     def test_webhooks_has_aiohttp_guard(self):
         """webhooks.py should have a _require_aiohttp guard function."""
         pytest.importorskip("aiohttp")
-        from elephantq.features.webhooks import _require_aiohttp
+        from soniq.features.webhooks import _require_aiohttp
 
         # Since aiohttp is installed in dev, this should not raise
         _require_aiohttp()
@@ -29,18 +29,18 @@ class TestOptionalDepGuards:
     def test_signing_has_cryptography_guard(self):
         """signing.py should have a _require_cryptography guard function."""
         pytest.importorskip("cryptography")
-        from elephantq.features.signing import _require_cryptography
+        from soniq.features.signing import _require_cryptography
 
         # Since cryptography is installed in dev, this should not raise
         _require_cryptography()
 
     def test_core_import_without_optional_deps(self):
-        """Core elephantq should be importable (deps are installed but the
+        """Core soniq should be importable (deps are installed but the
         import path should not fail at module level if they weren't)."""
-        import elephantq
+        import soniq
 
-        assert hasattr(elephantq, "enqueue")
-        assert hasattr(elephantq, "job")
+        assert hasattr(soniq, "enqueue")
+        assert hasattr(soniq, "job")
 
     def test_pyproject_core_deps_minimal(self):
         """pyproject.toml core deps should only be asyncpg, pydantic, pydantic-settings."""

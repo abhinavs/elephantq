@@ -13,8 +13,8 @@ import pytest
 
 pytest.importorskip("aiosqlite")
 
-from elephantq.core.processor import process_job_via_backend  # noqa: E402
-from elephantq.core.registry import JobRegistry  # noqa: E402
+from soniq.core.processor import process_job_via_backend  # noqa: E402
+from soniq.core.registry import JobRegistry  # noqa: E402
 
 
 @pytest.fixture

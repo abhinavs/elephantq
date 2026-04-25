@@ -3,8 +3,8 @@ import asyncio
 import pytest
 from aiohttp import web
 
-from elephantq.db.connection import get_pool
-from elephantq.features import webhooks
+from soniq.db.connection import get_pool
+from soniq.features import webhooks
 
 
 @pytest.mark.asyncio
@@ -34,7 +34,7 @@ async def test_webhook_delivery_smoke():
         pool = await get_pool()
         async with pool.acquire() as conn:
             await conn.execute(
-                "TRUNCATE TABLE elephantq_webhook_deliveries, elephantq_webhook_endpoints RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE soniq_webhook_deliveries, soniq_webhook_endpoints RESTART IDENTITY CASCADE"
             )
 
         await webhooks.register_webhook(url)

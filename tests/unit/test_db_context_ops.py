@@ -2,7 +2,7 @@
 Tests for db/context.py — context operations.
 """
 
-from elephantq.db.context import (
+from soniq.db.context import (
     DatabaseContext,
     clear_current_context,
     get_current_context,

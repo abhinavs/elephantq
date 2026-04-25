@@ -13,7 +13,7 @@ import pytest
 from tests.db_utils import TEST_DATABASE_URL, make_test_db_url, run_createdb, run_dropdb
 
 # Ensure we're using test database
-os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
+os.environ["SONIQ_DATABASE_URL"] = TEST_DATABASE_URL
 
 # Get project root directory dynamically
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -22,11 +22,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 def run_cli_command(args, timeout=10, expect_success=True):
     """Helper to run CLI commands"""
     env = os.environ.copy()
-    env.setdefault("ELEPHANTQ_JOBS_MODULES", "tests.fixtures.cli_jobs")
+    env.setdefault("SONIQ_JOBS_MODULES", "tests.fixtures.cli_jobs")
     env.setdefault("PYTHONPATH", str(PROJECT_ROOT))
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "elephantq.cli.main"] + args,
+            [sys.executable, "-m", "soniq.cli.main"] + args,
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -49,7 +49,7 @@ async def test_cli_help_commands():
     """Test CLI help and command discovery"""
     # Test main help
     result = run_cli_command(["--help"])
-    assert "ElephantQ CLI" in result.stdout or "usage:" in result.stdout
+    assert "Soniq CLI" in result.stdout or "usage:" in result.stdout
 
     # Test subcommand help
     result = run_cli_command(["setup", "--help"])
@@ -63,7 +63,7 @@ async def test_cli_help_commands():
 async def test_setup_command():
     """Test database setup command"""
     # Ensure test database exists (don't drop if in use by other tests)
-    run_createdb("elephantq_test")  # Ignore if exists
+    run_createdb("soniq_test")  # Ignore if exists
 
     # Run setup
     result = run_cli_command(["setup"])
@@ -75,7 +75,7 @@ async def test_setup_command():
             "psql",
             TEST_DATABASE_URL,
             "-c",
-            "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'elephantq_jobs';",
+            "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = 'soniq_jobs';",
         ],
         capture_output=True,
         text=True,
@@ -115,8 +115,8 @@ async def test_environment_variable_integration():
 
     try:
         # Set custom environment variables
-        os.environ["ELEPHANTQ_LOG_LEVEL"] = "DEBUG"
-        os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
+        os.environ["SONIQ_LOG_LEVEL"] = "DEBUG"
+        os.environ["SONIQ_DATABASE_URL"] = TEST_DATABASE_URL
 
         # Run start with environment variables
         result = run_cli_command(["start", "--run-once"], timeout=5)
@@ -142,15 +142,15 @@ async def test_cli_error_handling():
     assert result.returncode != 0
 
     # Test invalid database URL
-    original_db_url = os.environ.get("ELEPHANTQ_DATABASE_URL")
+    original_db_url = os.environ.get("SONIQ_DATABASE_URL")
     try:
-        os.environ["ELEPHANTQ_DATABASE_URL"] = "invalid://url"
+        os.environ["SONIQ_DATABASE_URL"] = "invalid://url"
         result = run_cli_command(["setup"], expect_success=False, timeout=30)
         # Should fail gracefully with invalid database URL
         assert result.returncode != 0
     finally:
         if original_db_url:
-            os.environ["ELEPHANTQ_DATABASE_URL"] = original_db_url
+            os.environ["SONIQ_DATABASE_URL"] = original_db_url
 
 
 @pytest.mark.asyncio
@@ -161,11 +161,11 @@ async def test_cli_with_real_jobs():
 
     # Create a simple job file for testing
     job_file_content = """
-import elephantq
+import soniq
 
-@elephantq.job(retries=1)
+@soniq.job(retries=1)
 async def cli_test_job(message: str):
-    with open("/tmp/elephantq_cli_test.txt", "w") as f:
+    with open("/tmp/soniq_cli_test.txt", "w") as f:
         f.write(f"CLI test: {message}")
     return f"Processed: {message}"
 """
@@ -184,18 +184,18 @@ async def cli_test_job(message: str):
         # Import the test job module
         import test_cli_jobs
 
-        import elephantq
+        import soniq
 
         # Enqueue a job
-        await elephantq.enqueue(test_cli_jobs.cli_test_job, message="Hello CLI")
+        await soniq.enqueue(test_cli_jobs.cli_test_job, message="Hello CLI")
 
         # Run start to process the job (with timeout as it may wait for jobs)
-        os.environ["ELEPHANTQ_JOBS_MODULES"] = "test_cli_jobs"
+        os.environ["SONIQ_JOBS_MODULES"] = "test_cli_jobs"
         result = run_cli_command(["start", "--run-once"], timeout=10)
         assert result.returncode == 0
 
         # Check if job was processed (output file should exist)
-        output_file = Path("/tmp/elephantq_cli_test.txt")
+        output_file = Path("/tmp/soniq_cli_test.txt")
         if output_file.exists():
             content = output_file.read_text()
             assert "CLI test: Hello CLI" in content
@@ -238,10 +238,10 @@ async def test_cli_concurrent_workers():
     try:
         for i in range(2):
             env = os.environ.copy()
-            env.setdefault("ELEPHANTQ_JOBS_MODULES", "tests.fixtures.cli_jobs")
+            env.setdefault("SONIQ_JOBS_MODULES", "tests.fixtures.cli_jobs")
             env.setdefault("PYTHONPATH", str(PROJECT_ROOT))
             process = subprocess.Popen(
-                [sys.executable, "-m", "elephantq.cli.main", "start", "--run-once"],
+                [sys.executable, "-m", "soniq.cli.main", "start", "--run-once"],
                 cwd=str(PROJECT_ROOT),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -271,10 +271,10 @@ async def test_cli_signal_handling():
 
     # Start a worker process
     env = os.environ.copy()
-    env.setdefault("ELEPHANTQ_JOBS_MODULES", "tests.fixtures.cli_jobs")
+    env.setdefault("SONIQ_JOBS_MODULES", "tests.fixtures.cli_jobs")
     env.setdefault("PYTHONPATH", str(PROJECT_ROOT))
     process = subprocess.Popen(
-        [sys.executable, "-m", "elephantq.cli.main", "start", "--concurrency", "1"],
+        [sys.executable, "-m", "soniq.cli.main", "start", "--concurrency", "1"],
         cwd=str(PROJECT_ROOT),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -324,7 +324,7 @@ async def test_cli_signal_handling():
 async def test_cli_database_url_parameter():
     """Test CLI commands with --database-url parameter"""
     # Create a test database with a different name
-    test_db_name = "elephantq_cli_instance_test"
+    test_db_name = "soniq_cli_instance_test"
     test_db_url = make_test_db_url(test_db_name)
 
     # Create the test database
@@ -354,7 +354,7 @@ async def test_cli_database_url_parameter():
 @pytest.mark.asyncio
 async def test_cli_database_url_vs_environment():
     """Test that --database-url parameter overrides environment variable"""
-    test_db_name = "elephantq_cli_override_test"
+    test_db_name = "soniq_cli_override_test"
     test_db_url = make_test_db_url(test_db_name)
 
     # Create the test database
@@ -365,7 +365,7 @@ async def test_cli_database_url_vs_environment():
 
     try:
         # Set environment variable to different database
-        os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
+        os.environ["SONIQ_DATABASE_URL"] = TEST_DATABASE_URL
 
         # Use --database-url parameter to override environment
         result = run_cli_command(["setup", "--database-url", test_db_url])

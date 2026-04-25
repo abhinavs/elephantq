@@ -19,11 +19,11 @@ import pytest
 from tests.db_utils import TEST_DATABASE_URL
 
 # Ensure we're using test database
-os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
+os.environ["SONIQ_DATABASE_URL"] = TEST_DATABASE_URL
 
-from elephantq import ElephantQ  # noqa: E402
-from elephantq.core.registry import clear_registry  # noqa: E402
-from elephantq.worker import Worker  # noqa: E402
+from soniq import Soniq  # noqa: E402
+from soniq.core.registry import clear_registry  # noqa: E402
+from soniq.worker import Worker  # noqa: E402
 from tests.db_utils import clear_table  # noqa: E402
 
 
@@ -36,8 +36,8 @@ async def write_to_file_job(message: str, result_file: str):
 
 @pytest.fixture
 async def app():
-    """Create an ElephantQ app instance for testing"""
-    _app = ElephantQ(database_url=TEST_DATABASE_URL)
+    """Create an Soniq app instance for testing"""
+    _app = Soniq(database_url=TEST_DATABASE_URL)
     await _app._ensure_initialized()
     pool = await _app.get_pool()
     await clear_table(pool)

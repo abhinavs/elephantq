@@ -1,1 +1,1 @@
-"""Test fixtures for ElephantQ."""
+"""Test fixtures for Soniq."""

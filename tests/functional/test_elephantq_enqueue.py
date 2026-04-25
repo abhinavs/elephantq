@@ -1,5 +1,5 @@
 """
-Test that ElephantQ.enqueue() works with MemoryBackend.
+Test that Soniq.enqueue() works with MemoryBackend.
 
 This verifies that enqueue goes through the backend abstraction,
 not through raw asyncpg SQL.
@@ -7,12 +7,12 @@ not through raw asyncpg SQL.
 
 import pytest
 
-from elephantq import ElephantQ
+from soniq import Soniq
 
 
 @pytest.fixture
 async def app():
-    app = ElephantQ(backend="memory")
+    app = Soniq(backend="memory")
     await app._ensure_initialized()
     yield app
     await app.close()

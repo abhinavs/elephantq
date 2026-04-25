@@ -4,7 +4,7 @@ backend.
 
 The README advertises "Job results -- store and retrieve return values from
 completed jobs" as a feature. Before this PR, `mark_job_done` accepted a
-`result` parameter but silently dropped it: the `elephantq_jobs` table had no
+`result` parameter but silently dropped it: the `soniq_jobs` table had no
 `result` column and `get_job` did not reference one. These tests pin the
 fix.
 """
@@ -13,8 +13,8 @@ import uuid
 
 import pytest
 
-from elephantq.backends.postgres import PostgresBackend
-from elephantq.core.processor import process_job_via_backend
+from soniq.backends.postgres import PostgresBackend
+from soniq.core.processor import process_job_via_backend
 from tests.db_utils import TEST_DATABASE_URL
 
 
@@ -81,9 +81,9 @@ async def test_result_none_when_handler_returns_nothing(backend):
 @pytest.mark.asyncio
 async def test_end_to_end_get_result_via_app():
     """Enqueue via global API, process, retrieve result."""
-    import elephantq
+    import soniq
 
-    app = elephantq._get_global_app()
+    app = soniq._get_global_app()
 
     @app.job()
     async def compute_total(a: int, b: int):

@@ -1,5 +1,5 @@
 """
-Tests for elephantq.features.webhooks
+Tests for soniq.features.webhooks
 
 Covers webhook delivery retry logic, response body size capping, and
 delivery queue backpressure. These tests verify that the WebhookDispatcher
@@ -16,9 +16,9 @@ import pytest
 
 pytest.importorskip("aiohttp")
 
-os.environ.setdefault("ELEPHANTQ_WEBHOOKS_ENABLED", "true")
+os.environ.setdefault("SONIQ_WEBHOOKS_ENABLED", "true")
 
-from elephantq.features.webhooks import (  # noqa: E402
+from soniq.features.webhooks import (  # noqa: E402
     WebhookDelivery,
     WebhookDispatcher,
     WebhookEndpoint,

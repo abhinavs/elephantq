@@ -12,10 +12,10 @@ from datetime import datetime, timezone
 
 import pytest
 
-from elephantq.backends.memory import MemoryBackend
-from elephantq.core.processor import process_job_via_backend
-from elephantq.core.registry import JobRegistry
-from elephantq.job import Snooze
+from soniq.backends.memory import MemoryBackend
+from soniq.core.processor import process_job_via_backend
+from soniq.core.registry import JobRegistry
+from soniq.job import Snooze
 
 
 async def _setup(job_func, max_attempts=5):
@@ -23,7 +23,7 @@ async def _setup(job_func, max_attempts=5):
     await backend.initialize()
     registry = JobRegistry()
     wrapped = registry.register_job(job_func)
-    job_name = wrapped._elephantq_name
+    job_name = wrapped._soniq_name
 
     await backend.create_job(
         job_id="snooze-job",
@@ -91,7 +91,7 @@ async def test_snooze_without_reason_writes_bare_marker():
 @pytest.mark.asyncio
 async def test_snooze_exceeding_cap_is_clamped(monkeypatch):
     """Snooze past snooze_max_seconds is silently capped."""
-    from elephantq.settings import get_settings
+    from soniq.settings import get_settings
 
     monkeypatch.setattr(get_settings(), "snooze_max_seconds", 60.0)
 

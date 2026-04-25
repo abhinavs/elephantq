@@ -10,4 +10,4 @@ import os
 from tests.db_utils import TEST_DATABASE_URL
 
 # Ensure test database URL is set
-os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
+os.environ["SONIQ_DATABASE_URL"] = TEST_DATABASE_URL

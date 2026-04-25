@@ -1,1 +1,1 @@
-# Jobs module for ElephantQ discovery tests
+# Jobs module for Soniq discovery tests

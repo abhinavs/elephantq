@@ -13,13 +13,13 @@ import pytest
 from tests.db_utils import TEST_DATABASE_URL
 
 # Ensure we're using test database
-os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
+os.environ["SONIQ_DATABASE_URL"] = TEST_DATABASE_URL
 
-import elephantq  # noqa: E402
-from elephantq.settings import get_settings  # noqa: E402
+import soniq  # noqa: E402
+from soniq.settings import get_settings  # noqa: E402
 
 
-@elephantq.job()
+@soniq.job()
 async def ttl_test_job(message: str):
     """Simple test job for TTL testing"""
     return f"processed: {message}"
@@ -35,14 +35,14 @@ async def test_ttl_zero_deletes_immediately():
 
     try:
         # Enqueue a job
-        job_id = await elephantq.enqueue(ttl_test_job, message="test_immediate_delete")
+        job_id = await soniq.enqueue(ttl_test_job, message="test_immediate_delete")
 
         # Process the job
-        processed = await elephantq.run_worker(run_once=True)
+        processed = await soniq.run_worker(run_once=True)
         assert processed
 
         # Job should be deleted immediately
-        await elephantq.get_job_status(job_id)
+        await soniq.get_job_status(job_id)
         # With TTL=0, job should be deleted after completion
         # The exact behavior depends on implementation
 
@@ -61,18 +61,18 @@ async def test_ttl_positive_sets_expires_at():
 
     try:
         # Enqueue and process a job
-        job_id = await elephantq.enqueue(ttl_test_job, message="test_ttl_field")
+        job_id = await soniq.enqueue(ttl_test_job, message="test_ttl_field")
 
-        processed = await elephantq.run_worker(run_once=True)
+        processed = await soniq.run_worker(run_once=True)
         assert processed
 
         # Use global app pool for consistency
-        global_app = elephantq._get_global_app()
+        global_app = soniq._get_global_app()
         app_pool = await global_app.get_pool()
 
         async with app_pool.acquire() as conn:
             job_record = await conn.fetchrow(
-                "SELECT status, expires_at FROM elephantq_jobs WHERE id = $1",
+                "SELECT status, expires_at FROM soniq_jobs WHERE id = $1",
                 uuid.UUID(job_id),
             )
 
@@ -97,22 +97,22 @@ async def test_ttl_cleanup_removes_expired_jobs():
 
     try:
         # Enqueue and process a job
-        job_id = await elephantq.enqueue(ttl_test_job, message="test_cleanup")
+        job_id = await soniq.enqueue(ttl_test_job, message="test_cleanup")
 
-        processed = await elephantq.run_worker(run_once=True)
+        processed = await soniq.run_worker(run_once=True)
         assert processed
 
         # Wait for TTL to expire
         await asyncio.sleep(2)
 
         # Use global app pool for consistency
-        global_app = elephantq._get_global_app()
+        global_app = soniq._get_global_app()
         app_pool = await global_app.get_pool()
 
         async with app_pool.acquire() as conn:
             # Check if job still exists
             await conn.fetchval(
-                "SELECT EXISTS(SELECT 1 FROM elephantq_jobs WHERE id = $1)",
+                "SELECT EXISTS(SELECT 1 FROM soniq_jobs WHERE id = $1)",
                 uuid.UUID(job_id),
             )
 
@@ -129,7 +129,7 @@ async def test_ttl_failed_jobs_not_cleaned_up():
     """Test that failed jobs are not cleaned up by TTL"""
 
     # Create a job that will fail
-    @elephantq.job()
+    @soniq.job()
     async def failing_ttl_job():
         raise Exception("Intentional failure for TTL test")
 
@@ -140,11 +140,11 @@ async def test_ttl_failed_jobs_not_cleaned_up():
 
     try:
         # Enqueue failing job
-        job_id = await elephantq.enqueue(failing_ttl_job)
+        job_id = await soniq.enqueue(failing_ttl_job)
 
         # Process job (it will fail)
         for _ in range(5):  # Multiple attempts due to retries
-            processed = await elephantq.run_worker(run_once=True)
+            processed = await soniq.run_worker(run_once=True)
             if not processed:
                 break
 
@@ -152,12 +152,12 @@ async def test_ttl_failed_jobs_not_cleaned_up():
         await asyncio.sleep(2)
 
         # Use global app pool for consistency
-        global_app = elephantq._get_global_app()
+        global_app = soniq._get_global_app()
         app_pool = await global_app.get_pool()
 
         async with app_pool.acquire() as conn:
             job_record = await conn.fetchrow(
-                "SELECT status FROM elephantq_jobs WHERE id = $1", uuid.UUID(job_id)
+                "SELECT status FROM soniq_jobs WHERE id = $1", uuid.UUID(job_id)
             )
 
             # Failed jobs should still exist (not cleaned up by TTL)

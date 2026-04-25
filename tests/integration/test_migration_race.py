@@ -1,7 +1,7 @@
 """
-Parallel deploys can both call `elephantq setup` at once. The migration
+Parallel deploys can both call `soniq setup` at once. The migration
 runner has to serialize or the losing node errors on a non-idempotent DDL
-or double-inserts into `elephantq_migrations`. We guard that with a
+or double-inserts into `soniq_migrations`. We guard that with a
 session-scoped `pg_advisory_lock` inside `MigrationRunner`.
 
 This test simulates the race: two concurrent runners against a freshly
@@ -17,10 +17,10 @@ from urllib.parse import urlparse, urlunparse
 import asyncpg
 import pytest
 
-from elephantq.db.migrations import MigrationRunner
+from soniq.db.migrations import MigrationRunner
 from tests.db_utils import TEST_DATABASE_URL
 
-DB_NAME = "elephantq_pr5_migration_race"
+DB_NAME = "soniq_pr5_migration_race"
 
 
 def _db_url(name: str) -> str:
@@ -79,7 +79,7 @@ async def test_parallel_migrations_no_duplicate_apply():
         async with pool.acquire() as conn:
             rows = await conn.fetch(
                 "SELECT version, COUNT(*) AS n "
-                "FROM elephantq_migrations GROUP BY version"
+                "FROM soniq_migrations GROUP BY version"
             )
     counts = {row["version"]: row["n"] for row in rows}
     assert len(counts) == expected

@@ -4,8 +4,8 @@ Start a local webhook receiver (any HTTP server) at http://localhost:8080/webhoo
 and then run this script.
 """
 
-import elephantq
-from elephantq import webhooks
+import soniq
+from soniq import webhooks
 
 
 async def main() -> None:

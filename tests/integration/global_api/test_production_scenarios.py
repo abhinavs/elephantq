@@ -1,8 +1,8 @@
 """
-Production scenario tests for ElephantQ reliability
+Production scenario tests for Soniq reliability
 
 These tests cover real-world failure modes and edge cases that must work
-correctly for ElephantQ to be truly production-ready.
+correctly for Soniq to be truly production-ready.
 """
 
 import asyncio
@@ -17,16 +17,16 @@ from pathlib import Path
 
 import pytest
 
-import elephantq
-from elephantq.db.context import DatabaseContext
-from elephantq.settings import get_settings
+import soniq
+from soniq.db.context import DatabaseContext
+from soniq.settings import get_settings
 
 # Get project root directory dynamically
 PROJECT_ROOT = str(Path(__file__).parent.parent.parent.parent)
 
 
 # Test job functions
-@elephantq.job(unique=False)  # Ensure multiple instances can be enqueued
+@soniq.job(unique=False)  # Ensure multiple instances can be enqueued
 async def job_counter(counter_file: str, job_index: int = 0):
     """Test job that writes to a file to track execution"""
     # Ensure directory exists
@@ -37,7 +37,7 @@ async def job_counter(counter_file: str, job_index: int = 0):
     return f"completed-{job_index}"
 
 
-@elephantq.job()
+@soniq.job()
 async def slow_test_job(duration: float, result_file: str):
     """Job that takes time - useful for testing interruption"""
     start_time = time.time()
@@ -50,7 +50,7 @@ async def slow_test_job(duration: float, result_file: str):
     return f"slow_job_completed_after_{duration}s"
 
 
-@elephantq.job()
+@soniq.job()
 async def database_intensive_job(job_id: str, iterations: int = 100):
     """Job that does database operations - useful for testing connection issues"""
     async with DatabaseContext() as pool:
@@ -65,7 +65,7 @@ async def database_intensive_job(job_id: str, iterations: int = 100):
             return f"database_job_completed_{len(results)}_operations"
 
 
-@elephantq.job()
+@soniq.job()
 async def failing_job(should_fail: bool, job_id: int):
     """Job that can be configured to fail"""
     if should_fail:
@@ -73,7 +73,7 @@ async def failing_job(should_fail: bool, job_id: int):
     return f"success_job_{job_id}"
 
 
-@elephantq.job()
+@soniq.job()
 async def timed_job(expected_time: str, log_file: str):
     """Job that logs its execution time"""
     execution_time = datetime.now().isoformat()
@@ -99,13 +99,13 @@ class TestProductionScenarios:
 
                 # Fast jobs that should complete
                 for i in range(5):
-                    job_id = await elephantq.enqueue(
+                    job_id = await soniq.enqueue(
                         job_counter, counter_file=counter_file, job_index=i
                     )
                     job_ids.append(job_id)
 
                 # Slow job that will be interrupted
-                slow_job_id = await elephantq.enqueue(
+                slow_job_id = await soniq.enqueue(
                     slow_test_job, duration=10.0, result_file=result_file
                 )
                 job_ids.append(slow_job_id)
@@ -115,11 +115,11 @@ class TestProductionScenarios:
             worker_script = f"""
 import asyncio
 
-import elephantq
+import soniq
 
 async def main():
-    await elephantq.configure(database_url="{settings.database_url}")
-    await elephantq.run_worker(concurrency=2)
+    await soniq.configure(database_url="{settings.database_url}")
+    await soniq.run_worker(concurrency=2)
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -186,7 +186,7 @@ if __name__ == "__main__":
             async with DatabaseContext():
                 job_ids_before = []
                 for i in range(3):
-                    job_id = await elephantq.enqueue(
+                    job_id = await soniq.enqueue(
                         job_counter, counter_file=success_file, job_index=i
                     )
                     job_ids_before.append(job_id)
@@ -194,7 +194,7 @@ if __name__ == "__main__":
             # Start processing jobs normally
             # Process initial jobs to establish baseline
             for _ in range(3):
-                processed = await elephantq.run_worker(run_once=True)
+                processed = await soniq.run_worker(run_once=True)
                 if not processed:
                     break
                 await asyncio.sleep(0.1)
@@ -208,7 +208,7 @@ if __name__ == "__main__":
                 # Add more jobs after "reconnection"
                 job_ids_after = []
                 for i in range(2):
-                    job_id = await elephantq.enqueue(
+                    job_id = await soniq.enqueue(
                         job_counter, counter_file=success_file, job_index=i + 10
                     )
                     job_ids_after.append(job_id)
@@ -216,7 +216,7 @@ if __name__ == "__main__":
                 # Process jobs after reconnection
                 processed_count = 0
                 for _ in range(5):  # Try up to 5 times
-                    processed = await elephantq.run_worker(run_once=True)
+                    processed = await soniq.run_worker(run_once=True)
                     if processed:
                         processed_count += 1
                     else:
@@ -242,11 +242,11 @@ if __name__ == "__main__":
             async with DatabaseContext() as pool:
                 # Clear existing jobs to ensure clean test
                 async with pool.acquire() as conn:
-                    await conn.execute("DELETE FROM elephantq_jobs")
+                    await conn.execute("DELETE FROM soniq_jobs")
 
                 job_ids = []
                 for i in range(20):
-                    job_id = await elephantq.enqueue(
+                    job_id = await soniq.enqueue(
                         job_counter, counter_file=execution_log, job_index=i
                     )
                     job_ids.append(job_id)
@@ -255,12 +255,12 @@ if __name__ == "__main__":
             max_attempts = 10
             for attempt in range(max_attempts):
                 # Check how many jobs are still queued using global app pool
-                global_app = elephantq._get_global_app()
+                global_app = soniq._get_global_app()
                 app_pool = await global_app.get_pool()
 
                 async with app_pool.acquire() as conn:
                     queued_count = await conn.fetchval(
-                        "SELECT COUNT(*) FROM elephantq_jobs WHERE status = 'queued'"
+                        "SELECT COUNT(*) FROM soniq_jobs WHERE status = 'queued'"
                     )
 
                 if queued_count == 0:
@@ -268,7 +268,7 @@ if __name__ == "__main__":
                     break
 
                 # Run worker to process available jobs
-                processed = await elephantq.run_worker(run_once=True)
+                processed = await soniq.run_worker(run_once=True)
                 if not processed:
                     print(
                         f"Worker found no jobs at attempt {attempt + 1}, but {queued_count} jobs remain queued"
@@ -280,7 +280,7 @@ if __name__ == "__main__":
             # Count completed jobs to verify exactly-once processing using global app pool
             async with app_pool.acquire() as conn:
                 completed_jobs = await conn.fetch(
-                    "SELECT id, status FROM elephantq_jobs WHERE status IN ('done', 'failed', 'dead_letter')"
+                    "SELECT id, status FROM soniq_jobs WHERE status IN ('done', 'failed', 'dead_letter')"
                 )
                 total_processed = len(completed_jobs)
 
@@ -315,7 +315,7 @@ if __name__ == "__main__":
     async def test_worker_resilience_to_job_failures(self):
         """Test that workers continue processing after job failures"""
 
-        @elephantq.job(retries=1, unique=False)
+        @soniq.job(retries=1, unique=False)
         async def failing_job(should_fail: bool, job_id: int = 0):
             """Job that fails conditionally"""
             if should_fail:
@@ -328,20 +328,20 @@ if __name__ == "__main__":
             async with DatabaseContext() as pool:
                 # Clear existing jobs to ensure clean test
                 async with pool.acquire() as conn:
-                    await conn.execute("DELETE FROM elephantq_jobs")
+                    await conn.execute("DELETE FROM soniq_jobs")
                 # Mix of failing and successful jobs
                 job_ids = []
 
                 # Failing jobs
                 for i in range(3):
-                    job_id = await elephantq.enqueue(
+                    job_id = await soniq.enqueue(
                         failing_job, should_fail=True, job_id=i
                     )
                     job_ids.append(job_id)
 
                 # Successful jobs
                 for i in range(5):
-                    job_id = await elephantq.enqueue(
+                    job_id = await soniq.enqueue(
                         job_counter, counter_file=success_file, job_index=i + 100
                     )
                     job_ids.append(job_id)
@@ -349,14 +349,14 @@ if __name__ == "__main__":
                 # Process all jobs using global API
                 processed_count = 0
                 for _ in range(20):  # More attempts than jobs to handle retries
-                    processed = await elephantq.run_worker(run_once=True)
+                    processed = await soniq.run_worker(run_once=True)
                     if processed:
                         processed_count += 1
                         await asyncio.sleep(0.1)  # Give time for processing
                     else:
                         # No more jobs, wait a bit in case retries are pending
                         await asyncio.sleep(0.5)
-                        retry_processed = await elephantq.run_worker(run_once=True)
+                        retry_processed = await soniq.run_worker(run_once=True)
                         if not retry_processed:
                             break  # Really no more jobs
 
@@ -373,7 +373,7 @@ if __name__ == "__main__":
                 ), f"Expected 5 successful executions, got {successful_executions}"
 
                 # Use global app pool for consistency
-                global_app = elephantq._get_global_app()
+                global_app = soniq._get_global_app()
                 app_pool = await global_app.get_pool()
 
                 async with app_pool.acquire() as verify_conn:
@@ -381,7 +381,7 @@ if __name__ == "__main__":
                     # Search for any jobs that have failed/dead_letter status (regardless of name)
                     failed_jobs = await verify_conn.fetch(
                         """
-                        SELECT id, status, attempts, last_error FROM elephantq_jobs 
+                        SELECT id, status, attempts, last_error FROM soniq_jobs 
                         WHERE status IN ('failed', 'dead_letter') 
                         ORDER BY created_at
                     """
@@ -409,7 +409,7 @@ if __name__ == "__main__":
 
             from datetime import timezone as _tz
 
-            @elephantq.job()
+            @soniq.job()
             async def timed_job(expected_time: str, log_file: str):
                 """Job that logs when it actually executed"""
                 actual_time = datetime.now(_tz.utc)
@@ -420,7 +420,7 @@ if __name__ == "__main__":
             # Clear existing jobs to ensure clean test
             async with DatabaseContext() as pool:
                 async with pool.acquire() as conn:
-                    await conn.execute("DELETE FROM elephantq_jobs")
+                    await conn.execute("DELETE FROM soniq_jobs")
 
             # Schedule jobs at different times (timezone-aware UTC).
             from datetime import timezone
@@ -435,7 +435,7 @@ if __name__ == "__main__":
             async with DatabaseContext() as pool:
                 job_ids = []
                 for scheduled_time in scheduled_times:
-                    job_id = await elephantq.enqueue(
+                    job_id = await soniq.enqueue(
                         timed_job,
                         expected_time=scheduled_time.isoformat(),
                         log_file=timing_file,
@@ -444,9 +444,9 @@ if __name__ == "__main__":
                     job_ids.append(job_id)
 
                 # Process jobs with timing checks — wait for scheduled times
-                from elephantq.worker import Worker
+                from soniq.worker import Worker
 
-                global_app = elephantq._get_global_app()
+                global_app = soniq._get_global_app()
                 worker = Worker(global_app._backend, global_app._get_job_registry())
 
                 start_time = time.time()
@@ -481,7 +481,7 @@ if __name__ == "__main__":
 
     @pytest.mark.asyncio
     async def test_high_concurrency_job_processing(self):
-        """Test ElephantQ performance under high job volume"""
+        """Test Soniq performance under high job volume"""
 
         with tempfile.TemporaryDirectory() as temp_dir:
             throughput_file = os.path.join(temp_dir, "throughput_log.txt")
@@ -491,13 +491,13 @@ if __name__ == "__main__":
             async with DatabaseContext() as pool:
                 # Clear existing jobs to ensure clean test
                 async with pool.acquire() as conn:
-                    await conn.execute("DELETE FROM elephantq_jobs")
+                    await conn.execute("DELETE FROM soniq_jobs")
 
                 job_ids = []
                 start_enqueue = time.time()
 
                 for i in range(job_count):
-                    job_id = await elephantq.enqueue(
+                    job_id = await soniq.enqueue(
                         job_counter, counter_file=throughput_file, job_index=i
                     )
                     job_ids.append(job_id)
@@ -510,19 +510,19 @@ if __name__ == "__main__":
                 max_attempts = 20
                 for attempt in range(max_attempts):
                     # Check remaining jobs using global app pool
-                    global_app = elephantq._get_global_app()
+                    global_app = soniq._get_global_app()
                     app_pool = await global_app.get_pool()
 
                     async with app_pool.acquire() as conn:
                         queued_count = await conn.fetchval(
-                            "SELECT COUNT(*) FROM elephantq_jobs WHERE status = 'queued'"
+                            "SELECT COUNT(*) FROM soniq_jobs WHERE status = 'queued'"
                         )
 
                     if queued_count == 0:
                         break
 
                     # Process available jobs
-                    processed = await elephantq.run_worker(run_once=True)
+                    processed = await soniq.run_worker(run_once=True)
                     if not processed:
                         break
 
@@ -533,7 +533,7 @@ if __name__ == "__main__":
                 # Count completed jobs to verify processing
                 async with app_pool.acquire() as conn:
                     completed_jobs = await conn.fetch(
-                        "SELECT id, status FROM elephantq_jobs WHERE status IN ('done', 'failed', 'dead_letter')"
+                        "SELECT id, status FROM soniq_jobs WHERE status IN ('done', 'failed', 'dead_letter')"
                     )
                     total_processed = len(completed_jobs)
 

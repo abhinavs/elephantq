@@ -6,7 +6,7 @@ import asyncio
 
 import pytest
 
-from elephantq.app import ElephantQ
+from soniq.app import Soniq
 from tests.db_utils import TEST_DATABASE_URL
 
 
@@ -17,7 +17,7 @@ async def test_pool_exhaustion_blocks_then_succeeds():
     connection to become available rather than crashing.
     """
     # Create an instance with a very small pool
-    app = ElephantQ(
+    app = Soniq(
         database_url=TEST_DATABASE_URL,
         pool_min_size=1,
         pool_max_size=2,
@@ -54,9 +54,9 @@ async def test_pool_size_check_raises_on_undersized_pool():
     pool_max_size. The old behavior was a warning that operators missed;
     we now fail fast so a misconfigured deploy does not deadlock under load.
     """
-    from elephantq.errors import ElephantQError
+    from soniq.errors import SoniqError
 
-    app = ElephantQ(
+    app = Soniq(
         database_url=TEST_DATABASE_URL,
         pool_min_size=1,
         pool_max_size=3,
@@ -65,7 +65,7 @@ async def test_pool_size_check_raises_on_undersized_pool():
     await app._ensure_initialized()
 
     try:
-        with pytest.raises(ElephantQError, match="ELEPHANTQ_POOL_TOO_SMALL"):
+        with pytest.raises(SoniqError, match="SONIQ_POOL_TOO_SMALL"):
             # concurrency=5 + headroom=2 = 7 > max_size=3
             app._check_pool_sizing(concurrency=5)
     finally:

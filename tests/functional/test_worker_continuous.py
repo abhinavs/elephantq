@@ -4,12 +4,12 @@ Test Worker continuous mode with MemoryBackend.
 
 import asyncio
 
-from elephantq import ElephantQ
+from soniq import Soniq
 
 
 async def test_worker_processes_job_and_shuts_down():
     """Start continuous worker, enqueue a job, verify it runs, shut down."""
-    app = ElephantQ(backend="memory")
+    app = Soniq(backend="memory")
     await app._ensure_initialized()
 
     executed = asyncio.Event()
@@ -21,7 +21,7 @@ async def test_worker_processes_job_and_shuts_down():
     await app.enqueue(signal_done)
 
     async def run_and_stop():
-        from elephantq.worker import Worker
+        from soniq.worker import Worker
 
         worker = Worker(
             backend=app._backend,
@@ -53,7 +53,7 @@ async def test_worker_processes_job_and_shuts_down():
 
 async def test_worker_run_method_dispatches_correctly():
     """Worker.run() with run_once=True processes jobs and exits."""
-    app = ElephantQ(backend="memory")
+    app = Soniq(backend="memory")
     await app._ensure_initialized()
 
     results = []
@@ -65,7 +65,7 @@ async def test_worker_run_method_dispatches_correctly():
     await app.enqueue(collect, value="a")
     await app.enqueue(collect, value="b")
 
-    from elephantq.worker import Worker
+    from soniq.worker import Worker
 
     worker = Worker(
         backend=app._backend,

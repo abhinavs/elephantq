@@ -10,16 +10,16 @@ import logging
 
 import pytest
 
-from elephantq.core.heartbeat import cleanup_stale_workers
+from soniq.core.heartbeat import cleanup_stale_workers
 
-# Use global API or ElephantQ instance for worker functionality
-from elephantq.db.connection import create_pool
+# Use global API or Soniq instance for worker functionality
+from soniq.db.connection import create_pool
 
 
 @pytest.mark.asyncio
 async def test_cleanup_stale_workers_with_closing_pool():
     """Test that cleanup_stale_workers handles closing pool gracefully"""
-    from elephantq.settings import get_settings
+    from soniq.settings import get_settings
 
     pool = await create_pool(get_settings().database_url)
 
@@ -37,7 +37,7 @@ async def test_cleanup_stale_workers_with_closing_pool():
 async def test_cleanup_stale_workers_with_pool_closing_error():
     """Test that cleanup_stale_workers handles InterfaceError gracefully"""
     # Test the specific exception handling by triggering it with a closed pool
-    from elephantq.settings import get_settings
+    from soniq.settings import get_settings
 
     pool = await create_pool(get_settings().database_url)
 
@@ -59,11 +59,11 @@ async def test_worker_cancellation_no_pool_errors(caplog):
     # Set log level to capture all messages
     with caplog.at_level(logging.DEBUG):
         # Start a worker task using global API
-        import elephantq
-        from elephantq.settings import get_settings
+        import soniq
+        from soniq.settings import get_settings
 
-        await elephantq.configure(database_url=get_settings().database_url)
-        worker_task = asyncio.create_task(elephantq.run_worker(concurrency=1))
+        await soniq.configure(database_url=get_settings().database_url)
+        worker_task = asyncio.create_task(soniq.run_worker(concurrency=1))
 
         # Let it start up
         await asyncio.sleep(0.1)
@@ -100,14 +100,14 @@ async def test_multiple_rapid_worker_cancellations(caplog):
     caplog.clear()
 
     with caplog.at_level(logging.ERROR):
-        import elephantq
-        from elephantq.settings import get_settings
+        import soniq
+        from soniq.settings import get_settings
 
-        await elephantq.configure(database_url=get_settings().database_url)
+        await soniq.configure(database_url=get_settings().database_url)
 
         for i in range(3):
             # Start worker
-            worker_task = asyncio.create_task(elephantq.run_worker(concurrency=1))
+            worker_task = asyncio.create_task(soniq.run_worker(concurrency=1))
 
             # Brief startup time
             await asyncio.sleep(0.05)
@@ -136,8 +136,8 @@ async def test_worker_listener_cleanup_handles_errors():
     # This test verifies the error handling code we added to processor.py
     # The actual scenario is tested in the processor's finally block
 
-    from elephantq.db.connection import create_pool
-    from elephantq.settings import get_settings
+    from soniq.db.connection import create_pool
+    from soniq.settings import get_settings
 
     pool = await create_pool(get_settings().database_url)
     conn = await pool.acquire()
@@ -181,11 +181,11 @@ async def test_graceful_shutdown_integration():
     signal_task = asyncio.create_task(mock_signal_handler())
 
     # Start worker with a brief timeout using global API
-    import elephantq
-    from elephantq.settings import get_settings
+    import soniq
+    from soniq.settings import get_settings
 
-    await elephantq.configure(database_url=get_settings().database_url)
-    worker_task = asyncio.create_task(elephantq.run_worker(concurrency=1))
+    await soniq.configure(database_url=get_settings().database_url)
+    worker_task = asyncio.create_task(soniq.run_worker(concurrency=1))
 
     # Wait for either signal or timeout
     done, pending = await asyncio.wait(

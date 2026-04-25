@@ -1,14 +1,14 @@
 """Instance-based API example.
 
-Shows ElephantQ used as an application object instead of the global API.
+Shows Soniq used as an application object instead of the global API.
 Run with: python examples/instance_api.py
 """
 
 import asyncio
 
-from elephantq import ElephantQ, JobContext
+from soniq import JobContext, Soniq
 
-app = ElephantQ(database_url="postgresql://localhost/myapp")
+app = Soniq(database_url="postgresql://localhost/myapp")
 
 
 @app.job(queue="notifications", retries=2)

@@ -9,7 +9,7 @@ import json
 
 import pytest
 
-from elephantq.core.processor import _execute_job_safely
+from soniq.core.processor import _execute_job_safely
 
 
 def _make_job_record(args_dict=None):

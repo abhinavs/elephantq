@@ -1,5 +1,5 @@
 """
-Tests for elephantq.features.recurring — the recurring/scheduled job system.
+Tests for soniq.features.recurring — the recurring/scheduled job system.
 
 Covers cron validation, feature-flag gating, the @recurring decorator registry,
 fire-and-forget safety, atomic state updates, and sync convenience helpers.
@@ -14,7 +14,7 @@ import pytest
 
 pytest.importorskip("croniter")
 
-os.environ.setdefault("ELEPHANTQ_SCHEDULING_ENABLED", "true")
+os.environ.setdefault("SONIQ_SCHEDULING_ENABLED", "true")
 
 
 # ---------------------------------------------------------------------------
@@ -24,7 +24,7 @@ os.environ.setdefault("ELEPHANTQ_SCHEDULING_ENABLED", "true")
 
 def _reset_settings():
     """Clear cached settings so env-var changes take effect."""
-    import elephantq.settings as s
+    import soniq.settings as s
 
     s._settings = None
 
@@ -32,12 +32,12 @@ def _reset_settings():
 @pytest.fixture(autouse=True)
 def _enable_scheduling(monkeypatch):
     """Enable the scheduling feature flag for every test in this module."""
-    monkeypatch.setenv("ELEPHANTQ_SCHEDULING_ENABLED", "true")
-    import elephantq.settings
+    monkeypatch.setenv("SONIQ_SCHEDULING_ENABLED", "true")
+    import soniq.settings
 
-    elephantq.settings._settings = None
+    soniq.settings._settings = None
     yield
-    elephantq.settings._settings = None
+    soniq.settings._settings = None
 
 
 # ---------------------------------------------------------------------------
@@ -49,15 +49,15 @@ class TestCronFeatureFlag:
     """cron() must raise RuntimeError when scheduling is disabled."""
 
     def test_cron_raises_when_scheduling_disabled(self):
-        """cron() should raise RuntimeError when ELEPHANTQ_SCHEDULING_ENABLED=false."""
+        """cron() should raise RuntimeError when SONIQ_SCHEDULING_ENABLED=false."""
         for key in list(os.environ.keys()):
-            if key.startswith("ELEPHANTQ_"):
+            if key.startswith("SONIQ_"):
                 os.environ.pop(key, None)
 
-        os.environ["ELEPHANTQ_SCHEDULING_ENABLED"] = "false"
+        os.environ["SONIQ_SCHEDULING_ENABLED"] = "false"
         _reset_settings()
 
-        from elephantq.features import recurring
+        from soniq.features import recurring
 
         importlib.reload(recurring)
 
@@ -65,11 +65,11 @@ class TestCronFeatureFlag:
             recurring.cron("*/15 * * * *")
 
     def test_cron_works_when_scheduling_enabled(self):
-        """cron() should succeed when ELEPHANTQ_SCHEDULING_ENABLED=true."""
-        os.environ["ELEPHANTQ_SCHEDULING_ENABLED"] = "true"
+        """cron() should succeed when SONIQ_SCHEDULING_ENABLED=true."""
+        os.environ["SONIQ_SCHEDULING_ENABLED"] = "true"
         _reset_settings()
 
-        from elephantq.features import recurring
+        from soniq.features import recurring
 
         importlib.reload(recurring)
 
@@ -87,7 +87,7 @@ class TestCronValidation:
 
     @pytest.mark.asyncio
     async def test_invalid_cron_raises_valueerror(self):
-        from elephantq.features.recurring import EnhancedRecurringManager
+        from soniq.features.recurring import EnhancedRecurringManager
 
         mgr = EnhancedRecurringManager()
 
@@ -103,7 +103,7 @@ class TestCronValidation:
 
     @pytest.mark.asyncio
     async def test_valid_cron_does_not_raise(self):
-        from elephantq.features.recurring import EnhancedRecurringManager
+        from soniq.features.recurring import EnhancedRecurringManager
 
         mgr = EnhancedRecurringManager()
 
@@ -113,7 +113,7 @@ class TestCronValidation:
         # Patch out _persist_job and _ensure_scheduler_running to avoid DB calls
         with patch.object(mgr, "_persist_job", new_callable=AsyncMock):
             with patch(
-                "elephantq.features.recurring._ensure_scheduler_running",
+                "soniq.features.recurring._ensure_scheduler_running",
                 new_callable=AsyncMock,
             ):
                 job_id = await mgr.add_recurring_job(
@@ -133,7 +133,7 @@ class TestRecurringDecoratorRegistry:
     """Verify that @recurring registers functions in _decorated_recurring_jobs."""
 
     def test_decorator_registers_function(self):
-        from elephantq.features.recurring import _decorated_recurring_jobs, recurring
+        from soniq.features.recurring import _decorated_recurring_jobs, recurring
 
         initial_count = len(_decorated_recurring_jobs)
 
@@ -145,7 +145,7 @@ class TestRecurringDecoratorRegistry:
         assert len(_decorated_recurring_jobs) == initial_count + 1
 
     def test_decorator_attaches_recurring_config(self):
-        from elephantq.features.recurring import recurring
+        from soniq.features.recurring import recurring
 
         @recurring("1h", priority="high", queue="urgent")
         async def another_task():
@@ -157,7 +157,7 @@ class TestRecurringDecoratorRegistry:
         assert "config" in config
 
     def test_decorated_function_remains_callable(self):
-        from elephantq.features.recurring import recurring
+        from soniq.features.recurring import recurring
 
         @recurring("5m")
         def sync_task():
@@ -176,7 +176,7 @@ class TestNoFireAndForget:
 
     def test_no_create_task_in_ensure_loaded(self):
         """_ensure_loaded should not use loop.create_task()."""
-        import elephantq.features.recurring as mod
+        import soniq.features.recurring as mod
 
         source = inspect.getsource(mod.EnhancedRecurringManager._ensure_loaded)
         assert (
@@ -185,7 +185,7 @@ class TestNoFireAndForget:
 
     def test_no_create_task_in_schedule_update(self):
         """_schedule_update should not use loop.create_task()."""
-        import elephantq.features.recurring as mod
+        import soniq.features.recurring as mod
 
         source = inspect.getsource(mod.EnhancedRecurringManager._schedule_update)
         assert (
@@ -194,7 +194,7 @@ class TestNoFireAndForget:
 
     def test_ensure_loaded_is_async(self):
         """_ensure_loaded must be async so callers can await it."""
-        import elephantq.features.recurring as mod
+        import soniq.features.recurring as mod
 
         assert inspect.iscoroutinefunction(
             mod.EnhancedRecurringManager._ensure_loaded
@@ -202,7 +202,7 @@ class TestNoFireAndForget:
 
     def test_schedule_update_is_async(self):
         """_schedule_update must be async so callers can await it."""
-        import elephantq.features.recurring as mod
+        import soniq.features.recurring as mod
 
         assert inspect.iscoroutinefunction(
             mod.EnhancedRecurringManager._schedule_update
@@ -210,7 +210,7 @@ class TestNoFireAndForget:
 
     def test_list_jobs_is_async(self):
         """list_jobs must be async since it calls async _ensure_loaded."""
-        import elephantq.features.recurring as mod
+        import soniq.features.recurring as mod
 
         assert inspect.iscoroutinefunction(
             mod.EnhancedRecurringManager.list_jobs
@@ -218,7 +218,7 @@ class TestNoFireAndForget:
 
     def test_get_job_is_async(self):
         """get_job must be async since it calls async _ensure_loaded."""
-        import elephantq.features.recurring as mod
+        import soniq.features.recurring as mod
 
         assert inspect.iscoroutinefunction(
             mod.EnhancedRecurringManager.get_job
@@ -236,7 +236,7 @@ class TestRecurringAtomicState:
     def test_record_run_called_before_in_memory_update(self):
         """In the execute_recurring_job function, _record_run must be called
         BEFORE in-memory state is updated with last_run/run_count/next_run."""
-        import elephantq.features.recurring as mod
+        import soniq.features.recurring as mod
 
         source = inspect.getsource(mod.EnhancedRecurringScheduler._execute_job)
 
@@ -264,16 +264,16 @@ class TestRecurringSyncConvenience:
     """high_priority(), background(), and urgent() must be synchronous."""
 
     def test_high_priority_is_sync(self):
-        from elephantq.features.recurring import high_priority
+        from soniq.features.recurring import high_priority
 
         assert not inspect.iscoroutinefunction(high_priority)
 
     def test_background_is_sync(self):
-        from elephantq.features.recurring import background
+        from soniq.features.recurring import background
 
         assert not inspect.iscoroutinefunction(background)
 
     def test_urgent_is_sync(self):
-        from elephantq.features.recurring import urgent
+        from soniq.features.recurring import urgent
 
         assert not inspect.iscoroutinefunction(urgent)

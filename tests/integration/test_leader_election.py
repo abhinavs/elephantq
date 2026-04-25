@@ -10,8 +10,8 @@ import asyncio
 
 import pytest
 
-from elephantq.backends.postgres import PostgresBackend
-from elephantq.core.leadership import with_advisory_lock
+from soniq.backends.postgres import PostgresBackend
+from soniq.core.leadership import with_advisory_lock
 from tests.db_utils import TEST_DATABASE_URL
 
 

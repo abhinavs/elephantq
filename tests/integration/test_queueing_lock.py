@@ -6,7 +6,7 @@ import uuid
 
 import pytest
 
-from elephantq.backends.postgres import PostgresBackend
+from soniq.backends.postgres import PostgresBackend
 from tests.db_utils import TEST_DATABASE_URL
 
 

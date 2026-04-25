@@ -2,33 +2,33 @@
 Minimal demonstration that a job's return value is persisted and retrievable.
 
 Run:
-    ELEPHANTQ_DATABASE_URL=postgresql://postgres@localhost/elephantq \\
+    SONIQ_DATABASE_URL=postgresql://postgres@localhost/soniq \\
         python examples/job_returns_value.py
 """
 
 import asyncio
 import os
 
-import elephantq
+import soniq
 
 
-@elephantq.job()
+@soniq.job()
 async def compute_summary(a: int, b: int):
     return {"total": a + b, "inputs": [a, b]}
 
 
 async def main():
     database_url = os.environ.get(
-        "ELEPHANTQ_DATABASE_URL", "postgresql://postgres@localhost/elephantq"
+        "SONIQ_DATABASE_URL", "postgresql://postgres@localhost/soniq"
     )
-    await elephantq.configure(database_url=database_url)
+    await soniq.configure(database_url=database_url)
 
-    await elephantq._setup()
+    await soniq._setup()
 
-    job_id = await elephantq.enqueue(compute_summary, a=7, b=35)
-    await elephantq.run_worker(run_once=True)
+    job_id = await soniq.enqueue(compute_summary, a=7, b=35)
+    await soniq.run_worker(run_once=True)
 
-    result = await elephantq.get_result(job_id)
+    result = await soniq.get_result(job_id)
     print(f"job_id={job_id}")
     print(f"result={result}")
     assert result == {"total": 42, "inputs": [7, 35]}, f"unexpected result: {result}"

@@ -21,19 +21,19 @@ import uuid
 
 import pytest
 
-import elephantq
-from elephantq.db.context import (
+import soniq
+from soniq.db.context import (
     DatabaseContext,
     get_context_pool,
     set_current_context,
 )
-from elephantq.features.scheduling import JobScheduleBuilder
+from soniq.features.scheduling import JobScheduleBuilder
 
 CONCURRENCY = 10
 TEST_TIMEOUT_SECONDS = 30
 
 
-@elephantq.job(retries=0, name="race_builder_job")
+@soniq.job(retries=0, name="race_builder_job")
 async def race_builder_job():
     return "ok"
 
@@ -41,10 +41,10 @@ async def race_builder_job():
 async def _ready_app():
     """Use the global app already configured by the integration conftest.
 
-    Calling `await elephantq.configure()` here would orphan the conftest's pool
+    Calling `await soniq.configure()` here would orphan the conftest's pool
     and potentially exhaust Postgres max_connections.
     """
-    global_app = elephantq._get_global_app()
+    global_app = soniq._get_global_app()
     set_current_context(DatabaseContext.from_instance(global_app))
     await global_app._ensure_initialized()
 
@@ -69,7 +69,7 @@ async def test_concurrent_enqueue_with_same_dedup_key_produces_one_row():
     pool = await get_context_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT id FROM elephantq_jobs WHERE dedup_key = $1",
+            "SELECT id FROM soniq_jobs WHERE dedup_key = $1",
             dedup,
         )
     assert len(rows) == 1, f"expected 1 row for dedup_key, got {len(rows)}"
@@ -100,7 +100,7 @@ async def test_concurrent_enqueue_with_unique_dedup_keys_produces_n_rows():
     pool = await get_context_pool()
     async with pool.acquire() as conn:
         count = await conn.fetchval(
-            "SELECT COUNT(*) FROM elephantq_jobs WHERE dedup_key LIKE $1",
+            "SELECT COUNT(*) FROM soniq_jobs WHERE dedup_key LIKE $1",
             f"{prefix}:%",
         )
     assert count == CONCURRENCY

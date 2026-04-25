@@ -9,24 +9,21 @@ import pytest
 
 @pytest.fixture(autouse=True)
 async def reset_global_state():
-    """Reset global ElephantQ state between unit tests."""
+    """Reset global Soniq state between unit tests."""
     yield
 
     # Reset global app if it was used
-    import elephantq
+    import soniq
 
-    if elephantq._global_app is not None:
-        if (
-            elephantq._global_app._is_initialized
-            and not elephantq._global_app._is_closed
-        ):
+    if soniq._global_app is not None:
+        if soniq._global_app._is_initialized and not soniq._global_app._is_closed:
             try:
-                await elephantq._global_app.close()
+                await soniq._global_app.close()
             except Exception:
                 pass
-        elephantq._global_app = None
+        soniq._global_app = None
 
     # Reset settings cache
-    from elephantq.settings import get_settings
+    from soniq.settings import get_settings
 
     get_settings(reload=True)

@@ -1,5 +1,5 @@
 """
-Tests for elephantq.features.scheduling — the scheduling subsystem.
+Tests for soniq.features.scheduling — the scheduling subsystem.
 
 Covers the JobScheduleBuilder (metadata, conditions, transactions),
 batch scheduling, and schedule() helper variants.
@@ -14,20 +14,20 @@ from datetime import datetime, timedelta
 import pytest
 
 # Ensure the required feature flags are enabled before importing scheduling helpers
-os.environ.setdefault("ELEPHANTQ_SCHEDULING_ENABLED", "true")
-os.environ.setdefault("ELEPHANTQ_DEPENDENCIES_ENABLED", "true")
-os.environ.setdefault("ELEPHANTQ_TIMEOUTS_ENABLED", "true")
+os.environ.setdefault("SONIQ_SCHEDULING_ENABLED", "true")
+os.environ.setdefault("SONIQ_DEPENDENCIES_ENABLED", "true")
+os.environ.setdefault("SONIQ_TIMEOUTS_ENABLED", "true")
 
-import elephantq.settings as settings_module  # noqa: E402
-from elephantq.features import scheduling  # noqa: E402
+import soniq.settings as settings_module  # noqa: E402
+from soniq.features import scheduling  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
 def enable_scheduling_features(monkeypatch):
     """Enable feature flags for scheduling-related tests."""
-    monkeypatch.setenv("ELEPHANTQ_SCHEDULING_ENABLED", "true")
-    monkeypatch.setenv("ELEPHANTQ_DEPENDENCIES_ENABLED", "true")
-    monkeypatch.setenv("ELEPHANTQ_TIMEOUTS_ENABLED", "true")
+    monkeypatch.setenv("SONIQ_SCHEDULING_ENABLED", "true")
+    monkeypatch.setenv("SONIQ_DEPENDENCIES_ENABLED", "true")
+    monkeypatch.setenv("SONIQ_TIMEOUTS_ENABLED", "true")
     # Reload settings and scheduling modules so require_feature picks up the flags
     settings_module._settings = None
     importlib.reload(settings_module)
@@ -82,9 +82,9 @@ async def test_job_schedule_builder_records_metadata(monkeypatch):
 
     monkeypatch.setattr(scheduling, "enqueue", fake_enqueue)
     monkeypatch.setattr(
-        "elephantq.features.timeout_processor.store_job_timeout", fake_store_job_timeout
+        "soniq.features.timeout_processor.store_job_timeout", fake_store_job_timeout
     )
-    monkeypatch.setattr("elephantq.db.context.get_context_pool", fake_get_context_pool)
+    monkeypatch.setattr("soniq.db.context.get_context_pool", fake_get_context_pool)
 
     async def dummy_job(message: str):
         return message
@@ -151,7 +151,7 @@ async def test_batch_scheduler_applies_batch_metadata(monkeypatch):
     async def fake_get_context_pool():
         return _FakePool()
 
-    import elephantq.db.context as db_context
+    import soniq.db.context as db_context
 
     monkeypatch.setattr(db_context, "get_context_pool", fake_get_context_pool)
 

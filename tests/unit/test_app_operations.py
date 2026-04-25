@@ -1,5 +1,5 @@
 """
-Tests for ElephantQ app operations not covered elsewhere.
+Tests for Soniq app operations not covered elsewhere.
 
 Covers: close() error path, unregistered job error, transactional enqueue,
 schedule(), _check_pool_sizing, hooks, get_pool, app as context manager.
@@ -7,12 +7,12 @@ schedule(), _check_pool_sizing, hooks, get_pool, app as context manager.
 
 import pytest
 
-from elephantq import ElephantQ
+from soniq import Soniq
 
 
 @pytest.mark.asyncio
 async def test_app_with_memory_backend():
-    app = ElephantQ(backend="memory")
+    app = Soniq(backend="memory")
 
     @app.job()
     async def my_task(x: int):
@@ -29,14 +29,14 @@ async def test_app_with_memory_backend():
 
 @pytest.mark.asyncio
 async def test_app_close_is_idempotent():
-    app = ElephantQ(backend="memory")
+    app = Soniq(backend="memory")
     await app.close()
     await app.close()  # Should not raise
 
 
 @pytest.mark.asyncio
 async def test_app_as_context_manager():
-    async with ElephantQ(backend="memory") as app:
+    async with Soniq(backend="memory") as app:
 
         @app.job()
         async def my_task():
@@ -48,7 +48,7 @@ async def test_app_as_context_manager():
 
 @pytest.mark.asyncio
 async def test_enqueue_unregistered_job_raises():
-    app = ElephantQ(backend="memory")
+    app = Soniq(backend="memory")
 
     async def not_registered():
         pass
@@ -63,7 +63,7 @@ async def test_enqueue_unregistered_job_raises():
 async def test_schedule_delegates_to_enqueue():
     from datetime import datetime, timedelta, timezone
 
-    app = ElephantQ(backend="memory")
+    app = Soniq(backend="memory")
 
     @app.job()
     async def my_task(msg: str):
@@ -81,7 +81,7 @@ async def test_schedule_delegates_to_enqueue():
 
 @pytest.mark.asyncio
 async def test_cancel_job():
-    app = ElephantQ(backend="memory")
+    app = Soniq(backend="memory")
 
     @app.job()
     async def my_task():
@@ -99,7 +99,7 @@ async def test_cancel_job():
 
 @pytest.mark.asyncio
 async def test_delete_job():
-    app = ElephantQ(backend="memory")
+    app = Soniq(backend="memory")
 
     @app.job()
     async def my_task():
@@ -117,7 +117,7 @@ async def test_delete_job():
 
 @pytest.mark.asyncio
 async def test_list_jobs_with_status_filter():
-    app = ElephantQ(backend="memory")
+    app = Soniq(backend="memory")
 
     @app.job()
     async def my_task():
@@ -134,7 +134,7 @@ async def test_list_jobs_with_status_filter():
 
 @pytest.mark.asyncio
 async def test_get_queue_stats():
-    app = ElephantQ(backend="memory")
+    app = Soniq(backend="memory")
 
     @app.job()
     async def my_task():
@@ -149,7 +149,7 @@ async def test_get_queue_stats():
 
 @pytest.mark.asyncio
 async def test_retry_job():
-    app = ElephantQ(backend="memory")
+    app = Soniq(backend="memory")
 
     @app.job(retries=2)
     async def failing_task():
@@ -170,7 +170,7 @@ async def test_retry_job():
 
 @pytest.mark.asyncio
 async def test_hook_registration():
-    app = ElephantQ(backend="memory")
+    app = Soniq(backend="memory")
     before_calls = []
     after_calls = []
     error_calls = []
@@ -203,7 +203,7 @@ async def test_hook_registration():
 
 @pytest.mark.asyncio
 async def test_run_worker_processes_jobs():
-    app = ElephantQ(backend="memory")
+    app = Soniq(backend="memory")
     results = []
 
     @app.job()

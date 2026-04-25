@@ -6,16 +6,16 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-import elephantq
-from elephantq import ElephantQ
+import soniq
+from soniq import Soniq
 
 
 @pytest.fixture(autouse=True)
 def reset_global_app():
     """Reset global app state before each test"""
-    elephantq._global_app = None
+    soniq._global_app = None
     yield
-    elephantq._global_app = None
+    soniq._global_app = None
 
 
 class TestGlobalAPI:
@@ -23,39 +23,39 @@ class TestGlobalAPI:
 
     def test_get_global_app_creates_singleton(self):
         """Test that _get_global_app creates and returns same instance"""
-        app1 = elephantq._get_global_app()
-        app2 = elephantq._get_global_app()
+        app1 = soniq._get_global_app()
+        app2 = soniq._get_global_app()
 
-        assert isinstance(app1, ElephantQ)
-        assert isinstance(app2, ElephantQ)
+        assert isinstance(app1, Soniq)
+        assert isinstance(app2, Soniq)
         assert app1 is app2  # Same instance
 
     @pytest.mark.asyncio
     async def test_configure_creates_new_global_app(self):
         """Test that configure() creates a new global app with settings"""
         # Get initial app
-        app1 = elephantq._get_global_app()
+        app1 = soniq._get_global_app()
 
         # Configure with new settings
-        await elephantq.configure(database_url="postgresql://test@localhost/test_db")
+        await soniq.configure(database_url="postgresql://test@localhost/test_db")
 
         # Should get new app instance
-        app2 = elephantq._get_global_app()
+        app2 = soniq._get_global_app()
 
         assert app1 is not app2  # Different instances
         assert app2.settings.database_url == "postgresql://test@localhost/test_db"
 
     @pytest.mark.asyncio
     async def test_job_decorator_registers_with_global_app(self):
-        """Test that @elephantq.job() registers with global app"""
-        await elephantq.configure(database_url="postgresql://test@localhost/test_db")
+        """Test that @soniq.job() registers with global app"""
+        await soniq.configure(database_url="postgresql://test@localhost/test_db")
 
-        @elephantq.job(retries=3, queue="test")
+        @soniq.job(retries=3, queue="test")
         async def test_job(message: str):
             return f"Processed: {message}"
 
         # Check job is registered in global app
-        app = elephantq._get_global_app()
+        app = soniq._get_global_app()
         job_name = "tests.unit.test_global_api.test_job"
         job_meta = app._get_job_registry().get_job(job_name)
 
@@ -66,7 +66,7 @@ class TestGlobalAPI:
     def test_job_decorator_returns_callable_function(self):
         """Test that job decorator returns a callable function"""
 
-        @elephantq.job()
+        @soniq.job()
         async def test_job(x: int, y: int):
             return x + y
 
@@ -77,20 +77,20 @@ class TestGlobalAPI:
 
     @pytest.mark.asyncio
     async def test_global_enqueue_uses_global_app(self):
-        """Test that elephantq.enqueue() uses the global app"""
-        await elephantq.configure(database_url="postgresql://test@localhost/test_db")
+        """Test that soniq.enqueue() uses the global app"""
+        await soniq.configure(database_url="postgresql://test@localhost/test_db")
 
-        @elephantq.job()
+        @soniq.job()
         async def test_job(message: str):
             return message
 
         # Mock the global app's enqueue method
-        app = elephantq._get_global_app()
+        app = soniq._get_global_app()
         with patch.object(app, "enqueue", new_callable=AsyncMock) as mock_enqueue:
             mock_enqueue.return_value = "test-job-id"
 
             # Call global enqueue
-            job_id = await elephantq.enqueue(test_job, message="test")
+            job_id = await soniq.enqueue(test_job, message="test")
 
             # Should have called app.enqueue
             mock_enqueue.assert_called_once_with(
@@ -100,20 +100,20 @@ class TestGlobalAPI:
 
     @pytest.mark.asyncio
     async def test_global_schedule_uses_global_app(self):
-        """Test that elephantq.schedule() uses the global app"""
+        """Test that soniq.schedule() uses the global app"""
         from datetime import datetime, timedelta
 
-        @elephantq.job()
+        @soniq.job()
         async def test_job(message: str):
             return message
 
         # Mock the global enqueue function since schedule() calls enqueue() internally
-        with patch("elephantq.enqueue", new_callable=AsyncMock) as mock_enqueue:
+        with patch("soniq.enqueue", new_callable=AsyncMock) as mock_enqueue:
             mock_enqueue.return_value = "scheduled-job-id"
 
             # Call global schedule
             run_at = datetime.now() + timedelta(hours=1)
-            job_id = await elephantq.schedule(
+            job_id = await soniq.schedule(
                 test_job, run_at=run_at, connection="conn", message="test"
             )
 
@@ -125,15 +125,15 @@ class TestGlobalAPI:
 
     @pytest.mark.asyncio
     async def test_global_run_worker_uses_global_app(self):
-        """Test that elephantq.run_worker() uses the global app"""
-        await elephantq.configure(database_url="postgresql://test@localhost/test_db")
+        """Test that soniq.run_worker() uses the global app"""
+        await soniq.configure(database_url="postgresql://test@localhost/test_db")
 
         # Mock the global app's run_worker method
-        app = elephantq._get_global_app()
+        app = soniq._get_global_app()
         with patch.object(app, "run_worker", new_callable=AsyncMock) as mock_run_worker:
 
             # Call global run_worker
-            await elephantq.run_worker(concurrency=2, run_once=True, queues=["test"])
+            await soniq.run_worker(concurrency=2, run_once=True, queues=["test"])
 
             # Should have called app.run_worker
             mock_run_worker.assert_called_once_with(
@@ -144,17 +144,13 @@ class TestGlobalAPI:
     async def test_global_api_isolation_from_instances(self):
         """Test that global API and instance API are isolated"""
         # Configure global app
-        await elephantq.configure(
-            database_url="postgresql://global@localhost/global_db"
-        )
+        await soniq.configure(database_url="postgresql://global@localhost/global_db")
 
         # Create instance app
-        instance_app = ElephantQ(
-            database_url="postgresql://instance@localhost/instance_db"
-        )
+        instance_app = Soniq(database_url="postgresql://instance@localhost/instance_db")
 
         # Register jobs in both
-        @elephantq.job()
+        @soniq.job()
         async def global_job():
             return "global"
 
@@ -163,7 +159,7 @@ class TestGlobalAPI:
             return "instance"
 
         # Check isolation
-        global_app = elephantq._get_global_app()
+        global_app = soniq._get_global_app()
 
         # Global app should have global_job but not instance_job
         global_registry = global_app._get_job_registry()
@@ -193,11 +189,11 @@ class TestGlobalAPI:
             "concurrency": 8,
             "result_ttl": 600,
         }
-        await elephantq.configure(**test_config)
+        await soniq.configure(**test_config)
 
         # Get app multiple times
-        app1 = elephantq._get_global_app()
-        app2 = elephantq._get_global_app()
+        app1 = soniq._get_global_app()
+        app2 = soniq._get_global_app()
 
         # Should be same instance with same config
         assert app1 is app2
@@ -209,7 +205,7 @@ class TestGlobalAPI:
         """Test that global API functions are properly exported"""
         # Check that all global functions are in __all__
         expected_exports = [
-            "ElephantQ",
+            "Soniq",
             "job",
             "enqueue",
             "schedule",
@@ -218,19 +214,19 @@ class TestGlobalAPI:
         ]
 
         for export in expected_exports:
-            assert export in elephantq.__all__, f"{export} not in __all__"
-            assert hasattr(elephantq, export), f"{export} not accessible"
+            assert export in soniq.__all__, f"{export} not in __all__"
+            assert hasattr(soniq, export), f"{export} not accessible"
 
     def test_job_decorator_without_configure(self):
         """Test that job decorator works without explicit configure()"""
         # Don't call configure() - should use default settings
 
-        @elephantq.job()
+        @soniq.job()
         async def default_job():
             return "default"
 
         # Should create global app with default settings
-        app = elephantq._get_global_app()
+        app = soniq._get_global_app()
         assert app is not None
         assert app.settings.database_url is not None  # Should have some default
 

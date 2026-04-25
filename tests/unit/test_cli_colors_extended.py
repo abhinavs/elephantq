@@ -4,7 +4,7 @@ Extended tests for cli/colors.py — print functions and StatusIcon.
 
 import pytest
 
-from elephantq.cli.colors import (
+from soniq.cli.colors import (
     Colors,
     StatusIcon,
     print_header,

@@ -8,7 +8,7 @@ The new system provides:
 1. Backward compatibility with existing global pool usage
 2. Context-local connection pools for better test isolation
 3. Proper cleanup and context management
-4. Integration with ElephantQ's existing functionality
+4. Integration with Soniq's existing functionality
 
 Example usage for better test isolation:
 
@@ -28,8 +28,8 @@ import os
 import asyncpg
 import pytest
 
-import elephantq.settings
-from elephantq.db.connection import (
+import soniq.settings
+from soniq.db.connection import (
     _context_pool,
     close_pool,
     connection_context,
@@ -358,25 +358,25 @@ async def test_database_context_exception_handling():
 
 
 @pytest.mark.asyncio
-async def test_elephantq_integration_with_contexts():
-    """Test integration with ElephantQ functionality using contexts"""
+async def test_soniq_integration_with_contexts():
+    """Test integration with Soniq functionality using contexts"""
     # Set up environment variables for testing
-    os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
+    os.environ["SONIQ_DATABASE_URL"] = TEST_DATABASE_URL
 
     # Clear settings cache and reload
-    elephantq.settings._settings = None
-    elephantq.settings.get_settings(reload=True)
+    soniq.settings._settings = None
+    soniq.settings.get_settings(reload=True)
 
     await create_test_database()
 
-    from elephantq import ElephantQ
-    from elephantq.worker import Worker
+    from soniq import Soniq
+    from soniq.worker import Worker
 
     # Reset global state
     await close_pool()
 
-    # Use an ElephantQ instance with the test database
-    app = ElephantQ(database_url=TEST_DATABASE_URL)
+    # Use an Soniq instance with the test database
+    app = Soniq(database_url=TEST_DATABASE_URL)
     await app._ensure_initialized()
 
     registry = app._get_job_registry()
@@ -400,7 +400,7 @@ async def test_elephantq_integration_with_contexts():
     # Verify job was processed
     async with pool.acquire() as conn:
         result = await conn.fetchrow(
-            "SELECT status FROM elephantq_jobs WHERE id = $1", job_id
+            "SELECT status FROM soniq_jobs WHERE id = $1", job_id
         )
         assert result["status"] == "done"
 

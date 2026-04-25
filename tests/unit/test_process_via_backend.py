@@ -6,20 +6,20 @@ process_job_via_backend uses StorageBackend instead of raw asyncpg.Connection.
 
 import pytest
 
-from elephantq.backends.memory import MemoryBackend
-from elephantq.core.registry import JobRegistry
+from soniq.backends.memory import MemoryBackend
+from soniq.core.registry import JobRegistry
 
 
 @pytest.mark.asyncio
 async def test_process_via_backend_exists():
-    from elephantq.core.processor import process_job_via_backend
+    from soniq.core.processor import process_job_via_backend
 
     assert callable(process_job_via_backend)
 
 
 @pytest.mark.asyncio
 async def test_process_via_backend_runs_job():
-    from elephantq.core.processor import process_job_via_backend
+    from soniq.core.processor import process_job_via_backend
 
     backend = MemoryBackend()
     await backend.initialize()
@@ -60,7 +60,7 @@ async def test_process_via_backend_runs_job():
 
 @pytest.mark.asyncio
 async def test_process_via_backend_returns_false_when_empty():
-    from elephantq.core.processor import process_job_via_backend
+    from soniq.core.processor import process_job_via_backend
 
     backend = MemoryBackend()
     await backend.initialize()
@@ -76,7 +76,7 @@ async def test_process_via_backend_returns_false_when_empty():
 
 @pytest.mark.asyncio
 async def test_process_via_backend_handles_failure_with_retry():
-    from elephantq.core.processor import process_job_via_backend
+    from soniq.core.processor import process_job_via_backend
 
     backend = MemoryBackend()
     await backend.initialize()
@@ -114,7 +114,7 @@ async def test_process_via_backend_handles_failure_with_retry():
 
 @pytest.mark.asyncio
 async def test_process_via_backend_dead_letters_after_max_attempts():
-    from elephantq.core.processor import process_job_via_backend
+    from soniq.core.processor import process_job_via_backend
 
     backend = MemoryBackend()
     await backend.initialize()

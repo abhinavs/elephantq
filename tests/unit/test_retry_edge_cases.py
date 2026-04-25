@@ -4,7 +4,7 @@ Tests for retry delay edge cases not covered by test_retry_backoff.py.
 Covers: attempt<1 normalization, None delay, empty delay list, negative clamp.
 """
 
-from elephantq.core.retry import compute_retry_delay_seconds
+from soniq.core.retry import compute_retry_delay_seconds
 
 
 def test_attempt_below_one_is_normalized_to_one():

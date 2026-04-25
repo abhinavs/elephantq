@@ -28,28 +28,28 @@ def test_example_syntax(example):
 
 
 def test_recurring_jobs_uses_real_api():
-    """recurring_jobs.py must use the actual elephantq API, not fictional methods."""
+    """recurring_jobs.py must use the actual soniq API, not fictional methods."""
     source = (EXAMPLES_DIR / "recurring_jobs.py").read_text()
 
     # These patterns indicate the broken API calls from the review
     assert (
-        "elephantq.schedule(" not in source or "run_at" in source or "run_in" in source
+        "soniq.schedule(" not in source or "run_at" in source or "run_in" in source
     ), (
-        "recurring_jobs.py calls elephantq.schedule() with a cron string, "
-        "but elephantq.schedule() requires run_at or run_in keyword arguments"
+        "recurring_jobs.py calls soniq.schedule() with a cron string, "
+        "but soniq.schedule() requires run_at or run_in keyword arguments"
     )
-    assert "elephantq.every(" not in source, (
-        "recurring_jobs.py calls elephantq.every() which does not exist. "
-        "Use elephantq.features.recurring.every() instead."
+    assert "soniq.every(" not in source, (
+        "recurring_jobs.py calls soniq.every() which does not exist. "
+        "Use soniq.features.recurring.every() instead."
     )
 
 
 def test_transactional_enqueue_setup_call():
-    """transactional_enqueue.py must not pass unsupported args to elephantq._setup()."""
+    """transactional_enqueue.py must not pass unsupported args to soniq._setup()."""
     source = (EXAMPLES_DIR / "transactional_enqueue.py").read_text()
 
     assert "_setup(database_url=" not in source, (
-        "transactional_enqueue.py passes database_url to elephantq._setup(), "
+        "transactional_enqueue.py passes database_url to soniq._setup(), "
         "but _setup() takes no arguments"
     )
 
@@ -82,25 +82,25 @@ def test_example_imports_resolve(example):
 
 
 def test_examples_use_clean_imports():
-    """Examples should import from elephantq or elephantq.<module>, not elephantq.features."""
+    """Examples should import from soniq or soniq.<module>, not soniq.features."""
     for example in EXAMPLES_DIR.glob("*.py"):
         source = example.read_text()
-        assert "elephantq.features" not in source, (
-            f"{example.name} imports from elephantq.features — "
-            f"use elephantq or elephantq.<module> instead"
+        assert "soniq.features" not in source, (
+            f"{example.name} imports from soniq.features — "
+            f"use soniq or soniq.<module> instead"
         )
 
 
 def test_no_dead_documentation_urls():
-    """No references to non-existent docs.elephantq.dev should exist in source code."""
+    """No references to non-existent docs.soniq.dev should exist in source code."""
     dead_url_files = []
-    elephantq_dir = PROJECT_ROOT / "elephantq"
+    soniq_dir = PROJECT_ROOT / "soniq"
 
-    for py_file in elephantq_dir.rglob("*.py"):
+    for py_file in soniq_dir.rglob("*.py"):
         content = py_file.read_text()
-        if "docs.elephantq.dev" in content:
+        if "docs.soniq.dev" in content:
             dead_url_files.append(str(py_file.relative_to(PROJECT_ROOT)))
 
     assert (
         dead_url_files == []
-    ), f"Found references to non-existent docs.elephantq.dev in: {dead_url_files}"
+    ), f"Found references to non-existent docs.soniq.dev in: {dead_url_files}"

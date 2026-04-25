@@ -1,5 +1,5 @@
 """
-Proper LISTEN/NOTIFY Integration Tests for ElephantQ
+Proper LISTEN/NOTIFY Integration Tests for Soniq
 
 These tests actually verify the LISTEN/NOTIFY implementation works correctly,
 not just timing-based approximations.
@@ -14,7 +14,7 @@ from typing import Any, Dict, List
 
 import pytest
 
-from elephantq import ElephantQ
+from soniq import Soniq
 from tests.db_utils import (
     TEST_DATABASE_URL,
     clear_table,
@@ -36,11 +36,11 @@ async def test_db():
 
 @pytest.fixture
 async def clean_app():
-    """Create a clean ElephantQ instance for testing"""
+    """Create a clean Soniq instance for testing"""
     captured_notifications.clear()
     processed_jobs.clear()
 
-    app = ElephantQ(database_url=TEST_DATABASE_URL)
+    app = Soniq(database_url=TEST_DATABASE_URL)
 
     pool = await app.get_pool()
     await clear_table(pool)
@@ -72,14 +72,14 @@ async def test_listen_setup_verification(test_db, clean_app):
         # Give worker time to set up LISTEN
         await asyncio.sleep(1.5)
 
-        # Check that there's a LISTEN on elephantq_new_job channel
+        # Check that there's a LISTEN on soniq_new_job channel
         _listeners = await monitor_conn.fetch(  # noqa: F841
             """
             SELECT pg_listening_channels() AS channel
             """
         )  # noqa: F841
 
-        # At least one connection should be listening to elephantq_new_job
+        # At least one connection should be listening to soniq_new_job
         # Note: This checks system-wide, which is the best we can do
         has_listener = False
         try:
@@ -93,7 +93,7 @@ async def test_listen_setup_verification(test_db, clean_app):
         except Exception:
             has_listener = True  # Fallback assumption
 
-        assert has_listener, "Worker should set up LISTEN for elephantq_new_job"
+        assert has_listener, "Worker should set up LISTEN for soniq_new_job"
 
         worker_task.cancel()
         try:
@@ -127,7 +127,7 @@ async def test_notify_sent_verification(test_db, clean_app):
 
     try:
         # Set up LISTEN on our monitor connection
-        await notification_conn.add_listener("elephantq_new_job", notification_callback)
+        await notification_conn.add_listener("soniq_new_job", notification_callback)
 
         # Configure short poll interval for fast test feedback
         app._settings.poll_interval = 0.2
@@ -149,8 +149,8 @@ async def test_notify_sent_verification(test_db, clean_app):
 
         first_notification = notifications_received[0]
         assert (
-            first_notification["channel"] == "elephantq_new_job"
-        ), "Notification should be on elephantq_new_job channel"
+            first_notification["channel"] == "soniq_new_job"
+        ), "Notification should be on soniq_new_job channel"
         assert (
             first_notification["payload"] == "default"
         ), "Notification payload should be queue name"
@@ -166,9 +166,7 @@ async def test_notify_sent_verification(test_db, clean_app):
             pass
 
     finally:
-        await notification_conn.remove_listener(
-            "elephantq_new_job", notification_callback
-        )
+        await notification_conn.remove_listener("soniq_new_job", notification_callback)
         await pool.release(notification_conn)
 
 
@@ -196,7 +194,7 @@ async def test_queue_specific_notifications(test_db, clean_app):
         )
 
     try:
-        await notification_conn.add_listener("elephantq_new_job", notification_callback)
+        await notification_conn.add_listener("soniq_new_job", notification_callback)
 
         # Configure short poll interval
         app._settings.poll_interval = 0.2
@@ -234,9 +232,7 @@ async def test_queue_specific_notifications(test_db, clean_app):
             pass
 
     finally:
-        await notification_conn.remove_listener(
-            "elephantq_new_job", notification_callback
-        )
+        await notification_conn.remove_listener("soniq_new_job", notification_callback)
         await pool.release(notification_conn)
 
 
@@ -260,14 +256,14 @@ async def test_notification_vs_polling_behavior(test_db, clean_app):
     # If it doesn't work, jobs will be very slow (waiting for polling timeout)
 
     # Override settings temporarily
-    import elephantq.settings
+    import soniq.settings
 
-    original_settings = elephantq.settings._settings
+    original_settings = soniq.settings._settings
 
     try:
         # Force a very long notification timeout
-        elephantq.settings._settings = None
-        os.environ["ELEPHANTQ_NOTIFICATION_TIMEOUT"] = "30.0"  # 30 second polling
+        soniq.settings._settings = None
+        os.environ["SONIQ_NOTIFICATION_TIMEOUT"] = "30.0"  # 30 second polling
 
         worker_task = asyncio.create_task(app.run_worker(concurrency=1, run_once=False))
         await asyncio.sleep(2.0)  # Let worker start with new settings
@@ -303,9 +299,9 @@ async def test_notification_vs_polling_behavior(test_db, clean_app):
 
     finally:
         # Restore original settings
-        elephantq.settings._settings = original_settings
-        if "ELEPHANTQ_NOTIFICATION_TIMEOUT" in os.environ:
-            del os.environ["ELEPHANTQ_NOTIFICATION_TIMEOUT"]
+        soniq.settings._settings = original_settings
+        if "SONIQ_NOTIFICATION_TIMEOUT" in os.environ:
+            del os.environ["SONIQ_NOTIFICATION_TIMEOUT"]
 
 
 @pytest.mark.asyncio
@@ -380,15 +376,13 @@ async def test_notification_failure_fallback(test_db, clean_app):
     # We can't easily simulate NOTIFY failure, but we can test with very short polling
     # to ensure the fallback mechanism works
 
-    import elephantq.settings
+    import soniq.settings
 
-    original_settings = elephantq.settings._settings
+    original_settings = soniq.settings._settings
 
     try:
-        elephantq.settings._settings = None
-        os.environ["ELEPHANTQ_NOTIFICATION_TIMEOUT"] = (
-            "1.0"  # 1 second polling fallback
-        )
+        soniq.settings._settings = None
+        os.environ["SONIQ_NOTIFICATION_TIMEOUT"] = "1.0"  # 1 second polling fallback
 
         worker_task = asyncio.create_task(app.run_worker(concurrency=1, run_once=False))
         await asyncio.sleep(1.5)
@@ -419,6 +413,6 @@ async def test_notification_failure_fallback(test_db, clean_app):
             pass
 
     finally:
-        elephantq.settings._settings = original_settings
-        if "ELEPHANTQ_NOTIFICATION_TIMEOUT" in os.environ:
-            del os.environ["ELEPHANTQ_NOTIFICATION_TIMEOUT"]
+        soniq.settings._settings = original_settings
+        if "SONIQ_NOTIFICATION_TIMEOUT" in os.environ:
+            del os.environ["SONIQ_NOTIFICATION_TIMEOUT"]

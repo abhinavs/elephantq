@@ -13,9 +13,9 @@ pytest.importorskip("cryptography")
 @pytest.fixture(autouse=True)
 def set_secret_key(monkeypatch):
     """Set a deterministic secret key for all signing tests."""
-    monkeypatch.setenv("ELEPHANTQ_SECRET_KEY", "test-secret-key-for-unit-tests")
+    monkeypatch.setenv("SONIQ_SECRET_KEY", "test-secret-key-for-unit-tests")
     # Reset the global manager so it picks up the new key
-    import elephantq.features.signing as signing_mod
+    import soniq.features.signing as signing_mod
 
     signing_mod._secret_manager = None
     yield
@@ -29,14 +29,14 @@ def set_secret_key(monkeypatch):
 
 def test_signing_module_importable():
     """The signing module should be importable regardless of feature flags."""
-    from elephantq.features import signing
+    from soniq.features import signing
 
     assert signing is not None
 
 
 def test_secret_manager_requires_cryptography():
     """SecretManager should require the cryptography package."""
-    from elephantq.features.signing import SecretManager, _require_cryptography
+    from soniq.features.signing import SecretManager, _require_cryptography
 
     # cryptography is installed in dev, so this should work
     _require_cryptography()
@@ -45,11 +45,11 @@ def test_secret_manager_requires_cryptography():
 
 
 def test_signing_manager_enabled():
-    os.environ["ELEPHANTQ_SIGNING_ENABLED"] = "true"
+    os.environ["SONIQ_SIGNING_ENABLED"] = "true"
 
-    import elephantq
+    import soniq
 
-    manager = elephantq.features.signing
+    manager = soniq.features.signing
     assert manager is not None
 
 
@@ -62,7 +62,7 @@ class TestEncryptDecryptRoundtrip:
     """Verify that encrypt followed by decrypt returns the original plaintext."""
 
     def test_roundtrip(self):
-        from elephantq.features.signing import SecretManager
+        from soniq.features.signing import SecretManager
 
         manager = SecretManager()
         plaintext = "my-webhook-secret-token"
@@ -70,7 +70,7 @@ class TestEncryptDecryptRoundtrip:
         assert manager.decrypt(ciphertext) == plaintext
 
     def test_roundtrip_unicode(self):
-        from elephantq.features.signing import SecretManager
+        from soniq.features.signing import SecretManager
 
         manager = SecretManager()
         plaintext = "secret-with-special-chars-!@#$%"
@@ -86,7 +86,7 @@ class TestRandomSaltProducesDifferentCiphertexts:
     """Verify that two encryptions of the same plaintext produce different ciphertexts."""
 
     def test_different_ciphertexts(self):
-        from elephantq.features.signing import SecretManager
+        from soniq.features.signing import SecretManager
 
         manager = SecretManager()
         plaintext = "same-secret-every-time"
@@ -109,14 +109,14 @@ class TestRandomSaltProducesDifferentCiphertexts:
 
 class TestPBKDF2Iterations:
     def test_iterations_at_least_310k(self):
-        from elephantq.features.signing import _PBKDF2_ITERATIONS
+        from soniq.features.signing import _PBKDF2_ITERATIONS
 
         assert (
             _PBKDF2_ITERATIONS >= 310000
         ), f"PBKDF2 iterations ({_PBKDF2_ITERATIONS}) below NIST 2023 recommendation (310,000)"
 
     def test_encrypt_decrypt_roundtrip_with_new_iterations(self):
-        from elephantq.features.signing import SecretManager
+        from soniq.features.signing import SecretManager
 
         mgr = SecretManager()
         plaintext = "sensitive-webhook-secret-value"

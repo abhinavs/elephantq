@@ -11,11 +11,11 @@ itself.
 
 import asyncio
 
-import elephantq
-from elephantq import Snooze
+import soniq
+from soniq import Snooze
 
 
-@elephantq.job(retries=3)
+@soniq.job(retries=3)
 async def call_rate_limited_api(order_id: str):
     response = await _simulated_api_call(order_id)
     if response["status"] == 429:
@@ -30,8 +30,8 @@ async def _simulated_api_call(order_id: str) -> dict:
 
 
 async def main():
-    await elephantq.enqueue(call_rate_limited_api, order_id="order-1")
-    await elephantq.run_worker(concurrency=1)
+    await soniq.enqueue(call_rate_limited_api, order_id="order-1")
+    await soniq.run_worker(concurrency=1)
 
 
 if __name__ == "__main__":

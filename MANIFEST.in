@@ -1,5 +1,5 @@
 # Include migration SQL files
-recursive-include elephantq/db/migrations *.sql
+recursive-include soniq/db/migrations *.sql
 
 # Include license and readme
 include LICENSE

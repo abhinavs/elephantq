@@ -5,7 +5,7 @@ Verifies that the dedup_key parameter is accepted by the job decorator
 and enqueue function, and stored in job configuration.
 """
 
-from elephantq.core.registry import JobRegistry
+from soniq.core.registry import JobRegistry
 
 
 def test_job_decorator_accepts_dedup_key():
@@ -22,14 +22,14 @@ def test_job_decorator_accepts_dedup_key():
 
 
 def test_enqueue_accepts_dedup_key_parameter():
-    """ElephantQ.enqueue should accept dedup_key as a keyword argument."""
+    """Soniq.enqueue should accept dedup_key as a keyword argument."""
     import inspect
 
-    from elephantq.app import ElephantQ
+    from soniq.app import Soniq
 
-    sig = inspect.signature(ElephantQ.enqueue)
+    sig = inspect.signature(Soniq.enqueue)
     # dedup_key is passed via **kwargs, so check the method accepts **kwargs
     has_var_keyword = any(
         p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
     )
-    assert has_var_keyword, "ElephantQ.enqueue must accept **kwargs for dedup_key"
+    assert has_var_keyword, "Soniq.enqueue must accept **kwargs for dedup_key"

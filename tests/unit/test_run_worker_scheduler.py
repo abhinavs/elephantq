@@ -5,8 +5,8 @@ and leave it alone in run_once mode.
 
 import pytest
 
-from elephantq.app import ElephantQ
-from elephantq.features import recurring
+from soniq.app import Soniq
+from soniq.features import recurring
 
 
 @pytest.mark.asyncio
@@ -22,7 +22,7 @@ async def test_run_worker_starts_and_stops_recurring_scheduler(monkeypatch):
     monkeypatch.setattr(recurring, "_ensure_scheduler_running", fake_ensure)
     monkeypatch.setattr(recurring, "stop_recurring_scheduler", fake_stop)
 
-    app = ElephantQ(database_url="postgresql://user:pass@localhost/testdb")
+    app = Soniq(database_url="postgresql://user:pass@localhost/testdb")
 
     async def fake_init():
         return None
@@ -38,7 +38,7 @@ async def test_run_worker_starts_and_stops_recurring_scheduler(monkeypatch):
             calls["worker_run"] += 1
             return True
 
-    monkeypatch.setattr("elephantq.worker.Worker", FakeWorker)
+    monkeypatch.setattr("soniq.worker.Worker", FakeWorker)
 
     await app.run_worker(concurrency=1)
 
@@ -60,7 +60,7 @@ async def test_run_worker_run_once_skips_scheduler(monkeypatch):
     monkeypatch.setattr(recurring, "_ensure_scheduler_running", fake_ensure)
     monkeypatch.setattr(recurring, "stop_recurring_scheduler", fake_stop)
 
-    app = ElephantQ(database_url="postgresql://user:pass@localhost/testdb")
+    app = Soniq(database_url="postgresql://user:pass@localhost/testdb")
 
     async def fake_init():
         return None
@@ -75,7 +75,7 @@ async def test_run_worker_run_once_skips_scheduler(monkeypatch):
         async def run(self, **kwargs):
             return True
 
-    monkeypatch.setattr("elephantq.worker.Worker", FakeWorker)
+    monkeypatch.setattr("soniq.worker.Worker", FakeWorker)
 
     await app.run_worker(concurrency=1, run_once=True)
 
@@ -97,7 +97,7 @@ async def test_run_worker_tolerates_scheduler_start_failure(monkeypatch):
     monkeypatch.setattr(recurring, "_ensure_scheduler_running", failing_ensure)
     monkeypatch.setattr(recurring, "stop_recurring_scheduler", fake_stop)
 
-    app = ElephantQ(database_url="postgresql://user:pass@localhost/testdb")
+    app = Soniq(database_url="postgresql://user:pass@localhost/testdb")
 
     async def fake_init():
         return None
@@ -113,7 +113,7 @@ async def test_run_worker_tolerates_scheduler_start_failure(monkeypatch):
             worker_ran["v"] = True
             return True
 
-    monkeypatch.setattr("elephantq.worker.Worker", FakeWorker)
+    monkeypatch.setattr("soniq.worker.Worker", FakeWorker)
 
     await app.run_worker(concurrency=1)
     assert worker_ran["v"] is True

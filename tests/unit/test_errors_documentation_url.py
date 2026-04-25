@@ -1,15 +1,15 @@
 """
-Test for the documentation_url formatting path in ElephantQError.
+Test for the documentation_url formatting path in SoniqError.
 """
 
-from elephantq.errors import ElephantQError
+from soniq.errors import SoniqError
 
 
 def test_error_with_documentation_url():
-    error = ElephantQError(
+    error = SoniqError(
         message="Setup failed",
         error_code="SETUP_ERROR",
-        documentation_url="https://elephantq.dev/errors/setup",
+        documentation_url="https://soniq.dev/errors/setup",
     )
     error_str = str(error)
-    assert "Documentation: https://elephantq.dev/errors/setup" in error_str
+    assert "Documentation: https://soniq.dev/errors/setup" in error_str

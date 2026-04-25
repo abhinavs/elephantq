@@ -5,13 +5,13 @@ import pytest
 
 from tests.db_utils import TEST_DATABASE_URL, clear_table, create_test_database
 
-# Ensure test database URL is set — use setdefault so CI's ELEPHANTQ_DATABASE_URL
+# Ensure test database URL is set — use setdefault so CI's SONIQ_DATABASE_URL
 # (which includes a password) is not overwritten.
-os.environ.setdefault("ELEPHANTQ_DATABASE_URL", TEST_DATABASE_URL)
-os.environ.setdefault("ELEPHANTQ_JOBS_MODULES", "tests.fixtures.cli_jobs")
+os.environ.setdefault("SONIQ_DATABASE_URL", TEST_DATABASE_URL)
+os.environ.setdefault("SONIQ_JOBS_MODULES", "tests.fixtures.cli_jobs")
 
 # Cache the URL at import time so it survives any configure(database_url=None) calls
-_TEST_DATABASE_URL = os.environ["ELEPHANTQ_DATABASE_URL"]
+_TEST_DATABASE_URL = os.environ["SONIQ_DATABASE_URL"]
 
 
 @pytest.fixture(scope="session")
@@ -34,14 +34,14 @@ async def setup_test_database():
 async def clean_test_state():
     """Clean test state before each test to ensure isolation."""
     # Clean up any existing connections
-    from elephantq.db.connection import close_pool
+    from soniq.db.connection import close_pool
 
     await close_pool()
 
     # Close existing global app to allow reconfiguration
-    import elephantq
+    import soniq
 
-    global_app = elephantq._global_app
+    global_app = soniq._global_app
     if (
         global_app is not None
         and global_app._is_initialized
@@ -49,10 +49,10 @@ async def clean_test_state():
     ):
         await global_app.close()
 
-    await elephantq.configure(database_url=_TEST_DATABASE_URL)
+    await soniq.configure(database_url=_TEST_DATABASE_URL)
 
     # Get pool and clear any existing jobs (use global app's pool for consistency)
-    global_app = elephantq._get_global_app()
+    global_app = soniq._get_global_app()
     app_pool = await global_app.get_pool()
     await clear_table(app_pool)
 

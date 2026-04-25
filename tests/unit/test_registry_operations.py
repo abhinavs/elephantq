@@ -5,7 +5,7 @@ Covers: get_all_jobs, get_jobs_by_queue, clear, remove_job, list_jobs,
 __len__, __contains__.
 """
 
-from elephantq.core.registry import JobRegistry
+from soniq.core.registry import JobRegistry
 
 
 def _make_registry_with_jobs():
@@ -92,7 +92,7 @@ def test_contains_checks_job_names():
         pass
 
     wrapped = registry.register_job(task)
-    job_name = wrapped._elephantq_name
+    job_name = wrapped._soniq_name
     assert job_name in registry
     assert "nonexistent.task" not in registry
 

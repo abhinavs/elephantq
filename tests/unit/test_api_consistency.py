@@ -9,15 +9,15 @@ def test_list_jobs_default_limit_consistent():
     """
     list_jobs default limit must be the same across global and instance APIs.
     """
-    import elephantq
-    from elephantq.app import ElephantQ
+    import soniq
+    from soniq.app import Soniq
 
     # Get default limit from global function
-    sig_global = inspect.signature(elephantq.list_jobs)
+    sig_global = inspect.signature(soniq.list_jobs)
     global_default = sig_global.parameters["limit"].default
 
     # Get default limit from instance method
-    sig_instance = inspect.signature(ElephantQ.list_jobs)
+    sig_instance = inspect.signature(Soniq.list_jobs)
     instance_default = sig_instance.parameters["limit"].default
 
     assert global_default == instance_default, (
@@ -28,14 +28,14 @@ def test_list_jobs_default_limit_consistent():
 
 def test_no_enterprise_aliases_in_features():
     """EnterpriseFeatures and enterprise aliases must not exist."""
-    from elephantq.features import features as features_mod
+    from soniq.features import features as features_mod
 
     assert not hasattr(
         features_mod, "EnterpriseFeatures"
     ), "EnterpriseFeatures alias should be removed"
     assert not hasattr(features_mod, "enterprise"), "enterprise alias should be removed"
 
-    import elephantq.features as feat_pkg
+    import soniq.features as feat_pkg
 
     assert "EnterpriseFeatures" not in feat_pkg.__all__
     assert "enterprise" not in feat_pkg.__all__

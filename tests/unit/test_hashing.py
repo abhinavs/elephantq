@@ -5,7 +5,7 @@ Test suite for utils/hashing.py module - comprehensive coverage for job argument
 import hashlib
 import json
 
-from elephantq.utils.hashing import args_are_equivalent, compute_args_hash
+from soniq.utils.hashing import args_are_equivalent, compute_args_hash
 
 
 class TestComputeArgsHash:

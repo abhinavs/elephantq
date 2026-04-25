@@ -12,9 +12,9 @@ import pytest
 
 pytest.importorskip("structlog")
 
-os.environ.setdefault("ELEPHANTQ_LOGGING_ENABLED", "true")
+os.environ.setdefault("SONIQ_LOGGING_ENABLED", "true")
 
-from elephantq.features.logging import (  # noqa: E402
+from soniq.features.logging import (  # noqa: E402
     JobContext,
     JSONFormatter,
     LogRecord,
@@ -42,7 +42,7 @@ class TestLogRecord:
             timestamp="2025-01-01T00:00:00",
             level="INFO",
             message="Job started",
-            logger_name="elephantq.test",
+            logger_name="soniq.test",
             module="test_mod",
             function="test_fn",
             line_number=42,
@@ -58,7 +58,7 @@ class TestJSONFormatter:
     def test_format_produces_valid_json(self):
         formatter = JSONFormatter()
         record = logging.LogRecord(
-            name="elephantq.test",
+            name="soniq.test",
             level=logging.INFO,
             pathname="test.py",
             lineno=1,
@@ -82,7 +82,7 @@ class TestJSONFormatter:
             exc_info = sys.exc_info()
 
         record = logging.LogRecord(
-            name="elephantq.test",
+            name="soniq.test",
             level=logging.ERROR,
             pathname="test.py",
             lineno=1,

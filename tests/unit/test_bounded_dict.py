@@ -1,9 +1,9 @@
 import os
 
 # Enable scheduling feature flag before importing
-os.environ.setdefault("ELEPHANTQ_SCHEDULING_ENABLED", "true")
+os.environ.setdefault("SONIQ_SCHEDULING_ENABLED", "true")
 
-from elephantq.features.scheduling import _BoundedDict  # noqa: E402
+from soniq.features.scheduling import _BoundedDict  # noqa: E402
 
 
 class TestBoundedDict:

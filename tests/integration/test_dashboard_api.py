@@ -1,14 +1,14 @@
 import pytest
 
-from elephantq.dashboard.fastapi_app import FASTAPI_AVAILABLE, create_dashboard_app
-from elephantq.settings import configure, get_settings
+from soniq.dashboard.fastapi_app import FASTAPI_AVAILABLE, create_dashboard_app
+from soniq.settings import configure, get_settings
 
 
 @pytest.mark.skipif(not FASTAPI_AVAILABLE, reason="FastAPI not installed")
 @pytest.mark.asyncio
 async def test_dashboard_api_smoke(monkeypatch):
     httpx = pytest.importorskip("httpx")
-    monkeypatch.setenv("ELEPHANTQ_DASHBOARD_ENABLED", "true")
+    monkeypatch.setenv("SONIQ_DASHBOARD_ENABLED", "true")
     get_settings(reload=True)
 
     app = create_dashboard_app()

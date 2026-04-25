@@ -1,10 +1,10 @@
 import asyncpg
 import pytest
 
-from elephantq.db.migrations import MigrationRunner
+from soniq.db.migrations import MigrationRunner
 from tests.db_utils import make_test_db_url, run_createdb, run_dropdb
 
-MIGRATIONS_DB = "elephantq_migrations_test"
+MIGRATIONS_DB = "soniq_migrations_test"
 
 
 @pytest.mark.asyncio
@@ -32,8 +32,8 @@ async def test_migrations_apply_and_idempotent():
                 """
             )
             table_names = {row["table_name"] for row in tables}
-            assert "elephantq_jobs" in table_names
-            assert "elephantq_migrations" in table_names
+            assert "soniq_jobs" in table_names
+            assert "soniq_migrations" in table_names
         await pool.close()
     finally:
         run_dropdb(MIGRATIONS_DB)

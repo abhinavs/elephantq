@@ -6,9 +6,9 @@ import uuid
 
 import pytest
 
-import elephantq
-from elephantq.core.registry import JobRegistry
-from elephantq.worker import Worker
+import soniq
+from soniq.core.registry import JobRegistry
+from soniq.worker import Worker
 
 
 @pytest.mark.asyncio
@@ -17,7 +17,7 @@ async def test_unregistered_job_dead_lettered():
     A job with a job_name that doesn't exist in the registry
     should be moved to dead_letter with a clear error message.
     """
-    app = elephantq._get_global_app()
+    app = soniq._get_global_app()
     pool = await app.get_pool()
 
     # Insert a job directly with a non-existent handler
@@ -25,7 +25,7 @@ async def test_unregistered_job_dead_lettered():
     async with pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO elephantq_jobs (id, job_name, args, status, max_attempts, queue)
+            INSERT INTO soniq_jobs (id, job_name, args, status, max_attempts, queue)
             VALUES ($1, 'nonexistent.module.fake_function', '{}', 'queued', 3, 'default')
             """,
             job_id,
@@ -42,7 +42,7 @@ async def test_unregistered_job_dead_lettered():
     # Verify job is in dead_letter
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT status, last_error FROM elephantq_jobs WHERE id = $1",
+            "SELECT status, last_error FROM soniq_jobs WHERE id = $1",
             job_id,
         )
 

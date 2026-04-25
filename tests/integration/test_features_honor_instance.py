@@ -1,7 +1,7 @@
 """
-A user who creates `app = ElephantQ(database_url=...)` and then calls the
+A user who creates `app = Soniq(database_url=...)` and then calls the
 feature APIs (`every(...).schedule(...)`, `schedule_job(...)`, global
-`elephantq.enqueue` from within `app.enqueue`, and so on) must have those
+`soniq.enqueue` from within `app.enqueue`, and so on) must have those
 features target *their* database, not the global app's. Prior to this PR
 the features always reached for `_get_global_app()`, silently crossing the
 database boundary. We assert that isolation holds for the `enqueue` path on
@@ -16,13 +16,13 @@ from urllib.parse import urlparse, urlunparse
 import asyncpg
 import pytest
 
-import elephantq
-from elephantq import ElephantQ
-from elephantq.db.migrations import run_migrations
+import soniq
+from soniq import Soniq
+from soniq.db.migrations import run_migrations
 from tests.db_utils import TEST_DATABASE_URL
 
-DB_A = "elephantq_pr4_db_a"
-DB_B = "elephantq_pr4_db_b"
+DB_A = "soniq_pr4_db_a"
+DB_B = "soniq_pr4_db_b"
 
 
 def _make_url(db_name: str) -> str:
@@ -48,9 +48,9 @@ async def _create_db(name: str) -> str:
     url = _make_url(name)
     pool = await asyncpg.create_pool(url)
     async with pool.acquire() as conn:
-        await conn.execute("DROP TABLE IF EXISTS elephantq_jobs CASCADE")
-        await conn.execute("DROP TABLE IF EXISTS elephantq_workers CASCADE")
-        await conn.execute("DROP TABLE IF EXISTS elephantq_migrations CASCADE")
+        await conn.execute("DROP TABLE IF EXISTS soniq_jobs CASCADE")
+        await conn.execute("DROP TABLE IF EXISTS soniq_workers CASCADE")
+        await conn.execute("DROP TABLE IF EXISTS soniq_migrations CASCADE")
         await run_migrations(conn)
     await pool.close()
     return url
@@ -69,9 +69,9 @@ async def test_instance_enqueue_targets_instance_db_not_global(two_dbs):
     url_a, url_b = two_dbs
 
     # Arrange: configure the global app to point at DB_B.
-    await elephantq.configure(database_url=url_b)
+    await soniq.configure(database_url=url_b)
 
-    app_a = ElephantQ(database_url=url_a)
+    app_a = Soniq(database_url=url_a)
 
     async def payload_job():
         return None
@@ -88,11 +88,11 @@ async def test_instance_enqueue_targets_instance_db_not_global(two_dbs):
     try:
         async with pool_a.acquire() as conn_a:
             row_a = await conn_a.fetchrow(
-                "SELECT id FROM elephantq_jobs WHERE id = $1", uuid.UUID(job_id)
+                "SELECT id FROM soniq_jobs WHERE id = $1", uuid.UUID(job_id)
             )
         async with pool_b.acquire() as conn_b:
             row_b = await conn_b.fetchrow(
-                "SELECT id FROM elephantq_jobs WHERE id = $1", uuid.UUID(job_id)
+                "SELECT id FROM soniq_jobs WHERE id = $1", uuid.UUID(job_id)
             )
     finally:
         await pool_a.close()
@@ -105,28 +105,28 @@ async def test_instance_enqueue_targets_instance_db_not_global(two_dbs):
 
 @pytest.mark.asyncio
 async def test_global_enqueue_still_targets_global_db(two_dbs):
-    """With no active instance, elephantq.enqueue continues to use the global app."""
+    """With no active instance, soniq.enqueue continues to use the global app."""
     url_a, url_b = two_dbs
 
-    await elephantq.configure(database_url=url_b)
+    await soniq.configure(database_url=url_b)
 
     async def global_job():
         return None
 
-    elephantq.job()(global_job)
+    soniq.job()(global_job)
 
-    job_id = await elephantq.enqueue(global_job)
+    job_id = await soniq.enqueue(global_job)
 
     pool_a = await asyncpg.create_pool(url_a)
     pool_b = await asyncpg.create_pool(url_b)
     try:
         async with pool_a.acquire() as conn_a:
             row_a = await conn_a.fetchrow(
-                "SELECT id FROM elephantq_jobs WHERE id = $1", uuid.UUID(job_id)
+                "SELECT id FROM soniq_jobs WHERE id = $1", uuid.UUID(job_id)
             )
         async with pool_b.acquire() as conn_b:
             row_b = await conn_b.fetchrow(
-                "SELECT id FROM elephantq_jobs WHERE id = $1", uuid.UUID(job_id)
+                "SELECT id FROM soniq_jobs WHERE id = $1", uuid.UUID(job_id)
             )
     finally:
         await pool_a.close()

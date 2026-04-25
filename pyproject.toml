@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "elephantq"
-version = "0.3.1"
-description = "ElephantQ - PostgreSQL-only async job queue - built for developer happiness."
+name = "soniq"
+version = "0.0.2"
+description = "Soniq - PostgreSQL-only async job queue - built for developer happiness."
 authors = [{ name = "Abhinav Saxena", email = "abhinav@apiclabs.com" }]
 readme = "README.md"
 license = "MIT"
@@ -61,24 +61,24 @@ dev = [
 ]
 dashboard = ["fastapi>=0.100.0", "uvicorn>=0.20.0"]
 monitoring = ["prometheus-client>=0.15.0", "psutil>=5.9.0"]
-full = ["elephantq[sqlite,scheduling,webhooks,logging,dashboard,monitoring]"]
+full = ["soniq[sqlite,scheduling,webhooks,logging,dashboard,monitoring]"]
 
 [project.urls]
-Homepage = "https://github.com/abhinavs/elephantq"
-Repository = "https://github.com/abhinavs/elephantq"
-Documentation = "https://github.com/abhinavs/elephantq/tree/main/docs"
-Changelog = "https://github.com/abhinavs/elephantq/blob/main/CHANGELOG.md"
-"Bug Tracker" = "https://github.com/abhinavs/elephantq/issues"
+Homepage = "https://github.com/abhinavs/soniq"
+Repository = "https://github.com/abhinavs/soniq"
+Documentation = "https://github.com/abhinavs/soniq/tree/main/docs"
+Changelog = "https://github.com/abhinavs/soniq/blob/main/CHANGELOG.md"
+"Bug Tracker" = "https://github.com/abhinavs/soniq/issues"
 
 [project.scripts]
-elephantq = "elephantq.cli.main:main"
+soniq = "soniq.cli.main:main"
 
 [tool.setuptools.packages.find]
-include = ["elephantq*"]
+include = ["soniq*"]
 exclude = ["tests*", "jobs*", "deployment*", "legacy*"]
 
 [tool.setuptools.package-data]
-elephantq = ["py.typed"]
+soniq = ["py.typed"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

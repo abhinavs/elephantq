@@ -11,9 +11,9 @@ import uuid
 
 import pytest
 
-from elephantq.backends.memory import MemoryBackend
-from elephantq.core.registry import JobRegistry
-from elephantq.worker import Worker
+from soniq.backends.memory import MemoryBackend
+from soniq.core.registry import JobRegistry
+from soniq.worker import Worker
 
 
 async def _create_jobs(backend, registry, job_func, count, args_template=None):

@@ -1,6 +1,6 @@
-# ElephantQ Test Suite Organization
+# Soniq Test Suite Organization
 
-This directory contains the ElephantQ test suite, organized into unit and integration tests for better performance and clarity.
+This directory contains the Soniq test suite, organized into unit and integration tests for better performance and clarity.
 
 ## Structure
 
@@ -57,7 +57,7 @@ pytest tests/integration/
 
 ### Run with coverage:
 ```bash
-pytest tests/ --cov=elephantq --cov-report=html
+pytest tests/ --cov=soniq --cov-report=html
 ```
 
 ## Guidelines
@@ -77,7 +77,7 @@ pytest tests/ --cov=elephantq --cov-report=html
 - Verify end-to-end functionality
 
 ### Test Database Setup
-Integration tests use a dedicated test database (`elephantq_test`). The `db_utils.py` module provides utilities for:
+Integration tests use a dedicated test database (`soniq_test`). The `db_utils.py` module provides utilities for:
 - Creating/dropping test databases
 - Clearing tables between tests
 - Setting up test data

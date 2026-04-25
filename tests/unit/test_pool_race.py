@@ -13,9 +13,9 @@ async def test_concurrent_access_all_get_same_backend():
     Multiple concurrent _ensure_initialized() calls should all
     end up with the same backend instance.
     """
-    from elephantq.app import ElephantQ
+    from soniq.app import Soniq
 
-    app = ElephantQ(backend="memory")
+    app = Soniq(backend="memory")
 
     # Fire 10 concurrent _ensure_initialized calls
     await asyncio.gather(*[app._ensure_initialized() for _ in range(10)])

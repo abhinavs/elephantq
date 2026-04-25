@@ -11,12 +11,12 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-import elephantq
-from elephantq.core.heartbeat import cleanup_stale_workers
-from elephantq.worker import Worker
+import soniq
+from soniq.core.heartbeat import cleanup_stale_workers
+from soniq.worker import Worker
 
 
-@elephantq.job()
+@soniq.job()
 async def recoverable_job(marker: str):
     """A job that always succeeds."""
     pass
@@ -27,7 +27,7 @@ async def test_stale_worker_resets_processing_jobs():
     """
     A job stuck in 'processing' with a stale worker should be reset to 'queued'.
     """
-    app = elephantq._get_global_app()
+    app = soniq._get_global_app()
     pool = await app.get_pool()
 
     async with pool.acquire() as conn:
@@ -36,7 +36,7 @@ async def test_stale_worker_resets_processing_jobs():
         stale_heartbeat = datetime.now(timezone.utc) - timedelta(minutes=10)
         await conn.execute(
             """
-            INSERT INTO elephantq_workers (id, hostname, pid, concurrency, status, last_heartbeat, started_at)
+            INSERT INTO soniq_workers (id, hostname, pid, concurrency, status, last_heartbeat, started_at)
             VALUES ($1, 'test-host', 99999, 1, 'active', $2, $2)
             ON CONFLICT (hostname, pid) DO UPDATE SET
                 id = EXCLUDED.id, status = 'active', last_heartbeat = EXCLUDED.last_heartbeat
@@ -49,7 +49,7 @@ async def test_stale_worker_resets_processing_jobs():
         stuck_job_id = uuid.uuid4()
         await conn.execute(
             """
-            INSERT INTO elephantq_jobs (id, job_name, args, status, worker_id, max_attempts)
+            INSERT INTO soniq_jobs (id, job_name, args, status, worker_id, max_attempts)
             VALUES ($1, 'test.stuck_job', '{}', 'processing', $2, 3)
             """,
             stuck_job_id,
@@ -63,7 +63,7 @@ async def test_stale_worker_resets_processing_jobs():
     # Verify the stuck job was reset to 'queued'
     async with pool.acquire() as conn:
         job_row = await conn.fetchrow(
-            "SELECT status, worker_id FROM elephantq_jobs WHERE id = $1",
+            "SELECT status, worker_id FROM soniq_jobs WHERE id = $1",
             stuck_job_id,
         )
         assert job_row["status"] == "queued"
@@ -71,16 +71,14 @@ async def test_stale_worker_resets_processing_jobs():
 
         # Verify the worker was marked as stopped
         worker_row = await conn.fetchrow(
-            "SELECT status FROM elephantq_workers WHERE id = $1",
+            "SELECT status FROM soniq_workers WHERE id = $1",
             stale_worker_id,
         )
         assert worker_row["status"] == "stopped"
 
         # Cleanup
-        await conn.execute("DELETE FROM elephantq_jobs WHERE id = $1", stuck_job_id)
-        await conn.execute(
-            "DELETE FROM elephantq_workers WHERE id = $1", stale_worker_id
-        )
+        await conn.execute("DELETE FROM soniq_jobs WHERE id = $1", stuck_job_id)
+        await conn.execute("DELETE FROM soniq_workers WHERE id = $1", stale_worker_id)
 
 
 @pytest.mark.asyncio
@@ -89,7 +87,7 @@ async def test_recovered_job_is_processed_by_new_worker():
     After crash recovery resets a job to 'queued', a new worker
     should pick it up and complete it.
     """
-    app = elephantq._get_global_app()
+    app = soniq._get_global_app()
     pool = await app.get_pool()
     registry = app._get_job_registry()
     backend = app._backend
@@ -103,7 +101,7 @@ async def test_recovered_job_is_processed_by_new_worker():
         stale_heartbeat = datetime.now(timezone.utc) - timedelta(minutes=10)
         await conn.execute(
             """
-            INSERT INTO elephantq_workers (id, hostname, pid, concurrency, status, last_heartbeat, started_at)
+            INSERT INTO soniq_workers (id, hostname, pid, concurrency, status, last_heartbeat, started_at)
             VALUES ($1, 'crash-test-host', 99998, 1, 'active', $2, $2)
             ON CONFLICT (hostname, pid) DO UPDATE SET
                 id = EXCLUDED.id, status = 'active', last_heartbeat = EXCLUDED.last_heartbeat
@@ -115,7 +113,7 @@ async def test_recovered_job_is_processed_by_new_worker():
         # Mark the job as stuck processing by the stale worker
         await conn.execute(
             """
-            UPDATE elephantq_jobs
+            UPDATE soniq_jobs
             SET status = 'processing', worker_id = $1
             WHERE id = $2
             """,
@@ -134,7 +132,7 @@ async def test_recovered_job_is_processed_by_new_worker():
     # Verify job completed (either 'done' or deleted depending on result_ttl)
     async with pool.acquire() as conn:
         job_row = await conn.fetchrow(
-            "SELECT status FROM elephantq_jobs WHERE id = $1",
+            "SELECT status FROM soniq_jobs WHERE id = $1",
             uuid.UUID(job_id),
         )
         # Job should be done or deleted (depending on result_ttl setting)
@@ -142,9 +140,7 @@ async def test_recovered_job_is_processed_by_new_worker():
             assert job_row["status"] == "done"
 
         # Cleanup stale worker
-        await conn.execute(
-            "DELETE FROM elephantq_workers WHERE id = $1", stale_worker_id
-        )
+        await conn.execute("DELETE FROM soniq_workers WHERE id = $1", stale_worker_id)
 
 
 @pytest.mark.asyncio
@@ -152,7 +148,7 @@ async def test_active_worker_jobs_not_reset():
     """
     Jobs processing by an active (recent heartbeat) worker must NOT be reset.
     """
-    app = elephantq._get_global_app()
+    app = soniq._get_global_app()
     pool = await app.get_pool()
 
     async with pool.acquire() as conn:
@@ -160,7 +156,7 @@ async def test_active_worker_jobs_not_reset():
         active_worker_id = uuid.uuid4()
         await conn.execute(
             """
-            INSERT INTO elephantq_workers (id, hostname, pid, concurrency, status, last_heartbeat, started_at)
+            INSERT INTO soniq_workers (id, hostname, pid, concurrency, status, last_heartbeat, started_at)
             VALUES ($1, 'active-test-host', 99997, 1, 'active', NOW(), NOW())
             ON CONFLICT (hostname, pid) DO UPDATE SET
                 id = EXCLUDED.id, status = 'active', last_heartbeat = NOW()
@@ -172,7 +168,7 @@ async def test_active_worker_jobs_not_reset():
         active_job_id = uuid.uuid4()
         await conn.execute(
             """
-            INSERT INTO elephantq_jobs (id, job_name, args, status, worker_id, max_attempts)
+            INSERT INTO soniq_jobs (id, job_name, args, status, worker_id, max_attempts)
             VALUES ($1, 'test.active_job', '{}', 'processing', $2, 3)
             """,
             active_job_id,
@@ -185,14 +181,12 @@ async def test_active_worker_jobs_not_reset():
     # Job should STILL be processing
     async with pool.acquire() as conn:
         job_row = await conn.fetchrow(
-            "SELECT status, worker_id FROM elephantq_jobs WHERE id = $1",
+            "SELECT status, worker_id FROM soniq_jobs WHERE id = $1",
             active_job_id,
         )
         assert job_row["status"] == "processing"
         assert job_row["worker_id"] == active_worker_id
 
         # Cleanup
-        await conn.execute("DELETE FROM elephantq_jobs WHERE id = $1", active_job_id)
-        await conn.execute(
-            "DELETE FROM elephantq_workers WHERE id = $1", active_worker_id
-        )
+        await conn.execute("DELETE FROM soniq_jobs WHERE id = $1", active_job_id)
+        await conn.execute("DELETE FROM soniq_workers WHERE id = $1", active_worker_id)

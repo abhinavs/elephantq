@@ -9,13 +9,13 @@ import inspect
 
 
 def test_storage_backend_importable():
-    from elephantq.backends import StorageBackend
+    from soniq.backends import StorageBackend
 
     assert StorageBackend is not None
 
 
 def test_storage_backend_is_runtime_checkable():
-    from elephantq.backends import StorageBackend
+    from soniq.backends import StorageBackend
 
     # runtime_checkable protocols support isinstance checks
     assert hasattr(StorageBackend, "__protocol_attrs__") or hasattr(
@@ -24,7 +24,7 @@ def test_storage_backend_is_runtime_checkable():
 
 
 def test_storage_backend_has_lifecycle_methods():
-    from elephantq.backends import StorageBackend
+    from soniq.backends import StorageBackend
 
     members = _get_protocol_methods(StorageBackend)
     assert "initialize" in members
@@ -32,7 +32,7 @@ def test_storage_backend_has_lifecycle_methods():
 
 
 def test_storage_backend_has_job_crud_methods():
-    from elephantq.backends import StorageBackend
+    from soniq.backends import StorageBackend
 
     members = _get_protocol_methods(StorageBackend)
     assert "create_job" in members
@@ -45,7 +45,7 @@ def test_storage_backend_has_job_crud_methods():
 
 
 def test_storage_backend_has_dequeue_methods():
-    from elephantq.backends import StorageBackend
+    from soniq.backends import StorageBackend
 
     members = _get_protocol_methods(StorageBackend)
     assert "fetch_and_lock_job" in members
@@ -54,7 +54,7 @@ def test_storage_backend_has_dequeue_methods():
 
 
 def test_storage_backend_has_status_transition_methods():
-    from elephantq.backends import StorageBackend
+    from soniq.backends import StorageBackend
 
     members = _get_protocol_methods(StorageBackend)
     assert "mark_job_done" in members
@@ -63,7 +63,7 @@ def test_storage_backend_has_status_transition_methods():
 
 
 def test_storage_backend_has_worker_tracking_methods():
-    from elephantq.backends import StorageBackend
+    from soniq.backends import StorageBackend
 
     members = _get_protocol_methods(StorageBackend)
     assert "register_worker" in members
@@ -73,7 +73,7 @@ def test_storage_backend_has_worker_tracking_methods():
 
 
 def test_storage_backend_has_maintenance_methods():
-    from elephantq.backends import StorageBackend
+    from soniq.backends import StorageBackend
 
     members = _get_protocol_methods(StorageBackend)
     assert "delete_expired_jobs" in members
@@ -81,7 +81,7 @@ def test_storage_backend_has_maintenance_methods():
 
 
 def test_storage_backend_has_capability_properties():
-    from elephantq.backends import StorageBackend
+    from soniq.backends import StorageBackend
 
     members = dir(StorageBackend)
     assert "supports_push_notify" in members
@@ -89,7 +89,7 @@ def test_storage_backend_has_capability_properties():
 
 
 def test_create_job_accepts_dedup_key():
-    from elephantq.backends import StorageBackend
+    from soniq.backends import StorageBackend
 
     sig = inspect.signature(StorageBackend.create_job)
     assert "dedup_key" in sig.parameters
@@ -98,7 +98,7 @@ def test_create_job_accepts_dedup_key():
 def test_structural_typing_works():
     """An object with the right methods should satisfy the protocol
     without inheriting from StorageBackend."""
-    from elephantq.backends import StorageBackend
+    from soniq.backends import StorageBackend
 
     # Minimal stub — just enough to prove structural typing works
     class MinimalStub:

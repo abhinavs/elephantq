@@ -8,26 +8,26 @@ the identifier up front converts "mysteriously broken" into "clear error".
 
 import pytest
 
-from elephantq import ElephantQ
+from soniq import Soniq
 
 
 @pytest.mark.asyncio
 async def test_rejects_db_name_with_quote():
-    app = ElephantQ(database_url='postgresql://u@h/bad"name')
+    app = Soniq(database_url='postgresql://u@h/bad"name')
     with pytest.raises(ValueError, match="non-identifier name"):
         await app._ensure_postgres_database_exists()
 
 
 @pytest.mark.asyncio
 async def test_rejects_db_name_with_space():
-    app = ElephantQ(database_url="postgresql://u@h/bad name")
+    app = Soniq(database_url="postgresql://u@h/bad name")
     with pytest.raises(ValueError, match="non-identifier name"):
         await app._ensure_postgres_database_exists()
 
 
 @pytest.mark.asyncio
 async def test_rejects_db_name_with_semicolon():
-    app = ElephantQ(database_url="postgresql://u@h/bad;name")
+    app = Soniq(database_url="postgresql://u@h/bad;name")
     with pytest.raises(ValueError, match="non-identifier name"):
         await app._ensure_postgres_database_exists()
 
@@ -56,6 +56,6 @@ async def test_accepts_typical_db_name(monkeypatch):
 
     monkeypatch.setattr(asyncpg, "connect", _fake_connect)
 
-    app = ElephantQ(database_url="postgresql://u@h/my_app_123")
+    app = Soniq(database_url="postgresql://u@h/my_app_123")
     await app._ensure_postgres_database_exists()
     assert called.get("closed") is True

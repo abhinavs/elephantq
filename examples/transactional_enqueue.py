@@ -1,14 +1,14 @@
 """
-Transactional enqueue example for ElephantQ.
+Transactional enqueue example for Soniq.
 
 Demonstrates how to enqueue a job inside an existing database transaction.
 If the transaction rolls back, the job is never created — your data and
 your job are committed atomically.
 
 Usage:
-    pip install elephantq fastapi uvicorn
-    export ELEPHANTQ_DATABASE_URL="postgresql://postgres@localhost/elephantq"
-    elephantq setup
+    pip install soniq fastapi uvicorn
+    export SONIQ_DATABASE_URL="postgresql://postgres@localhost/soniq"
+    soniq setup
     uvicorn examples.transactional_enqueue:app --reload
 """
 
@@ -16,15 +16,15 @@ import asyncpg
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-import elephantq
+import soniq
 
-DATABASE_URL = "postgresql://postgres@localhost/elephantq"
+DATABASE_URL = "postgresql://postgres@localhost/soniq"
 
 
 # ── Jobs ────────────────────────────────────────────────────────────────
 
 
-@elephantq.job(queue="emails", retries=3)
+@soniq.job(queue="emails", retries=3)
 async def send_welcome_email(user_id: int, email: str):
     """Send a welcome email to a newly registered user."""
     print(f"Sending welcome email to {email} (user {user_id})")
@@ -44,8 +44,8 @@ from contextlib import asynccontextmanager  # noqa: E402
 @asynccontextmanager
 async def lifespan(app):
     app.state.pool = await asyncpg.create_pool(DATABASE_URL)
-    await elephantq.configure(database_url=DATABASE_URL)
-    await elephantq._setup()
+    await soniq.configure(database_url=DATABASE_URL)
+    await soniq._setup()
 
     async with app.state.pool.acquire() as conn:
         await conn.execute(
@@ -63,7 +63,7 @@ async def lifespan(app):
     await app.state.pool.close()
 
 
-app = FastAPI(title="ElephantQ Transactional Enqueue Demo", lifespan=lifespan)
+app = FastAPI(title="Soniq Transactional Enqueue Demo", lifespan=lifespan)
 
 
 @app.post("/users")
@@ -84,7 +84,7 @@ async def create_user(req: CreateUserRequest):
             user_id = row["id"]
 
             # Enqueue inside the same transaction
-            job_id = await elephantq.enqueue(
+            job_id = await soniq.enqueue(
                 send_welcome_email,
                 connection=conn,
                 user_id=user_id,
@@ -108,7 +108,7 @@ async def create_user(req: CreateUserRequest):
 #                 req.name,
 #                 req.email,
 #             )
-#             job_id = await elephantq.enqueue(
+#             job_id = await soniq.enqueue(
 #                 send_welcome_email,
 #                 connection=conn,
 #                 user_id=row["id"],

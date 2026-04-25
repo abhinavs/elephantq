@@ -7,7 +7,7 @@ calculate_throughput, get_processing_time_percentiles.
 
 import pytest
 
-from elephantq.features.metrics import MetricsCollector
+from soniq.features.metrics import MetricsCollector
 
 
 class TestMetricsCollector:

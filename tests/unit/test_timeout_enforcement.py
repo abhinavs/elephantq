@@ -10,7 +10,7 @@ import json
 
 import pytest
 
-from elephantq.core.processor import _execute_job_safely
+from soniq.core.processor import _execute_job_safely
 
 
 def _make_job_record(args_dict=None):
@@ -75,7 +75,7 @@ async def test_per_job_timeout_overrides_global(monkeypatch):
         await asyncio.sleep(5)
 
     # Set global timeout to something large
-    from elephantq.settings import get_settings
+    from soniq.settings import get_settings
 
     settings = get_settings()
     original = settings.job_timeout

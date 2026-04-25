@@ -2,16 +2,16 @@
 Tests for cli/commands/core.py and extended.py — command registration.
 """
 
-from elephantq.cli.registry import CLIRegistry
+from soniq.cli.registry import CLIRegistry
 
 
 class TestCoreCommandRegistration:
     def test_register_core_commands_populates_registry(self):
-        from elephantq.cli.commands.core import register_core_commands
+        from soniq.cli.commands.core import register_core_commands
 
         registry = CLIRegistry()
         # We need to temporarily replace the global registry
-        import elephantq.cli.registry as reg_mod
+        import soniq.cli.registry as reg_mod
 
         original = reg_mod._registry
         reg_mod._registry = registry
@@ -27,10 +27,10 @@ class TestCoreCommandRegistration:
             reg_mod._registry = original
 
     def test_core_commands_have_handlers(self):
-        from elephantq.cli.commands.core import register_core_commands
+        from soniq.cli.commands.core import register_core_commands
 
         registry = CLIRegistry()
-        import elephantq.cli.registry as reg_mod
+        import soniq.cli.registry as reg_mod
 
         original = reg_mod._registry
         reg_mod._registry = registry
@@ -44,10 +44,10 @@ class TestCoreCommandRegistration:
 
 class TestExtendedCommandRegistration:
     def test_register_extended_commands_populates_registry(self):
-        from elephantq.cli.commands.extended import register_extended_commands
+        from soniq.cli.commands.extended import register_extended_commands
 
         registry = CLIRegistry()
-        import elephantq.cli.registry as reg_mod
+        import soniq.cli.registry as reg_mod
 
         original = reg_mod._registry
         reg_mod._registry = registry

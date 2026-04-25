@@ -1,4 +1,4 @@
-# ElephantQ Dashboard Dockerfile
+# Soniq Dashboard Dockerfile
 # Multi-stage build for optimized production image
 
 FROM python:3.11-slim as builder
@@ -18,8 +18,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install ElephantQ
-RUN pip install elephantq[dashboard]
+# Install Soniq
+RUN pip install soniq[dashboard]
 
 # Production stage
 FROM python:3.11-slim
@@ -29,7 +29,7 @@ RUN apt-get update && apt-get install -y \
     libpq5 \
     curl \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --create-home --shell /bin/bash elephantq
+    && useradd --create-home --shell /bin/bash soniq
 
 # Copy virtual environment from builder
 COPY --from=builder /opt/venv /opt/venv
@@ -39,10 +39,10 @@ ENV PATH="/opt/venv/bin:$PATH"
 WORKDIR /app
 
 # Copy application code
-COPY --chown=elephantq:elephantq . .
+COPY --chown=soniq:soniq . .
 
 # Switch to non-root user
-USER elephantq
+USER soniq
 
 # Expose dashboard port
 EXPOSE 8000
@@ -52,4 +52,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Default command
-CMD ["elephantq", "dashboard", "--host=0.0.0.0", "--port=8000"]
+CMD ["soniq", "dashboard", "--host=0.0.0.0", "--port=8000"]

@@ -10,9 +10,9 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from elephantq.backends.memory import MemoryBackend
-from elephantq.core.processor import process_job_via_backend
-from elephantq.core.registry import JobRegistry
+from soniq.backends.memory import MemoryBackend
+from soniq.core.processor import process_job_via_backend
+from soniq.core.registry import JobRegistry
 
 
 @pytest.fixture
@@ -172,7 +172,7 @@ async def test_unique_job_deduplication(backend, registry):
 
     registry.register_job(my_job, unique=True)
     job_name = f"{my_job.__module__}.{my_job.__name__}"
-    from elephantq.utils.hashing import compute_args_hash
+    from soniq.utils.hashing import compute_args_hash
 
     args_hash = compute_args_hash({"key": "value"})
 

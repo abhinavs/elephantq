@@ -1,0 +1,292 @@
+"""
+Job processing engine.
+
+The backend-aware path: process_job_via_backend() is the only active
+processing function. It fetches, executes, and updates jobs through
+the StorageBackend abstraction.
+"""
+
+import asyncio
+import inspect
+import json
+import logging
+import time
+import traceback
+from typing import Any, List, Optional
+
+from soniq.core.registry import JobRegistry
+from soniq.core.retry import compute_retry_delay_seconds
+
+logger = logging.getLogger(__name__)
+
+# Cap how much traceback + message we stash on a failed job. 8 KB is enough for
+# a dozen-frame stack; bigger than that and one flaky handler can bloat the
+# last_error column of the jobs table.
+_MAX_LAST_ERROR_CHARS = 8192
+
+
+def _format_job_error(exc: BaseException) -> str:
+    """Render an exception as `ExceptionType: message\n<traceback>`.
+
+    Keeps the full frame information in one string so operators can read the
+    failure back from the job record (or the dashboard) without having to go
+    hunt for logs. Truncated at `_MAX_LAST_ERROR_CHARS` to stay bounded.
+    """
+    tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    rendered = f"{type(exc).__name__}: {exc}\n{tb}"
+    if len(rendered) > _MAX_LAST_ERROR_CHARS:
+        rendered = rendered[:_MAX_LAST_ERROR_CHARS]
+    return rendered
+
+
+async def _execute_job_safely(
+    job_record: dict, job_meta: dict
+) -> tuple[bool, Optional[str], Any]:
+    """
+    Execute a job function safely with proper error handling.
+
+    Args:
+        job_record: Job record from database
+        job_meta: Job metadata from registry
+
+    Returns:
+        tuple: (success: bool, error_message: Optional[str])
+    """
+    # Parse job arguments with corruption handling
+    # Args may be a JSON string (Memory/SQLite) or already parsed dict (Postgres JSONB)
+    raw_args = job_record["args"]
+    if isinstance(raw_args, dict):
+        args_data = raw_args
+    elif isinstance(raw_args, str):
+        try:
+            args_data = json.loads(raw_args)
+        except (json.JSONDecodeError, TypeError, ValueError) as e:
+            raise ValueError(f"Corrupted JSON data: {str(e)}") from e
+    else:
+        raise ValueError(f"Corrupted JSON data: unexpected type {type(raw_args)}")
+
+    # Validate arguments if model is specified
+    args_model = job_meta.get("args_model")
+    if args_model:
+        try:
+            validated_args = args_model(**args_data).model_dump()
+        except (TypeError, ValueError, AttributeError) as validation_error:
+            raise ValueError(
+                f"Corrupted argument data: {str(validation_error)}"
+            ) from validation_error
+    else:
+        validated_args = args_data
+
+    # Inject JobContext if the function signature has it
+    from soniq.job import JobContext
+
+    func = job_meta["func"]
+    sig = inspect.signature(func)
+    for param_name, param in sig.parameters.items():
+        if param.annotation is JobContext:
+            validated_args[param_name] = JobContext(
+                job_id=str(job_record["id"]),
+                job_name=job_record["job_name"],
+                attempt=job_record["attempts"],
+                max_attempts=job_record["max_attempts"],
+                queue=job_record.get("queue", "default"),
+                worker_id=str(job_record.get("worker_id", "")),
+                scheduled_at=job_record.get("scheduled_at"),
+                created_at=job_record.get("created_at"),
+            )
+            break
+
+    # Determine timeout: per-job overrides global setting
+    from soniq.settings import get_settings
+
+    timeout = job_meta.get("timeout")
+    if timeout is None:
+        timeout = get_settings().job_timeout
+
+    # Execute the job function (outside transaction) with optional timeout
+    try:
+        if timeout:
+            result = await asyncio.wait_for(func(**validated_args), timeout=timeout)
+        else:
+            result = await func(**validated_args)
+        return True, None, result
+    except asyncio.TimeoutError:
+        return False, f"Job timed out after {timeout}s", None
+    except Exception as e:
+        return False, _format_job_error(e), None
+
+
+async def _call_hooks(hooks: dict, hook_name: str, *args) -> None:
+    """Call all registered hooks for an event, catching errors."""
+    for fn in hooks.get(hook_name, []):
+        try:
+            import inspect as _inspect
+
+            if _inspect.iscoroutinefunction(fn):
+                await fn(*args)
+            else:
+                fn(*args)
+        except Exception as e:
+            logger.warning(f"Hook {hook_name} failed: {e}")
+
+
+async def process_job_via_backend(
+    backend: Any,
+    job_registry: JobRegistry,
+    queues: Optional[List[str]] = None,
+    worker_id: Optional[str] = None,
+    hooks: Optional[dict] = None,
+) -> bool:
+    """
+    Process a single job using a StorageBackend.
+
+    This is the primary processing path. It fetches, executes, and
+    updates jobs through the backend abstraction.
+
+    Args:
+        backend: StorageBackend instance
+        job_registry: JobRegistry for job lookup
+        queues: Queue names to process from
+        worker_id: Worker ID for tracking
+
+    Returns:
+        True if a job was processed, False if no jobs available
+    """
+    from soniq.settings import get_settings
+
+    _hooks = hooks or {}
+
+    job_record = await backend.fetch_and_lock_job(
+        queues=queues,
+        worker_id=worker_id,
+    )
+    if not job_record:
+        return False
+
+    job_id = str(job_record["id"])
+    job_name = job_record["job_name"]
+    max_attempts = job_record["max_attempts"]
+    attempts = job_record["attempts"]
+
+    start_time = time.time()
+    logger.info(
+        f"Processing job {job_id} ({job_name}) - attempt {attempts}/{max_attempts}"
+    )
+
+    # Guard: if repeated crashes pushed attempts past max, dead-letter without executing
+    if attempts > max_attempts:
+        await backend.mark_job_dead_letter(
+            job_id,
+            attempts=attempts,
+            error="Max attempts exceeded (job crashed repeatedly)",
+        )
+        logger.error(f"Job {job_id} dead-lettered after {attempts} crash attempts")
+        return True
+
+    job_meta = job_registry.get_job(job_name)
+    if not job_meta:
+        await backend.mark_job_dead_letter(
+            job_id,
+            attempts=max_attempts,
+            error=f"Job {job_name} not registered.",
+        )
+        logger.error(f"Job {job_name} not registered - moved to dead letter queue")
+        return True
+
+    await _call_hooks(_hooks, "before_job", job_name, job_id, attempts)
+
+    try:
+        job_success, job_error, job_result = await _execute_job_safely(
+            job_record, job_meta
+        )
+    except ValueError as corruption_error:
+        logger.error(f"Job {job_id} has corrupted data: {corruption_error}")
+        await backend.mark_job_dead_letter(
+            job_id,
+            attempts=max_attempts,
+            error=str(corruption_error),
+        )
+        return True
+
+    duration_ms = round((time.time() - start_time) * 1000, 2)
+
+    if job_success:
+        from soniq.job import Snooze
+
+        if isinstance(job_result, Snooze):
+            settings = get_settings()
+            requested = float(job_result.seconds)
+            if requested < 0:
+                requested = 0.0
+            capped = min(requested, settings.snooze_max_seconds)
+            if capped < requested:
+                logger.warning(
+                    "Snooze capped from %.1fs to %.1fs (snooze_max_seconds) for job %s",
+                    requested,
+                    capped,
+                    job_id,
+                )
+            # Roll attempts back to the pre-claim value so the snooze does
+            # not consume a retry slot.
+            restored_attempts = max(attempts - 1, 0)
+            await backend.reschedule_job(
+                job_id,
+                delay_seconds=capped,
+                attempts=restored_attempts,
+                reason=job_result.reason,
+            )
+            logger.info(
+                "Job %s snoozed for %.1fs (attempts kept at %d)",
+                job_id,
+                capped,
+                restored_attempts,
+            )
+            return True
+
+        settings = get_settings()
+        await backend.mark_job_done(
+            job_id, result_ttl=settings.result_ttl, result=job_result
+        )
+        logger.info(f"Job {job_id} completed in {duration_ms}ms")
+        await _call_hooks(_hooks, "after_job", job_name, job_id, duration_ms)
+    else:
+        await _call_hooks(
+            _hooks, "on_error", job_name, job_id, str(job_error), attempts
+        )
+        if attempts >= max_attempts:
+            wrapped = f"Max retries exceeded: {job_error}"
+            if len(wrapped) > _MAX_LAST_ERROR_CHARS:
+                wrapped = wrapped[:_MAX_LAST_ERROR_CHARS]
+            await backend.mark_job_dead_letter(
+                job_id,
+                attempts=attempts,
+                error=wrapped,
+            )
+            logger.error(f"Job {job_id} moved to dead letter after {attempts} attempts")
+        else:
+            retry_delay = compute_retry_delay_seconds(
+                attempt=attempts,
+                retry_delay=job_meta.get("retry_delay", 0),
+                retry_backoff=job_meta.get("retry_backoff", False),
+                retry_max_delay=job_meta.get("retry_max_delay"),
+                retry_jitter=job_meta.get("retry_jitter", True),
+            )
+            error_message = str(job_error)
+            if len(error_message) > _MAX_LAST_ERROR_CHARS:
+                error_message = error_message[:_MAX_LAST_ERROR_CHARS]
+            await backend.mark_job_failed(
+                job_id,
+                attempts=attempts,
+                error=error_message,
+                retry_delay=retry_delay if retry_delay > 0 else None,
+            )
+            logger.warning(
+                f"Job {job_id} failed (attempt {attempts}), "
+                + (
+                    f"retrying in {retry_delay:.1f}s"
+                    if retry_delay > 0
+                    else "retrying immediately"
+                )
+            )
+
+    return True

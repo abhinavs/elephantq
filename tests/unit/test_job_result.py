@@ -1,10 +1,10 @@
 """Test job result storage."""
 
-from elephantq import ElephantQ
+from soniq import Soniq
 
 
 async def test_job_result_stored():
-    async with ElephantQ(backend="memory") as app:
+    async with Soniq(backend="memory") as app:
 
         @app.job()
         async def compute():
@@ -18,7 +18,7 @@ async def test_job_result_stored():
 
 
 async def test_job_result_none_for_pending():
-    async with ElephantQ(backend="memory") as app:
+    async with Soniq(backend="memory") as app:
 
         @app.job()
         async def noop():
@@ -30,7 +30,7 @@ async def test_job_result_none_for_pending():
 
 
 async def test_job_result_in_get_job():
-    async with ElephantQ(backend="memory") as app:
+    async with Soniq(backend="memory") as app:
 
         @app.job()
         async def compute():
@@ -44,7 +44,7 @@ async def test_job_result_in_get_job():
 
 
 async def test_job_result_none_for_failed():
-    async with ElephantQ(backend="memory") as app:
+    async with Soniq(backend="memory") as app:
 
         @app.job(max_retries=0)
         async def failing():

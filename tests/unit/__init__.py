@@ -1,1 +1,1 @@
-# Unit tests for ElephantQ
+# Unit tests for Soniq

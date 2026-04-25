@@ -1,6 +1,6 @@
 """Test jobs for discovery mechanism."""
 
-from elephantq import job
+from soniq import job
 
 
 @job()

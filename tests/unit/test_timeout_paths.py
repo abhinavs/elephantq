@@ -8,12 +8,12 @@ import asyncio
 
 import pytest
 
-import elephantq.settings as settings_module
+import soniq.settings as settings_module
 
 
 @pytest.fixture(autouse=True)
 def _enable_timeouts(monkeypatch):
-    monkeypatch.setenv("ELEPHANTQ_TIMEOUTS_ENABLED", "true")
+    monkeypatch.setenv("SONIQ_TIMEOUTS_ENABLED", "true")
     settings_module._settings = None
     yield
     settings_module._settings = None
@@ -22,7 +22,7 @@ def _enable_timeouts(monkeypatch):
 class TestExecuteJobWithTimeout:
     @pytest.mark.asyncio
     async def test_job_completes_within_timeout(self):
-        from elephantq.features.timeout_processor import execute_job_with_timeout
+        from soniq.features.timeout_processor import execute_job_with_timeout
 
         async def fast_job():
             return "done"
@@ -32,7 +32,7 @@ class TestExecuteJobWithTimeout:
 
     @pytest.mark.asyncio
     async def test_job_exceeds_timeout_raises(self):
-        from elephantq.features.timeout_processor import (
+        from soniq.features.timeout_processor import (
             JobTimeoutError,
             execute_job_with_timeout,
         )
@@ -45,7 +45,7 @@ class TestExecuteJobWithTimeout:
 
     @pytest.mark.asyncio
     async def test_job_raises_exception_propagates(self):
-        from elephantq.features.timeout_processor import execute_job_with_timeout
+        from soniq.features.timeout_processor import execute_job_with_timeout
 
         async def failing_job():
             raise ValueError("bad input")
@@ -56,7 +56,7 @@ class TestExecuteJobWithTimeout:
 
 class TestTimeoutToggle:
     def test_toggle_on_and_off(self):
-        from elephantq.features.timeout_processor import toggle_timeout_processing
+        from soniq.features.timeout_processor import toggle_timeout_processing
 
         # We can't easily verify the global state change without reaching
         # into internal state, but we can verify no exceptions
@@ -64,7 +64,7 @@ class TestTimeoutToggle:
         toggle_timeout_processing(enabled=False)
 
     def test_is_timeout_processing_enabled_returns_bool(self):
-        from elephantq.features.timeout_processor import (
+        from soniq.features.timeout_processor import (
             is_timeout_processing_enabled,
             toggle_timeout_processing,
         )

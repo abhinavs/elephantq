@@ -1,30 +1,30 @@
 """Recurring jobs example.
 
-Requires: pip install elephantq[scheduling]
+Requires: pip install soniq[scheduling]
 
 Start the scheduler process:
-  elephantq scheduler
+  soniq scheduler
 """
 
-import elephantq
+import soniq
 
 
 # Declarative — schedule is defined at decoration time
-@elephantq.periodic(cron="0 9 * * *")
+@soniq.periodic(cron="0 9 * * *")
 async def daily_report():
     print("Generating daily report")
 
 
-@elephantq.periodic(every_minutes=10, queue="maintenance")
+@soniq.periodic(every_minutes=10, queue="maintenance")
 async def cleanup():
     print("Running cleanup")
 
 
 # Programmatic — for dynamic schedules
 async def main() -> None:
-    from elephantq import cron, every
+    from soniq import cron, every
 
-    @elephantq.job()
+    @soniq.job()
     async def ad_hoc_task():
         print("Ad hoc")
 

@@ -2,7 +2,7 @@
 Tests for cli/colors.py — color utilities and StatusIcon.
 """
 
-from elephantq.cli.colors import (
+from soniq.cli.colors import (
     Colors,
     StatusIcon,
     bold,

@@ -7,10 +7,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from elephantq.cli.commands.extended import (
+from soniq.cli.commands.extended import (
     _with_context,
     register_extended_commands,
-    with_elephantq_context,
+    with_soniq_context,
 )
 
 
@@ -25,7 +25,7 @@ class TestWithContext:
 
         args = argparse.Namespace()
         with patch(
-            "elephantq.cli.commands.extended.resolve_elephantq_instance",
+            "soniq.cli.commands.extended.resolve_soniq_instance",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -41,7 +41,7 @@ class TestWithContext:
 
         args = argparse.Namespace()
         with patch(
-            "elephantq.cli.commands.extended.resolve_elephantq_instance",
+            "soniq.cli.commands.extended.resolve_soniq_instance",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -53,14 +53,14 @@ class TestWithElephantqContextDecorator:
         async def handler(args):
             return 0
 
-        wrapped = with_elephantq_context(handler)
+        wrapped = with_soniq_context(handler)
         assert callable(wrapped)
 
 
 class TestRegisterExtendedCommands:
     def test_registers_commands(self):
-        import elephantq.cli.registry as reg_mod
-        from elephantq.cli.registry import CLIRegistry
+        import soniq.cli.registry as reg_mod
+        from soniq.cli.registry import CLIRegistry
 
         original = reg_mod._registry
         registry = CLIRegistry()

@@ -9,95 +9,95 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-import elephantq
+import soniq
 
 
 @pytest.fixture(autouse=True)
 def reset_global():
-    elephantq._global_app = None
+    soniq._global_app = None
     yield
-    elephantq._global_app = None
+    soniq._global_app = None
 
 
 @pytest.mark.asyncio
 async def test_global_get_job_status():
-    await elephantq.configure(database_url="postgresql://test@localhost/test")
-    app = elephantq._get_global_app()
+    await soniq.configure(database_url="postgresql://test@localhost/test")
+    app = soniq._get_global_app()
     with patch.object(app, "get_job_status", new_callable=AsyncMock) as mock:
         mock.return_value = {"status": "done", "id": "j1"}
-        result = await elephantq.get_job_status("j1")
+        result = await soniq.get_job_status("j1")
         mock.assert_called_once_with("j1")
         assert result["status"] == "done"
 
 
 @pytest.mark.asyncio
 async def test_global_cancel_job():
-    await elephantq.configure(database_url="postgresql://test@localhost/test")
-    app = elephantq._get_global_app()
+    await soniq.configure(database_url="postgresql://test@localhost/test")
+    app = soniq._get_global_app()
     with patch.object(app, "cancel_job", new_callable=AsyncMock) as mock:
         mock.return_value = True
-        result = await elephantq.cancel_job("j1")
+        result = await soniq.cancel_job("j1")
         mock.assert_called_once_with("j1")
         assert result is True
 
 
 @pytest.mark.asyncio
 async def test_global_retry_job():
-    await elephantq.configure(database_url="postgresql://test@localhost/test")
-    app = elephantq._get_global_app()
+    await soniq.configure(database_url="postgresql://test@localhost/test")
+    app = soniq._get_global_app()
     with patch.object(app, "retry_job", new_callable=AsyncMock) as mock:
         mock.return_value = True
-        result = await elephantq.retry_job("j1")
+        result = await soniq.retry_job("j1")
         mock.assert_called_once_with("j1")
         assert result is True
 
 
 @pytest.mark.asyncio
 async def test_global_delete_job():
-    await elephantq.configure(database_url="postgresql://test@localhost/test")
-    app = elephantq._get_global_app()
+    await soniq.configure(database_url="postgresql://test@localhost/test")
+    app = soniq._get_global_app()
     with patch.object(app, "delete_job", new_callable=AsyncMock) as mock:
         mock.return_value = True
-        result = await elephantq.delete_job("j1")
+        result = await soniq.delete_job("j1")
         mock.assert_called_once_with("j1")
         assert result is True
 
 
 @pytest.mark.asyncio
 async def test_global_list_jobs():
-    await elephantq.configure(database_url="postgresql://test@localhost/test")
-    app = elephantq._get_global_app()
+    await soniq.configure(database_url="postgresql://test@localhost/test")
+    app = soniq._get_global_app()
     with patch.object(app, "list_jobs", new_callable=AsyncMock) as mock:
         mock.return_value = [{"id": "j1"}, {"id": "j2"}]
-        result = await elephantq.list_jobs(status="done")
+        result = await soniq.list_jobs(status="done")
         mock.assert_called_once_with(queue=None, status="done", limit=100, offset=0)
         assert len(result) == 2
 
 
 @pytest.mark.asyncio
 async def test_global_get_queue_stats():
-    await elephantq.configure(database_url="postgresql://test@localhost/test")
-    app = elephantq._get_global_app()
+    await soniq.configure(database_url="postgresql://test@localhost/test")
+    app = soniq._get_global_app()
     with patch.object(app, "get_queue_stats", new_callable=AsyncMock) as mock:
         mock.return_value = {"queued": 5, "processing": 2}
-        result = await elephantq.get_queue_stats()
+        result = await soniq.get_queue_stats()
         mock.assert_called_once()
         assert result["queued"] == 5
 
 
 @pytest.mark.asyncio
 async def test_global_setup():
-    await elephantq.configure(database_url="postgresql://test@localhost/test")
-    app = elephantq._get_global_app()
+    await soniq.configure(database_url="postgresql://test@localhost/test")
+    app = soniq._get_global_app()
     with patch.object(app, "_setup", new_callable=AsyncMock) as mock:
-        await elephantq._setup()
+        await soniq._setup()
         mock.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_global_reset():
-    await elephantq.configure(database_url="postgresql://test@localhost/test")
-    app = elephantq._get_global_app()
+    await soniq.configure(database_url="postgresql://test@localhost/test")
+    app = soniq._get_global_app()
     with patch.object(app, "_reset", new_callable=AsyncMock) as mock:
-        await elephantq._reset()
+        await soniq._reset()
         mock.assert_called_once()

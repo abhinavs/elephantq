@@ -1,5 +1,5 @@
 """
-Test that ElephantQ management methods work with MemoryBackend.
+Test that Soniq management methods work with MemoryBackend.
 
 These methods currently use raw asyncpg SQL and crash on non-Postgres backends.
 After routing through the backend, they should work on all backends.
@@ -7,12 +7,12 @@ After routing through the backend, they should work on all backends.
 
 import pytest
 
-from elephantq import ElephantQ
+from soniq import Soniq
 
 
 @pytest.fixture
 async def app():
-    app = ElephantQ(backend="memory")
+    app = Soniq(backend="memory")
     await app._ensure_initialized()
     yield app
     await app.close()

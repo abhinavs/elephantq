@@ -9,9 +9,9 @@ so operators can read it back from the job record.
 
 import pytest
 
-from elephantq.backends.memory import MemoryBackend
-from elephantq.core.processor import process_job_via_backend
-from elephantq.core.registry import JobRegistry
+from soniq.backends.memory import MemoryBackend
+from soniq.core.processor import process_job_via_backend
+from soniq.core.registry import JobRegistry
 
 
 def _helper_that_explodes():

@@ -2,7 +2,7 @@
 Tests for db/migrations.py — MigrationRunner basics.
 """
 
-from elephantq.db.migrations import MigrationRunner
+from soniq.db.migrations import MigrationRunner
 
 
 class TestMigrationRunner:

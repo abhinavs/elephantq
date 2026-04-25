@@ -12,6 +12,6 @@ exclude =
   tests,
   deployment,
   .ruff_cache,
-  elephantq.egg-info,
+  soniq.egg-info,
   fastjob-web,
   try-out

@@ -1,5 +1,5 @@
 """
-Guard against orphaned asyncio tasks in the elephantq package.
+Guard against orphaned asyncio tasks in the soniq package.
 
 An orphaned `asyncio.create_task(...)` (or `asyncio.ensure_future(...)` /
 `loop.create_task(...)`) call is one whose result is never stored. The task
@@ -19,9 +19,9 @@ call whose value is thrown away.
 import ast
 import pathlib
 
-import elephantq
+import soniq
 
-PACKAGE_ROOT = pathlib.Path(elephantq.__file__).parent
+PACKAGE_ROOT = pathlib.Path(soniq.__file__).parent
 
 # Modules with expression-statement task spawns we have audited and accepted.
 # Empty today; add a (module_relpath, lineno) tuple with a comment below

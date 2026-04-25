@@ -7,7 +7,7 @@ import uuid
 
 import pytest
 
-from elephantq.core.processor import _execute_job_safely
+from soniq.core.processor import _execute_job_safely
 
 
 def _make_job_record(args_dict=None):
@@ -41,7 +41,7 @@ def _make_job_meta(func):
 @pytest.mark.asyncio
 async def test_job_with_context_receives_metadata():
     """A job that declares ctx: JobContext should receive it."""
-    from elephantq.job import JobContext
+    from soniq.job import JobContext
 
     received = {}
 
@@ -81,7 +81,7 @@ async def test_job_without_context_works_unchanged():
 
 @pytest.mark.asyncio
 async def test_context_is_importable_from_top_level():
-    """JobContext should be importable from elephantq directly."""
-    from elephantq import JobContext
+    """JobContext should be importable from soniq directly."""
+    from soniq import JobContext
 
     assert JobContext is not None

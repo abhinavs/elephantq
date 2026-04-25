@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from elephantq.features.recurring import (
+from soniq.features.recurring import (
     EnhancedRecurringManager,
     EnhancedRecurringScheduler,
 )
@@ -21,7 +21,7 @@ from elephantq.features.recurring import (
 @pytest.mark.asyncio
 async def test_record_run_failure_is_logged(monkeypatch, caplog):
     """Post-claim `_record_run` failure emits an error log, doesn't silently pass."""
-    from elephantq.features import recurring
+    from soniq.features import recurring
 
     # Swap the module-level manager/scheduler with clean instances so we can
     # control their internals for this test without touching global state.
@@ -60,7 +60,7 @@ async def test_record_run_failure_is_logged(monkeypatch, caplog):
 
     monkeypatch.setattr(recurring, "enqueue", fake_enqueue)
 
-    with caplog.at_level(logging.ERROR, logger="elephantq.features.recurring"):
+    with caplog.at_level(logging.ERROR, logger="soniq.features.recurring"):
         await scheduler._execute_job(
             job_record["id"], job_record, datetime.now(timezone.utc)
         )

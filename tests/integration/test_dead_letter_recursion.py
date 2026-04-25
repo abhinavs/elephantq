@@ -15,14 +15,14 @@ import asyncio
 
 import pytest
 
-import elephantq
-from elephantq.db.context import (
+import soniq
+from soniq.db.context import (
     DatabaseContext,
     get_context_pool,
     set_current_context,
 )
-from elephantq.features import dead_letter
-from elephantq.features.dead_letter import (
+from soniq.features import dead_letter
+from soniq.features.dead_letter import (
     DeadLetterFilter,
     DeadLetterReason,
 )
@@ -34,11 +34,11 @@ TIME_BOUND_SECONDS = 5.0
 async def _move_sample_job_to_dlq(tag: str) -> str:
     """Enqueue a job and move it to DLQ. Returns the job id (also the DLQ id)."""
 
-    @elephantq.job(retries=0, name=f"always_fail_{tag}")
+    @soniq.job(retries=0, name=f"always_fail_{tag}")
     async def always_fail():
         raise RuntimeError("boom")
 
-    job_id = await elephantq.enqueue(always_fail)
+    job_id = await soniq.enqueue(always_fail)
     moved = await dead_letter.move_job_to_dead_letter(
         job_id,
         DeadLetterReason.MANUAL_MOVE,
@@ -51,10 +51,10 @@ async def _move_sample_job_to_dlq(tag: str) -> str:
 @pytest.mark.asyncio
 async def test_delete_dead_letter_job_returns_in_bounded_time():
     """delete_dead_letter_job exercises _rows_affected; must complete in <5s."""
-    await elephantq.configure(
+    await soniq.configure(
         database_url=TEST_DATABASE_URL, dead_letter_queue_enabled=True
     )
-    global_app = elephantq._get_global_app()
+    global_app = soniq._get_global_app()
     set_current_context(DatabaseContext.from_instance(global_app))
     await dead_letter.setup_dead_letter_queue()
 
@@ -69,7 +69,7 @@ async def test_delete_dead_letter_job_returns_in_bounded_time():
     pool = await get_context_pool()
     async with pool.acquire() as conn:
         remaining = await conn.fetchval(
-            "SELECT COUNT(*) FROM elephantq_dead_letter_jobs WHERE id = $1",
+            "SELECT COUNT(*) FROM soniq_dead_letter_jobs WHERE id = $1",
             job_id,
         )
     assert remaining == 0
@@ -78,10 +78,10 @@ async def test_delete_dead_letter_job_returns_in_bounded_time():
 @pytest.mark.asyncio
 async def test_bulk_delete_returns_exact_count_in_bounded_time():
     """bulk_delete exercises _rows_affected; must return accurate count in <5s."""
-    await elephantq.configure(
+    await soniq.configure(
         database_url=TEST_DATABASE_URL, dead_letter_queue_enabled=True
     )
-    global_app = elephantq._get_global_app()
+    global_app = soniq._get_global_app()
     set_current_context(DatabaseContext.from_instance(global_app))
     await dead_letter.setup_dead_letter_queue()
 
@@ -101,7 +101,7 @@ async def test_bulk_delete_returns_exact_count_in_bounded_time():
     pool = await get_context_pool()
     async with pool.acquire() as conn:
         total = await conn.fetchval(
-            "SELECT COUNT(*) FROM elephantq_dead_letter_jobs WHERE id = ANY($1)",
+            "SELECT COUNT(*) FROM soniq_dead_letter_jobs WHERE id = ANY($1)",
             ids,
         )
     assert total == 2
@@ -110,10 +110,10 @@ async def test_bulk_delete_returns_exact_count_in_bounded_time():
 @pytest.mark.asyncio
 async def test_move_then_single_dlq_row_exists():
     """Guard that move_to_dead_letter produces exactly one DLQ row, no more."""
-    await elephantq.configure(
+    await soniq.configure(
         database_url=TEST_DATABASE_URL, dead_letter_queue_enabled=True
     )
-    global_app = elephantq._get_global_app()
+    global_app = soniq._get_global_app()
     set_current_context(DatabaseContext.from_instance(global_app))
     await dead_letter.setup_dead_letter_queue()
 
@@ -125,11 +125,11 @@ async def test_move_then_single_dlq_row_exists():
     pool = await get_context_pool()
     async with pool.acquire() as conn:
         count = await conn.fetchval(
-            "SELECT COUNT(*) FROM elephantq_dead_letter_jobs WHERE id = $1",
+            "SELECT COUNT(*) FROM soniq_dead_letter_jobs WHERE id = $1",
             job_id,
         )
         status = await conn.fetchval(
-            "SELECT status FROM elephantq_jobs WHERE id = $1",
+            "SELECT status FROM soniq_jobs WHERE id = $1",
             job_id,
         )
     assert count == 1

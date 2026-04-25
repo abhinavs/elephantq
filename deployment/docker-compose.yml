@@ -1,4 +1,4 @@
-# ElephantQ Docker Compose Configuration
+# Soniq Docker Compose Configuration
 # Production-ready setup with PostgreSQL, worker, and dashboard
 
 version: "3.8"
@@ -7,11 +7,11 @@ services:
   # PostgreSQL Database
   postgres:
     image: postgres:15-alpine
-    container_name: elephantq_postgres
+    container_name: soniq_postgres
     restart: always
     environment:
-      POSTGRES_DB: elephantq_prod
-      POSTGRES_USER: elephantq
+      POSTGRES_DB: soniq_prod
+      POSTGRES_USER: soniq
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-your_secure_password}
       POSTGRES_INITDB_ARGS: "--auth-host=md5"
     volumes:
@@ -20,39 +20,39 @@ services:
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U elephantq -d elephantq_prod"]
+      test: ["CMD-SHELL", "pg_isready -U soniq -d soniq_prod"]
       interval: 10s
       timeout: 5s
       retries: 5
     networks:
-      - elephantq_network
+      - soniq_network
 
-  # ElephantQ Worker
-  elephantq_worker:
+  # Soniq Worker
+  soniq_worker:
     build:
       context: .
       dockerfile: Dockerfile.worker
-    container_name: elephantq_worker
+    container_name: soniq_worker
     restart: always
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      ELEPHANTQ_DATABASE_URL: postgresql://elephantq:${POSTGRES_PASSWORD:-your_secure_password}@postgres:5432/elephantq_prod
-      ELEPHANTQ_LOG_LEVEL: INFO
-      ELEPHANTQ_DASHBOARD_ENABLED: "true"
-      ELEPHANTQ_JOBS_MODULES: myapp.jobs
+      SONIQ_DATABASE_URL: postgresql://soniq:${POSTGRES_PASSWORD:-your_secure_password}@postgres:5432/soniq_prod
+      SONIQ_LOG_LEVEL: INFO
+      SONIQ_DASHBOARD_ENABLED: "true"
+      SONIQ_JOBS_MODULES: myapp.jobs
     volumes:
       - ./logs:/app/logs
       - ./app:/app/myapp # Mount your application code
-    command: ["elephantq", "start", "--concurrency=4"]
+    command: ["soniq", "start", "--concurrency=4"]
     healthcheck:
-      test: ["CMD", "elephantq", "health"]
+      test: ["CMD", "soniq", "health"]
       interval: 30s
       timeout: 10s
       retries: 3
     networks:
-      - elephantq_network
+      - soniq_network
     deploy:
       resources:
         limits:
@@ -62,33 +62,33 @@ services:
           memory: 256M
           cpus: "0.5"
 
-  # ElephantQ Dashboard (optional)
-  elephantq_dashboard:
+  # Soniq Dashboard (optional)
+  soniq_dashboard:
     build:
       context: .
       dockerfile: Dockerfile.dashboard
-    container_name: elephantq_dashboard
+    container_name: soniq_dashboard
     restart: always
     depends_on:
       postgres:
         condition: service_healthy
-      elephantq_worker:
+      soniq_worker:
         condition: service_healthy
     environment:
-      ELEPHANTQ_DATABASE_URL: postgresql://elephantq:${POSTGRES_PASSWORD:-your_secure_password}@postgres:5432/elephantq_prod
-      ELEPHANTQ_LOG_LEVEL: INFO
+      SONIQ_DATABASE_URL: postgresql://soniq:${POSTGRES_PASSWORD:-your_secure_password}@postgres:5432/soniq_prod
+      SONIQ_LOG_LEVEL: INFO
     ports:
       - "8000:8000"
     volumes:
       - ./logs:/app/logs
-    command: ["elephantq", "dashboard", "--host=0.0.0.0", "--port=8000"]
+    command: ["soniq", "dashboard", "--host=0.0.0.0", "--port=8000"]
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
     networks:
-      - elephantq_network
+      - soniq_network
     deploy:
       resources:
         limits:
@@ -99,40 +99,40 @@ services:
           cpus: "0.25"
 
   # Optional: Priority Worker for urgent jobs
-  elephantq_priority_worker:
+  soniq_priority_worker:
     build:
       context: .
       dockerfile: Dockerfile.worker
-    container_name: elephantq_priority_worker
+    container_name: soniq_priority_worker
     restart: always
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      ELEPHANTQ_DATABASE_URL: postgresql://elephantq:${POSTGRES_PASSWORD:-your_secure_password}@postgres:5432/elephantq_prod
-      ELEPHANTQ_LOG_LEVEL: INFO
-      ELEPHANTQ_JOBS_MODULES: myapp.jobs
+      SONIQ_DATABASE_URL: postgresql://soniq:${POSTGRES_PASSWORD:-your_secure_password}@postgres:5432/soniq_prod
+      SONIQ_LOG_LEVEL: INFO
+      SONIQ_JOBS_MODULES: myapp.jobs
     volumes:
       - ./logs:/app/logs
       - ./app:/app/myapp
-    command: ["elephantq", "start", "--concurrency=2", "--queues=urgent"]
+    command: ["soniq", "start", "--concurrency=2", "--queues=urgent"]
     profiles:
       - priority # Optional service - enable with --profile priority
     healthcheck:
-      test: ["CMD", "elephantq", "health"]
+      test: ["CMD", "soniq", "health"]
       interval: 30s
       timeout: 10s
       retries: 3
     networks:
-      - elephantq_network
+      - soniq_network
 
   # Optional: Nginx reverse proxy
   nginx:
     image: nginx:alpine
-    container_name: elephantq_nginx
+    container_name: soniq_nginx
     restart: always
     depends_on:
-      - elephantq_dashboard
+      - soniq_dashboard
     ports:
       - "80:80"
       - "443:443"
@@ -143,12 +143,12 @@ services:
     profiles:
       - proxy # Optional service - enable with --profile proxy
     networks:
-      - elephantq_network
+      - soniq_network
 
 volumes:
   postgres_data:
     driver: local
 
 networks:
-  elephantq_network:
+  soniq_network:
     driver: bridge

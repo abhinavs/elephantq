@@ -1,11 +1,11 @@
 """
-Comprehensive tests for ElephantQ's Pydantic-based configuration system.
+Comprehensive tests for Soniq's Pydantic-based configuration system.
 
 Tests cover:
 - Default configuration loading
 - Environment variable overrides
 - Configuration validation
-- Explicit ELEPHANTQ_DATABASE_URL requirement (no DATABASE_URL fallback)
+- Explicit SONIQ_DATABASE_URL requirement (no DATABASE_URL fallback)
 - Pydantic availability fallback
 - Configuration file loading
 - get_settings() and reload_settings() functions
@@ -19,8 +19,8 @@ import pytest
 
 from tests.db_utils import TEST_DATABASE_URL
 
-# Set test database before importing elephantq modules
-os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
+# Set test database before importing soniq modules
+os.environ["SONIQ_DATABASE_URL"] = TEST_DATABASE_URL
 
 
 class TestPydanticConfiguration:
@@ -31,42 +31,42 @@ class TestPydanticConfiguration:
         # Store original environment
         self.original_env = {}
         for key in os.environ:
-            if key.startswith("ELEPHANTQ_"):
+            if key.startswith("SONIQ_"):
                 self.original_env[key] = os.environ[key]
 
-        # Clear ElephantQ environment variables for clean testing
+        # Clear Soniq environment variables for clean testing
         for key in list(os.environ.keys()):
-            if key.startswith("ELEPHANTQ_"):
+            if key.startswith("SONIQ_"):
                 del os.environ[key]
 
         # Clear settings cache
-        import elephantq.settings
+        import soniq.settings
 
-        elephantq.settings._settings = None
+        soniq.settings._settings = None
 
     def teardown_method(self):
         """Clean up after each test."""
         # Restore original environment
         for key in list(os.environ.keys()):
-            if key.startswith("ELEPHANTQ_"):
+            if key.startswith("SONIQ_"):
                 del os.environ[key]
 
         for key, value in self.original_env.items():
             os.environ[key] = value
 
         # Clear settings cache
-        import elephantq.settings
+        import soniq.settings
 
-        elephantq.settings._settings = None
+        soniq.settings._settings = None
 
     def test_default_configuration_loading(self):
         """Test that configuration loads correctly with default values."""
-        from elephantq.settings import get_settings
+        from soniq.settings import get_settings
 
         settings = get_settings()
 
         # Test default values
-        assert settings.database_url == "postgresql://postgres@localhost/elephantq"
+        assert settings.database_url == "postgresql://postgres@localhost/soniq"
         assert settings.jobs_module == "jobs"
         assert settings.jobs_modules == ""
         assert settings.concurrency == 4
@@ -86,24 +86,24 @@ class TestPydanticConfiguration:
     def test_environment_variable_overrides(self):
         """Test environment variable override functionality."""
         # Set environment variables
-        os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://test@localhost/test_db"
-        os.environ["ELEPHANTQ_JOBS_MODULE"] = "myapp.jobs"
-        os.environ["ELEPHANTQ_JOBS_MODULES"] = "myapp.tasks,myapp.other_tasks"
-        os.environ["ELEPHANTQ_CONCURRENCY"] = "8"
-        os.environ["ELEPHANTQ_QUEUES"] = "urgent,default,low"
-        os.environ["ELEPHANTQ_MAX_RETRIES"] = "5"
-        os.environ["ELEPHANTQ_PRIORITY"] = "200"
-        os.environ["ELEPHANTQ_HEARTBEAT_INTERVAL"] = "10.0"
-        os.environ["ELEPHANTQ_JOB_TIMEOUT"] = "300.0"
-        os.environ["ELEPHANTQ_POOL_MIN_SIZE"] = "10"
-        os.environ["ELEPHANTQ_POOL_MAX_SIZE"] = "50"
-        os.environ["ELEPHANTQ_POOL_HEADROOM"] = "4"
-        os.environ["ELEPHANTQ_LOG_LEVEL"] = "DEBUG"
-        os.environ["ELEPHANTQ_LOG_FORMAT"] = "structured"
-        os.environ["ELEPHANTQ_DEBUG"] = "true"
-        os.environ["ELEPHANTQ_ENVIRONMENT"] = "development"
+        os.environ["SONIQ_DATABASE_URL"] = "postgresql://test@localhost/test_db"
+        os.environ["SONIQ_JOBS_MODULE"] = "myapp.jobs"
+        os.environ["SONIQ_JOBS_MODULES"] = "myapp.tasks,myapp.other_tasks"
+        os.environ["SONIQ_CONCURRENCY"] = "8"
+        os.environ["SONIQ_QUEUES"] = "urgent,default,low"
+        os.environ["SONIQ_MAX_RETRIES"] = "5"
+        os.environ["SONIQ_PRIORITY"] = "200"
+        os.environ["SONIQ_HEARTBEAT_INTERVAL"] = "10.0"
+        os.environ["SONIQ_JOB_TIMEOUT"] = "300.0"
+        os.environ["SONIQ_POOL_MIN_SIZE"] = "10"
+        os.environ["SONIQ_POOL_MAX_SIZE"] = "50"
+        os.environ["SONIQ_POOL_HEADROOM"] = "4"
+        os.environ["SONIQ_LOG_LEVEL"] = "DEBUG"
+        os.environ["SONIQ_LOG_FORMAT"] = "structured"
+        os.environ["SONIQ_DEBUG"] = "true"
+        os.environ["SONIQ_ENVIRONMENT"] = "development"
 
-        from elephantq.settings import get_settings
+        from soniq.settings import get_settings
 
         settings = get_settings(reload=True)
 
@@ -127,111 +127,106 @@ class TestPydanticConfiguration:
 
     def test_configuration_validation_empty_database_url(self):
         """Test configuration validation rejects empty database URL."""
-        os.environ["ELEPHANTQ_DATABASE_URL"] = ""
+        os.environ["SONIQ_DATABASE_URL"] = ""
 
-        from elephantq.settings import get_settings
+        from soniq.settings import get_settings
 
         with pytest.raises(
             ValueError,
-            match=r"(?s)Invalid ElephantQ configuration.*database_url must not be empty",
+            match=r"(?s)Invalid Soniq configuration.*database_url must not be empty",
         ):
             get_settings(reload=True)
 
     def test_configuration_validation_invalid_log_level(self):
         """Test configuration validation for invalid log levels."""
-        os.environ["ELEPHANTQ_LOG_LEVEL"] = "INVALID"
+        os.environ["SONIQ_LOG_LEVEL"] = "INVALID"
 
-        from elephantq.settings import get_settings
+        from soniq.settings import get_settings
 
         # Should raise validation error for invalid log level
         with pytest.raises(
             ValueError,
-            match=r"(?s)Invalid ElephantQ configuration.*log_level must be one of",
+            match=r"(?s)Invalid Soniq configuration.*log_level must be one of",
         ):
             get_settings(reload=True)
 
     def test_configuration_validation_invalid_log_format(self):
         """Test configuration validation for invalid log formats."""
-        os.environ["ELEPHANTQ_LOG_FORMAT"] = "json"
+        os.environ["SONIQ_LOG_FORMAT"] = "json"
 
-        from elephantq.settings import get_settings
+        from soniq.settings import get_settings
 
         # Should raise validation error for invalid log format
         with pytest.raises(
             ValueError,
-            match=r"(?s)Invalid ElephantQ configuration.*log_format must be one of",
+            match=r"(?s)Invalid Soniq configuration.*log_format must be one of",
         ):
             get_settings(reload=True)
 
     def test_configuration_validation_numeric_ranges(self):
         """Test configuration validation for numeric range constraints."""
         # Test concurrency out of range
-        os.environ["ELEPHANTQ_CONCURRENCY"] = "200"  # Max is 100
+        os.environ["SONIQ_CONCURRENCY"] = "200"  # Max is 100
 
-        from elephantq.settings import get_settings
+        from soniq.settings import get_settings
 
-        with pytest.raises(ValueError, match=r"(?s)Invalid ElephantQ configuration"):
+        with pytest.raises(ValueError, match=r"(?s)Invalid Soniq configuration"):
             get_settings(reload=True)
 
         # Reset and test minimum
-        del os.environ["ELEPHANTQ_CONCURRENCY"]
-        os.environ["ELEPHANTQ_MAX_RETRIES"] = "-1"  # Min is 0
+        del os.environ["SONIQ_CONCURRENCY"]
+        os.environ["SONIQ_MAX_RETRIES"] = "-1"  # Min is 0
 
-        with pytest.raises(ValueError, match=r"(?s)Invalid ElephantQ configuration"):
+        with pytest.raises(ValueError, match=r"(?s)Invalid Soniq configuration"):
             get_settings(reload=True)
 
     def test_database_url_is_not_used_as_fallback(self):
-        """Test that DATABASE_URL is NOT used as fallback - only ELEPHANTQ_DATABASE_URL."""
-        # Set DATABASE_URL but not ELEPHANTQ_DATABASE_URL
+        """Test that DATABASE_URL is NOT used as fallback - only SONIQ_DATABASE_URL."""
+        # Set DATABASE_URL but not SONIQ_DATABASE_URL
         os.environ["DATABASE_URL"] = (
             "postgresql://should_not_be_used@localhost/legacy_db"
         )
 
-        # Remove ELEPHANTQ_DATABASE_URL if it exists
-        if "ELEPHANTQ_DATABASE_URL" in os.environ:
-            del os.environ["ELEPHANTQ_DATABASE_URL"]
+        # Remove SONIQ_DATABASE_URL if it exists
+        if "SONIQ_DATABASE_URL" in os.environ:
+            del os.environ["SONIQ_DATABASE_URL"]
 
-        from elephantq.settings import get_settings
+        from soniq.settings import get_settings
 
         settings = get_settings(reload=True)
 
         # Should use default value, NOT the DATABASE_URL fallback
-        assert settings.database_url == "postgresql://postgres@localhost/elephantq"
+        assert settings.database_url == "postgresql://postgres@localhost/soniq"
         assert (
             settings.database_url
             != "postgresql://should_not_be_used@localhost/legacy_db"
         )
 
-    def test_elephantq_database_url_is_used_when_set(self):
-        """Test that ELEPHANTQ_DATABASE_URL is properly used when set."""
-        # Set both DATABASE_URL and ELEPHANTQ_DATABASE_URL
+    def test_soniq_database_url_is_used_when_set(self):
+        """Test that SONIQ_DATABASE_URL is properly used when set."""
+        # Set both DATABASE_URL and SONIQ_DATABASE_URL
         os.environ["DATABASE_URL"] = "postgresql://ignored@localhost/ignored_db"
-        os.environ["ELEPHANTQ_DATABASE_URL"] = (
-            "postgresql://elephantq_user@localhost/elephantq_db"
-        )
+        os.environ["SONIQ_DATABASE_URL"] = "postgresql://soniq_user@localhost/soniq_db"
 
-        from elephantq.settings import get_settings
+        from soniq.settings import get_settings
 
         settings = get_settings(reload=True)
 
-        # Only ELEPHANTQ_DATABASE_URL should be used (DATABASE_URL ignored)
-        assert (
-            settings.database_url
-            == "postgresql://elephantq_user@localhost/elephantq_db"
-        )
+        # Only SONIQ_DATABASE_URL should be used (DATABASE_URL ignored)
+        assert settings.database_url == "postgresql://soniq_user@localhost/soniq_db"
 
     def test_configuration_file_loading(self):
         """Test configuration file loading functionality."""
         # Create temporary config file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".env", delete=False) as f:
-            f.write("ELEPHANTQ_DATABASE_URL=postgresql://config@localhost/config_db\n")
-            f.write("ELEPHANTQ_JOBS_MODULE=config.jobs\n")
-            f.write("ELEPHANTQ_CONCURRENCY=12\n")
-            f.write("ELEPHANTQ_LOG_LEVEL=WARNING\n")
+            f.write("SONIQ_DATABASE_URL=postgresql://config@localhost/config_db\n")
+            f.write("SONIQ_JOBS_MODULE=config.jobs\n")
+            f.write("SONIQ_CONCURRENCY=12\n")
+            f.write("SONIQ_LOG_LEVEL=WARNING\n")
             config_file = Path(f.name)
 
         try:
-            from elephantq.settings import get_settings
+            from soniq.settings import get_settings
 
             settings = get_settings(config_file=config_file, reload=True)
 
@@ -247,7 +242,7 @@ class TestPydanticConfiguration:
 
     def test_get_settings_caching(self):
         """Test that get_settings() properly caches settings."""
-        from elephantq.settings import get_settings
+        from soniq.settings import get_settings
 
         # First call
         settings1 = get_settings()
@@ -260,19 +255,15 @@ class TestPydanticConfiguration:
     def test_get_settings_reload_functionality(self):
         """Test get_settings() reload functionality."""
         # Initial settings
-        os.environ["ELEPHANTQ_DATABASE_URL"] = (
-            "postgresql://initial@localhost/initial_db"
-        )
+        os.environ["SONIQ_DATABASE_URL"] = "postgresql://initial@localhost/initial_db"
 
-        from elephantq.settings import get_settings
+        from soniq.settings import get_settings
 
         settings1 = get_settings(reload=True)
         assert settings1.database_url == "postgresql://initial@localhost/initial_db"
 
         # Change environment and reload
-        os.environ["ELEPHANTQ_DATABASE_URL"] = (
-            "postgresql://reloaded@localhost/reloaded_db"
-        )
+        os.environ["SONIQ_DATABASE_URL"] = "postgresql://reloaded@localhost/reloaded_db"
         settings2 = get_settings(reload=True)
 
         # Should get new settings
@@ -281,29 +272,29 @@ class TestPydanticConfiguration:
 
     def test_reload_settings_function(self):
         """Test the standalone reload_settings() function."""
-        from elephantq.settings import reload_settings
+        from soniq.settings import reload_settings
 
         # Set initial environment
-        os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://before@localhost/before_db"
+        os.environ["SONIQ_DATABASE_URL"] = "postgresql://before@localhost/before_db"
 
         settings1 = reload_settings()
         assert settings1.database_url == "postgresql://before@localhost/before_db"
 
         # Change environment
-        os.environ["ELEPHANTQ_DATABASE_URL"] = "postgresql://after@localhost/after_db"
+        os.environ["SONIQ_DATABASE_URL"] = "postgresql://after@localhost/after_db"
 
         settings2 = reload_settings()
         assert settings2.database_url == "postgresql://after@localhost/after_db"
 
     def test_settings_access_via_get_settings(self):
         """Test that settings are accessed via get_settings() function."""
-        os.environ["ELEPHANTQ_DATABASE_URL"] = (
+        os.environ["SONIQ_DATABASE_URL"] = (
             "postgresql://export_test@localhost/export_db"
         )
-        os.environ["ELEPHANTQ_JOBS_MODULE"] = "export.jobs"
+        os.environ["SONIQ_JOBS_MODULE"] = "export.jobs"
 
         # Reload settings to pick up environment variables
-        from elephantq.settings import get_settings
+        from soniq.settings import get_settings
 
         settings = get_settings(reload=True)
 
@@ -314,17 +305,15 @@ class TestPydanticConfiguration:
     def test_case_insensitive_configuration(self):
         """Test case-insensitive configuration handling."""
         # Set case variations
-        os.environ["elephantq_database_url"] = (
+        os.environ["soniq_database_url"] = (
             "postgresql://case@localhost/case_db"  # lowercase
         )
-        os.environ["ELEPHANTQ_LOG_LEVEL"] = (
-            "debug"  # lowercase value should be normalized
-        )
-        os.environ["ELEPHANTQ_LOG_FORMAT"] = (
+        os.environ["SONIQ_LOG_LEVEL"] = "debug"  # lowercase value should be normalized
+        os.environ["SONIQ_LOG_FORMAT"] = (
             "STRUCTURED"  # uppercase value should be normalized
         )
 
-        from elephantq.settings import get_settings
+        from soniq.settings import get_settings
 
         settings = get_settings(reload=True)
 
@@ -335,9 +324,9 @@ class TestPydanticConfiguration:
 
     def test_list_configuration_parsing(self):
         """Test parsing of comma-separated list configurations."""
-        os.environ["ELEPHANTQ_QUEUES"] = "high,normal,low,bulk"
+        os.environ["SONIQ_QUEUES"] = "high,normal,low,bulk"
 
-        from elephantq.settings import get_settings
+        from soniq.settings import get_settings
 
         settings = get_settings(reload=True)
 
@@ -360,9 +349,9 @@ class TestPydanticConfiguration:
         ]
 
         for env_value, expected in test_cases:
-            os.environ["ELEPHANTQ_DEBUG"] = env_value
+            os.environ["SONIQ_DEBUG"] = env_value
 
-            from elephantq.settings import get_settings
+            from soniq.settings import get_settings
 
             settings = get_settings(reload=True)
 
@@ -372,11 +361,11 @@ class TestPydanticConfiguration:
 
     def test_numeric_configuration_validation(self):
         """Test numeric configuration validation and type conversion."""
-        os.environ["ELEPHANTQ_CONCURRENCY"] = "8"
-        os.environ["ELEPHANTQ_HEARTBEAT_INTERVAL"] = "2.5"
-        os.environ["ELEPHANTQ_JOB_TIMEOUT"] = "600.0"
+        os.environ["SONIQ_CONCURRENCY"] = "8"
+        os.environ["SONIQ_HEARTBEAT_INTERVAL"] = "2.5"
+        os.environ["SONIQ_JOB_TIMEOUT"] = "600.0"
 
-        from elephantq.settings import get_settings
+        from soniq.settings import get_settings
 
         settings = get_settings(reload=True)
 
@@ -391,9 +380,9 @@ class TestPydanticConfiguration:
     def test_optional_timeout_handling(self):
         """Test handling of optional timeout configurations."""
         # Test with explicit zero (should become None)
-        os.environ["ELEPHANTQ_JOB_TIMEOUT"] = "0"
+        os.environ["SONIQ_JOB_TIMEOUT"] = "0"
 
-        from elephantq.settings import get_settings
+        from soniq.settings import get_settings
 
         settings = get_settings(reload=True)
 
@@ -402,7 +391,7 @@ class TestPydanticConfiguration:
         assert settings.job_timeout is None or settings.job_timeout == 0.0
 
         # Test with valid timeout
-        os.environ["ELEPHANTQ_JOB_TIMEOUT"] = "300"
+        os.environ["SONIQ_JOB_TIMEOUT"] = "300"
         settings = get_settings(reload=True)
 
         assert settings.job_timeout == 300.0

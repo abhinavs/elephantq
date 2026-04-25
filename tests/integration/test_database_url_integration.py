@@ -1,8 +1,8 @@
 """
-Integration tests for --database-url parameter with core ElephantQ commands.
+Integration tests for --database-url parameter with core Soniq commands.
 
 These tests verify that the database context system works correctly with
-core ElephantQ CLI commands when using the --database-url parameter.
+core Soniq CLI commands when using the --database-url parameter.
 """
 
 import os
@@ -18,7 +18,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 def _make_test_db_url(db_name: str) -> str:
     """Build a database URL for the given DB name, inheriting credentials from CI env."""
-    base = os.environ.get("ELEPHANTQ_DATABASE_URL", "")
+    base = os.environ.get("SONIQ_DATABASE_URL", "")
     if base:
         parsed = urlparse(base)
         return urlunparse(parsed._replace(path=f"/{db_name}"))
@@ -27,7 +27,7 @@ def _make_test_db_url(db_name: str) -> str:
 
 def run_cli_command(cmd_args, timeout=10, expect_success=True):
     """Run a CLI command and return the result."""
-    full_cmd = [sys.executable, "-m", "elephantq.cli.main"] + cmd_args
+    full_cmd = [sys.executable, "-m", "soniq.cli.main"] + cmd_args
     env = os.environ.copy()
     env.setdefault("PYTHONPATH", str(PROJECT_ROOT))
 
@@ -55,14 +55,14 @@ def run_cli_command(cmd_args, timeout=10, expect_success=True):
 async def setup_test_databases():
     """Set up test databases for database URL integration tests."""
     test_databases = [
-        "elephantq_db_url_test_1",
-        "elephantq_db_url_test_2",
-        "elephantq_db_url_test_3",
+        "soniq_db_url_test_1",
+        "soniq_db_url_test_2",
+        "soniq_db_url_test_3",
     ]
 
     # Create test databases — pass PGPASSWORD for CI environments
     createdb_env = os.environ.copy()
-    base_url = os.environ.get("ELEPHANTQ_DATABASE_URL", "")
+    base_url = os.environ.get("SONIQ_DATABASE_URL", "")
     if base_url:
         parsed = urlparse(base_url)
         if parsed.password:
@@ -79,7 +79,7 @@ async def setup_test_databases():
                 createdb_cmd.extend(["-p", str(parsed.port)])
         subprocess.run(createdb_cmd, check=False, env=createdb_env)
 
-        # Set up each database with ElephantQ schema using the setup command
+        # Set up each database with Soniq schema using the setup command
         db_url = _make_test_db_url(db_name)
         setup_env = os.environ.copy()
         setup_env.setdefault("PYTHONPATH", str(PROJECT_ROOT))
@@ -87,7 +87,7 @@ async def setup_test_databases():
             [
                 sys.executable,
                 "-m",
-                "elephantq.cli.main",
+                "soniq.cli.main",
                 "setup",
                 "--database-url",
                 db_url,
@@ -119,11 +119,11 @@ async def setup_test_databases():
 
 
 class TestDatabaseUrlIntegration:
-    """Test database URL integration with core ElephantQ commands."""
+    """Test database URL integration with core Soniq commands."""
 
     def test_setup_with_database_url(self):
         """Test that setup command works with --database-url parameter."""
-        test_db_url = _make_test_db_url("elephantq_db_url_test_1")
+        test_db_url = _make_test_db_url("soniq_db_url_test_1")
 
         result = run_cli_command(["setup", "--database-url", test_db_url])
         assert result.returncode == 0
@@ -132,7 +132,7 @@ class TestDatabaseUrlIntegration:
 
     def test_migrate_status_with_database_url(self):
         """Test that migrate-status command works with --database-url parameter."""
-        test_db_url = _make_test_db_url("elephantq_db_url_test_1")
+        test_db_url = _make_test_db_url("soniq_db_url_test_1")
 
         result = run_cli_command(["migrate-status", "--database-url", test_db_url])
         assert result.returncode == 0
@@ -140,7 +140,7 @@ class TestDatabaseUrlIntegration:
 
     def test_status_with_database_url(self):
         """Test that status command works with --database-url parameter."""
-        test_db_url = _make_test_db_url("elephantq_db_url_test_1")
+        test_db_url = _make_test_db_url("soniq_db_url_test_1")
 
         result = run_cli_command(["status", "--database-url", test_db_url])
         assert result.returncode == 0
@@ -148,7 +148,7 @@ class TestDatabaseUrlIntegration:
 
     def test_workers_with_database_url(self):
         """Test that workers command works with --database-url parameter."""
-        test_db_url = _make_test_db_url("elephantq_db_url_test_1")
+        test_db_url = _make_test_db_url("soniq_db_url_test_1")
 
         result = run_cli_command(["workers", "--database-url", test_db_url])
         assert result.returncode == 0
@@ -156,7 +156,7 @@ class TestDatabaseUrlIntegration:
 
     def test_start_worker_with_database_url(self):
         """Test that start command works with --database-url parameter."""
-        test_db_url = _make_test_db_url("elephantq_db_url_test_1")
+        test_db_url = _make_test_db_url("soniq_db_url_test_1")
 
         # Use --run-once to exit quickly
         result = run_cli_command(
@@ -175,8 +175,8 @@ class TestDatabaseUrlIntegration:
 
     def test_multiple_database_urls_isolation(self):
         """Test that different --database-url parameters target different databases."""
-        test_db_url_1 = _make_test_db_url("elephantq_db_url_test_1")
-        test_db_url_2 = _make_test_db_url("elephantq_db_url_test_2")
+        test_db_url_1 = _make_test_db_url("soniq_db_url_test_1")
+        test_db_url_2 = _make_test_db_url("soniq_db_url_test_2")
 
         # Both should work independently
         result1 = run_cli_command(["status", "--database-url", test_db_url_1])
@@ -195,15 +195,15 @@ class TestDatabaseContextSystem:
 
     def test_database_context_creation(self):
         """Test that database context can be created for different scenarios."""
-        from elephantq import ElephantQ
-        from elephantq.db.context import DatabaseContext
+        from soniq import Soniq
+        from soniq.db.context import DatabaseContext
 
         # Test global API context
         global_context = DatabaseContext.from_global_api()
         assert global_context is not None
 
         # Test instance context
-        instance = ElephantQ(database_url="postgresql://localhost/test")
+        instance = Soniq(database_url="postgresql://localhost/test")
         instance_context = DatabaseContext.from_instance(instance)
         assert instance_context is not None
 
@@ -214,15 +214,15 @@ class TestDatabaseContextSystem:
     @pytest.mark.asyncio
     async def test_context_manager_integration(self):
         """Test that context manager works with CLI commands."""
-        from elephantq import ElephantQ
-        from elephantq.db.context import (
+        from soniq import Soniq
+        from soniq.db.context import (
             DatabaseContext,
             get_current_context,
             set_current_context,
         )
 
         # Create instance and context
-        instance = ElephantQ(database_url=_make_test_db_url("elephantq_db_url_test_1"))
+        instance = Soniq(database_url=_make_test_db_url("soniq_db_url_test_1"))
         context = DatabaseContext.from_instance(instance)
 
         # Set context
@@ -233,18 +233,16 @@ class TestDatabaseContextSystem:
         assert current_context is context
 
         # Context should have the correct database URL
-        assert current_context.database_url == _make_test_db_url(
-            "elephantq_db_url_test_1"
-        )
+        assert current_context.database_url == _make_test_db_url("soniq_db_url_test_1")
 
     @pytest.mark.asyncio
     async def test_context_pool_access(self):
         """Test that context provides correct database pool access."""
-        from elephantq import ElephantQ
-        from elephantq.db.context import DatabaseContext
+        from soniq import Soniq
+        from soniq.db.context import DatabaseContext
 
         # Create instance and context
-        instance = ElephantQ(database_url=_make_test_db_url("elephantq_db_url_test_1"))
+        instance = Soniq(database_url=_make_test_db_url("soniq_db_url_test_1"))
         context = DatabaseContext.from_instance(instance)
 
         # Should be able to get pool
@@ -265,9 +263,7 @@ class TestBackwardsCompatibility:
 
         try:
             # Set global database URL
-            os.environ["ELEPHANTQ_DATABASE_URL"] = _make_test_db_url(
-                "elephantq_db_url_test_1"
-            )
+            os.environ["SONIQ_DATABASE_URL"] = _make_test_db_url("soniq_db_url_test_1")
 
             # Commands should work without --database-url parameter
             result = run_cli_command(["status"])
@@ -286,14 +282,14 @@ class TestBackwardsCompatibility:
     def test_global_api_python_imports_unchanged(self):
         """Test that Global API Python imports work unchanged."""
         # These imports should work exactly as before
-        import elephantq
-        from elephantq import ElephantQ
-        from elephantq.db.context import DatabaseContext
+        import soniq
+        from soniq import Soniq
+        from soniq.db.context import DatabaseContext
 
         # Global API should still be available
-        assert hasattr(elephantq, "job")
-        assert hasattr(elephantq, "enqueue")
+        assert hasattr(soniq, "job")
+        assert hasattr(soniq, "enqueue")
 
         # Instance API should also be available
-        assert ElephantQ is not None
+        assert Soniq is not None
         assert DatabaseContext is not None

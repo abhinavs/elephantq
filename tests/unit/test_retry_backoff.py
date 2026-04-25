@@ -2,7 +2,7 @@ import random
 
 import pytest
 
-from elephantq.core.retry import compute_retry_delay_seconds, set_rng
+from soniq.core.retry import compute_retry_delay_seconds, set_rng
 
 
 @pytest.fixture(autouse=True)

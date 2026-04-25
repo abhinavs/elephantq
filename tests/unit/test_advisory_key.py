@@ -1,8 +1,8 @@
-"""Unit tests for elephantq.core.leadership."""
+"""Unit tests for soniq.core.leadership."""
 
 import pytest
 
-from elephantq.core.leadership import advisory_key, with_advisory_lock
+from soniq.core.leadership import advisory_key, with_advisory_lock
 
 
 def test_advisory_key_is_deterministic():
@@ -14,7 +14,7 @@ def test_advisory_key_differs_across_names():
 
 
 def test_advisory_key_is_64_bit_signed():
-    k = advisory_key("elephantq.recurring_scheduler")
+    k = advisory_key("soniq.recurring_scheduler")
     assert -(2**63) <= k < 2**63
 
 
@@ -30,13 +30,13 @@ def test_advisory_key_stable_across_processes(tmp_path):
 
     script = tmp_path / "key_probe.py"
     script.write_text(
-        "from elephantq.core.leadership import advisory_key\n"
-        "print(advisory_key('elephantq.recurring_scheduler'))\n"
+        "from soniq.core.leadership import advisory_key\n"
+        "print(advisory_key('soniq.recurring_scheduler'))\n"
     )
     first = subprocess.check_output([sys.executable, str(script)]).decode().strip()
     second = subprocess.check_output([sys.executable, str(script)]).decode().strip()
     assert first == second
-    assert int(first) == advisory_key("elephantq.recurring_scheduler")
+    assert int(first) == advisory_key("soniq.recurring_scheduler")
 
 
 @pytest.mark.asyncio
@@ -68,6 +68,6 @@ async def test_with_advisory_lock_delegates_to_backend():
 
             return _CM()
 
-    async with with_advisory_lock(TrackingBackend(), "elephantq.tests") as leader:
+    async with with_advisory_lock(TrackingBackend(), "soniq.tests") as leader:
         assert leader is False
-    assert calls == ["elephantq.tests"]
+    assert calls == ["soniq.tests"]

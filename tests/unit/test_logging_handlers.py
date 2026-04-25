@@ -8,9 +8,9 @@ import pytest
 
 pytest.importorskip("structlog")
 
-os.environ.setdefault("ELEPHANTQ_LOGGING_ENABLED", "true")
+os.environ.setdefault("SONIQ_LOGGING_ENABLED", "true")
 
-from elephantq.features.logging import JobContext, JobLogger  # noqa: E402
+from soniq.features.logging import JobContext, JobLogger  # noqa: E402
 
 
 class TestJobLogger:

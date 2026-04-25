@@ -4,7 +4,7 @@ Tests for cli/registry.py — CLICommand and CLIRegistry.
 
 import argparse
 
-from elephantq.cli.registry import CLICommand, CLIRegistry, get_cli_registry
+from soniq.cli.registry import CLICommand, CLIRegistry, get_cli_registry
 
 
 def _dummy_handler(args):

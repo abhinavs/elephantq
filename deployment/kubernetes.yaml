@@ -1,67 +1,67 @@
-# ElephantQ Kubernetes Deployment
+# Soniq Kubernetes Deployment
 # Production-ready Kubernetes configuration
 
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: elephantq
+  name: soniq
 
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: elephantq-config
-  namespace: elephantq
+  name: soniq-config
+  namespace: soniq
 data:
-  ELEPHANTQ_LOG_LEVEL: "INFO"
-  ELEPHANTQ_JOBS_MODULES: "myapp.jobs"
+  SONIQ_LOG_LEVEL: "INFO"
+  SONIQ_JOBS_MODULES: "myapp.jobs"
 
 ---
 apiVersion: v1
 kind: Secret
 metadata:
-  name: elephantq-secrets
-  namespace: elephantq
+  name: soniq-secrets
+  namespace: soniq
 type: Opaque
 data:
   # Base64 encoded values - replace with actual values
-  ELEPHANTQ_DATABASE_URL: cG9zdGdyZXNxbDovL2Zhc3Rqb2I6cGFzc3dvcmRAbG9jYWxob3N0L2Zhc3Rqb2JfcHJvZA==
+  SONIQ_DATABASE_URL: cG9zdGdyZXNxbDovL2Zhc3Rqb2I6cGFzc3dvcmRAbG9jYWxob3N0L2Zhc3Rqb2JfcHJvZA==
 
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: elephantq-worker
-  namespace: elephantq
+  name: soniq-worker
+  namespace: soniq
   labels:
-    app: elephantq-worker
+    app: soniq-worker
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: elephantq-worker
+      app: soniq-worker
   template:
     metadata:
       labels:
-        app: elephantq-worker
+        app: soniq-worker
     spec:
       containers:
-      - name: elephantq-worker
-        image: elephantq/worker:latest
+      - name: soniq-worker
+        image: soniq/worker:latest
         imagePullPolicy: Always
         args: 
-          - "elephantq"
+          - "soniq"
           - "start"
           - "--concurrency=4"
         env:
-        - name: ELEPHANTQ_DATABASE_URL
+        - name: SONIQ_DATABASE_URL
           valueFrom:
             secretKeyRef:
-              name: elephantq-secrets
-              key: ELEPHANTQ_DATABASE_URL
+              name: soniq-secrets
+              key: SONIQ_DATABASE_URL
         envFrom:
         - configMapRef:
-            name: elephantq-config
+            name: soniq-config
         resources:
           requests:
             memory: "256Mi"
@@ -72,7 +72,7 @@ spec:
         livenessProbe:
           exec:
             command:
-            - elephantq
+            - soniq
             - health
           initialDelaySeconds: 30
           periodSeconds: 30
@@ -81,7 +81,7 @@ spec:
         readinessProbe:
           exec:
             command:
-            - elephantq
+            - soniq
             - ready
           initialDelaySeconds: 5
           periodSeconds: 10
@@ -99,38 +99,38 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: elephantq-dashboard
-  namespace: elephantq
+  name: soniq-dashboard
+  namespace: soniq
   labels:
-    app: elephantq-dashboard
+    app: soniq-dashboard
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: elephantq-dashboard
+      app: soniq-dashboard
   template:
     metadata:
       labels:
-        app: elephantq-dashboard
+        app: soniq-dashboard
     spec:
       containers:
-      - name: elephantq-dashboard
-        image: elephantq/dashboard:latest
+      - name: soniq-dashboard
+        image: soniq/dashboard:latest
         imagePullPolicy: Always
         args:
-          - "elephantq"
+          - "soniq"
           - "dashboard"
           - "--host=0.0.0.0"
           - "--port=8000"
         env:
-        - name: ELEPHANTQ_DATABASE_URL
+        - name: SONIQ_DATABASE_URL
           valueFrom:
             secretKeyRef:
-              name: elephantq-secrets
-              key: ELEPHANTQ_DATABASE_URL
+              name: soniq-secrets
+              key: SONIQ_DATABASE_URL
         envFrom:
         - configMapRef:
-            name: elephantq-config
+            name: soniq-config
         ports:
         - containerPort: 8000
           name: http
@@ -169,13 +169,13 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: elephantq-dashboard-service
-  namespace: elephantq
+  name: soniq-dashboard-service
+  namespace: soniq
   labels:
-    app: elephantq-dashboard
+    app: soniq-dashboard
 spec:
   selector:
-    app: elephantq-dashboard
+    app: soniq-dashboard
   ports:
   - name: http
     port: 80
@@ -187,8 +187,8 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: elephantq-dashboard-ingress
-  namespace: elephantq
+  name: soniq-dashboard-ingress
+  namespace: soniq
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
@@ -196,17 +196,17 @@ metadata:
 spec:
   tls:
   - hosts:
-    - elephantq.yourdomain.com
-    secretName: elephantq-tls
+    - soniq.yourdomain.com
+    secretName: soniq-tls
   rules:
-  - host: elephantq.yourdomain.com
+  - host: soniq.yourdomain.com
     http:
       paths:
       - path: /
         pathType: Prefix
         backend:
           service:
-            name: elephantq-dashboard-service
+            name: soniq-dashboard-service
             port:
               number: 80
 
@@ -214,38 +214,38 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: elephantq-priority-worker
-  namespace: elephantq
+  name: soniq-priority-worker
+  namespace: soniq
   labels:
-    app: elephantq-priority-worker
+    app: soniq-priority-worker
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: elephantq-priority-worker
+      app: soniq-priority-worker
   template:
     metadata:
       labels:
-        app: elephantq-priority-worker
+        app: soniq-priority-worker
     spec:
       containers:
-      - name: elephantq-priority-worker
-        image: elephantq/worker:latest
+      - name: soniq-priority-worker
+        image: soniq/worker:latest
         imagePullPolicy: Always
         args:
-          - "elephantq"
+          - "soniq"
           - "worker"
           - "--concurrency=2"
           - "--queues=urgent"
         env:
-        - name: ELEPHANTQ_DATABASE_URL
+        - name: SONIQ_DATABASE_URL
           valueFrom:
             secretKeyRef:
-              name: elephantq-secrets
-              key: ELEPHANTQ_DATABASE_URL
+              name: soniq-secrets
+              key: SONIQ_DATABASE_URL
         envFrom:
         - configMapRef:
-            name: elephantq-config
+            name: soniq-config
         resources:
           requests:
             memory: "128Mi"
@@ -256,7 +256,7 @@ spec:
         livenessProbe:
           exec:
             command:
-            - elephantq
+            - soniq
             - health
           initialDelaySeconds: 30
           periodSeconds: 30
@@ -265,7 +265,7 @@ spec:
         readinessProbe:
           exec:
             command:
-            - elephantq
+            - soniq
             - ready
           initialDelaySeconds: 5
           periodSeconds: 10
@@ -277,13 +277,13 @@ spec:
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: elephantq-worker-hpa
-  namespace: elephantq
+  name: soniq-worker-hpa
+  namespace: soniq
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: elephantq-worker
+    name: soniq-worker
   minReplicas: 2
   maxReplicas: 10
   metrics:
@@ -304,14 +304,14 @@ spec:
 apiVersion: v1
 kind: ServiceMonitor
 metadata:
-  name: elephantq-metrics
-  namespace: elephantq
+  name: soniq-metrics
+  namespace: soniq
   labels:
-    app: elephantq
+    app: soniq
 spec:
   selector:
     matchLabels:
-      app: elephantq-dashboard
+      app: soniq-dashboard
   endpoints:
   - port: http
     path: /metrics

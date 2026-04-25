@@ -3,16 +3,16 @@
 Keep payloads small: store files elsewhere and pass IDs/paths.
 """
 
-import elephantq
+import soniq
 
 
-@elephantq.job(retries=3, retry_backoff=True, retry_delay=2)
+@soniq.job(retries=3, retry_backoff=True, retry_delay=2)
 async def process_file(file_id: str, storage_path: str):
     print(f"Processing file {file_id} at {storage_path}")
 
 
 async def main() -> None:
-    await elephantq.enqueue(
+    await soniq.enqueue(
         process_file,
         file_id="file_abc",
         storage_path="/tmp/uploads/file_abc.bin",

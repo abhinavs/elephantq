@@ -23,7 +23,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 @pytest.mark.asyncio
 async def test_signal_handler_setup_and_cleanup():
     """Test signal handler setup and cleanup in isolation"""
-    from elephantq.utils.signals import GracefulSignalHandler
+    from soniq.utils.signals import GracefulSignalHandler
 
     handler = GracefulSignalHandler()
     shutdown_event = asyncio.Event()
@@ -47,7 +47,7 @@ async def test_signal_handler_setup_and_cleanup():
 @pytest.mark.asyncio
 async def test_signal_handler_triggers_event():
     """Test that signal handlers properly trigger shutdown event"""
-    from elephantq.utils.signals import GracefulSignalHandler
+    from soniq.utils.signals import GracefulSignalHandler
 
     handler = GracefulSignalHandler()
     shutdown_event = asyncio.Event()
@@ -71,7 +71,7 @@ async def test_signal_handler_triggers_event():
 @pytest.mark.asyncio
 async def test_global_signal_handlers():
     """Test global signal handler utilities"""
-    from elephantq.utils.signals import (
+    from soniq.utils.signals import (
         cleanup_global_signal_handlers,
         setup_global_signal_handlers,
     )
@@ -101,20 +101,20 @@ class TestWorkerSignalHandling:
 import asyncio
 import os
 
-import elephantq
+import soniq
 
 async def main():
-    # Configure elephantq
-    await elephantq.configure(
-        database_url=os.environ.get("ELEPHANTQ_DATABASE_URL", "postgresql://localhost/elephantq_test")
+    # Configure soniq
+    await soniq.configure(
+        database_url=os.environ.get("SONIQ_DATABASE_URL", "postgresql://localhost/soniq_test")
     )
 
-    @elephantq.job()
+    @soniq.job()
     async def test_job():
         return "test"
 
     # Start worker using global API
-    await elephantq.run_worker(concurrency=1)
+    await soniq.run_worker(concurrency=1)
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -124,11 +124,11 @@ if __name__ == "__main__":
 import asyncio
 import os
 
-from elephantq import ElephantQ
+from soniq import Soniq
 
 async def main():
-    app = ElephantQ(
-        database_url=os.environ.get("ELEPHANTQ_DATABASE_URL", "postgresql://localhost/elephantq_test")
+    app = Soniq(
+        database_url=os.environ.get("SONIQ_DATABASE_URL", "postgresql://localhost/soniq_test")
     )
 
     @app.job()
@@ -163,7 +163,7 @@ if __name__ == "__main__":
                 text=True,
                 env={
                     **os.environ,
-                    "ELEPHANTQ_DATABASE_URL": TEST_DATABASE_URL,
+                    "SONIQ_DATABASE_URL": TEST_DATABASE_URL,
                     "PYTHONPATH": str(PROJECT_ROOT),
                 },
             )
@@ -230,7 +230,7 @@ if __name__ == "__main__":
                 text=True,
                 env={
                     **os.environ,
-                    "ELEPHANTQ_DATABASE_URL": TEST_DATABASE_URL,
+                    "SONIQ_DATABASE_URL": TEST_DATABASE_URL,
                     "PYTHONPATH": str(PROJECT_ROOT),
                 },
             )
@@ -297,7 +297,7 @@ if __name__ == "__main__":
                 text=True,
                 env={
                     **os.environ,
-                    "ELEPHANTQ_DATABASE_URL": TEST_DATABASE_URL,
+                    "SONIQ_DATABASE_URL": TEST_DATABASE_URL,
                     "PYTHONPATH": str(PROJECT_ROOT),
                 },
             )
@@ -332,7 +332,7 @@ if __name__ == "__main__":
                 filtered_lines = [
                     line
                     for line in output.strip().splitlines()
-                    if "ELEPHANTQ_SKIP_UPDATE_LOCK" not in line
+                    if "SONIQ_SKIP_UPDATE_LOCK" not in line
                 ]
                 filtered_output = "\n".join(filtered_lines).strip()
 
@@ -374,7 +374,7 @@ if __name__ == "__main__":
                 text=True,
                 env={
                     **os.environ,
-                    "ELEPHANTQ_DATABASE_URL": TEST_DATABASE_URL,
+                    "SONIQ_DATABASE_URL": TEST_DATABASE_URL,
                     "PYTHONPATH": str(PROJECT_ROOT),
                 },
             )
@@ -433,18 +433,18 @@ class TestCLISignalHandling:
 
     @pytest.mark.asyncio
     async def test_cli_worker_sigterm_shutdown(self):
-        """Test that `elephantq start` handles SIGTERM gracefully"""
+        """Test that `soniq start` handles SIGTERM gracefully"""
 
         # Start CLI worker process
         process = subprocess.Popen(
-            [sys.executable, "-m", "elephantq.cli.main", "start", "--concurrency", "1"],
+            [sys.executable, "-m", "soniq.cli.main", "start", "--concurrency", "1"],
             cwd=str(PROJECT_ROOT),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             env={
                 **os.environ,
-                "ELEPHANTQ_DATABASE_URL": TEST_DATABASE_URL,
+                "SONIQ_DATABASE_URL": TEST_DATABASE_URL,
                 "PYTHONPATH": str(PROJECT_ROOT),
             },
         )
@@ -496,18 +496,18 @@ class TestCLISignalHandling:
 
     @pytest.mark.asyncio
     async def test_cli_worker_sigint_shutdown(self):
-        """Test that `elephantq start` handles SIGINT (Ctrl+C) gracefully"""
+        """Test that `soniq start` handles SIGINT (Ctrl+C) gracefully"""
 
         # Start CLI worker process
         process = subprocess.Popen(
-            [sys.executable, "-m", "elephantq.cli.main", "start", "--concurrency", "1"],
+            [sys.executable, "-m", "soniq.cli.main", "start", "--concurrency", "1"],
             cwd=str(PROJECT_ROOT),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             env={
                 **os.environ,
-                "ELEPHANTQ_DATABASE_URL": TEST_DATABASE_URL,
+                "SONIQ_DATABASE_URL": TEST_DATABASE_URL,
                 "PYTHONPATH": str(PROJECT_ROOT),
             },
         )
@@ -562,7 +562,7 @@ class TestCLISignalHandling:
 @pytest.mark.asyncio
 async def test_signal_handler_cross_platform_compatibility():
     """Test that signal handlers work across different platforms"""
-    from elephantq.utils.signals import GracefulSignalHandler
+    from soniq.utils.signals import GracefulSignalHandler
 
     handler = GracefulSignalHandler()
     shutdown_event = asyncio.Event()
@@ -586,7 +586,7 @@ async def test_signal_handler_cross_platform_compatibility():
 @pytest.mark.asyncio
 async def test_signal_handler_multiple_setup_cleanup():
     """Test that multiple setup/cleanup cycles work correctly"""
-    from elephantq.utils.signals import GracefulSignalHandler
+    from soniq.utils.signals import GracefulSignalHandler
 
     handler = GracefulSignalHandler()
 

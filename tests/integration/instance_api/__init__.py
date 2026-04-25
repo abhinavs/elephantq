@@ -1,2 +1,2 @@
 # Instance API Tests
-# Tests that use the instance-based ElephantQ API (app = ElephantQ(), app.job, etc.)
+# Tests that use the instance-based Soniq API (app = Soniq(), app.job, etc.)

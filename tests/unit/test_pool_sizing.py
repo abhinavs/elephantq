@@ -7,22 +7,22 @@ operators routinely missed. Now we refuse to start.
 
 import pytest
 
-from elephantq import ElephantQ
-from elephantq.app import _pool_sizing_error
-from elephantq.errors import ElephantQError
+from soniq import Soniq
+from soniq.app import _pool_sizing_error
+from soniq.errors import SoniqError
 
 
 def test_pool_sizing_error_triggers_when_undersized():
     err = _pool_sizing_error(concurrency=10, pool_max_size=5, pool_headroom=2)
     assert err is not None
-    assert isinstance(err, ElephantQError)
-    assert err.error_code == "ELEPHANTQ_POOL_TOO_SMALL"
+    assert isinstance(err, SoniqError)
+    assert err.error_code == "SONIQ_POOL_TOO_SMALL"
     # Actionable: both the numbers and the env vars belong in the message.
     rendered = str(err)
     assert "10" in rendered  # concurrency
     assert "5" in rendered  # pool_max_size
     assert "2" in rendered  # headroom
-    assert "ELEPHANTQ_POOL_MAX_SIZE" in rendered
+    assert "SONIQ_POOL_MAX_SIZE" in rendered
 
 
 def test_pool_sizing_error_none_when_adequate():
@@ -48,27 +48,27 @@ def test_pool_sizing_error_zero_max_size_skipped():
 @pytest.mark.asyncio
 async def test_run_worker_raises_when_pool_too_small(monkeypatch):
     """End-to-end: run_worker refuses to start with an undersized pool."""
-    monkeypatch.setenv("ELEPHANTQ_DATABASE_URL", "postgresql://localhost/elephantq")
+    monkeypatch.setenv("SONIQ_DATABASE_URL", "postgresql://localhost/soniq")
 
-    app = ElephantQ(pool_max_size=2, pool_headroom=2)
+    app = Soniq(pool_max_size=2, pool_headroom=2)
     # Attach a dummy postgres-looking backend so the check fires without
     # requiring a real database.
     app._backend = _FakePoolBackend()
     app._initialized = True
 
-    with pytest.raises(ElephantQError, match="ELEPHANTQ_POOL_TOO_SMALL"):
+    with pytest.raises(SoniqError, match="SONIQ_POOL_TOO_SMALL"):
         await app.run_worker(concurrency=4, run_once=True)
 
 
 @pytest.mark.asyncio
 async def test_run_worker_ok_with_adequate_pool(monkeypatch):
     """Regression guard: adequate pool does not raise."""
-    monkeypatch.setenv("ELEPHANTQ_DATABASE_URL", "postgresql://localhost/elephantq")
+    monkeypatch.setenv("SONIQ_DATABASE_URL", "postgresql://localhost/soniq")
 
-    app = ElephantQ(pool_max_size=10, pool_headroom=2)
+    app = Soniq(pool_max_size=10, pool_headroom=2)
 
     # With the memory backend there is no pool — check should be skipped.
-    from elephantq.backends.memory import MemoryBackend
+    from soniq.backends.memory import MemoryBackend
 
     app._backend = MemoryBackend()
     app._initialized = True

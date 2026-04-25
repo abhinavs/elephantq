@@ -11,7 +11,7 @@ import pytest
 @pytest.mark.asyncio
 async def test_claim_recurring_run_returns_true_on_first_claim(monkeypatch):
     """First scheduler to claim a due job should succeed."""
-    from elephantq.features.recurring import EnhancedRecurringManager
+    from soniq.features.recurring import EnhancedRecurringManager
 
     manager = EnhancedRecurringManager()
 

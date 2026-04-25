@@ -1,24 +1,24 @@
 """
-Test suite for errors.py — ElephantQError and MigrationError.
+Test suite for errors.py — SoniqError and MigrationError.
 """
 
 import pytest
 
-from elephantq.errors import ElephantQError, MigrationError
+from soniq.errors import MigrationError, SoniqError
 
 
-class TestElephantQError:
+class TestSoniqError:
     def test_basic_error_creation(self):
-        error = ElephantQError(message="Test error", error_code="TEST_ERROR")
+        error = SoniqError(message="Test error", error_code="TEST_ERROR")
         assert error.message == "Test error"
         assert error.error_code == "TEST_ERROR"
         assert error.context == {}
         assert error.suggestions == []
-        assert "ElephantQ Error [TEST_ERROR]: Test error" in str(error)
+        assert "Soniq Error [TEST_ERROR]: Test error" in str(error)
 
     def test_error_with_context(self):
         context = {"user_id": 123, "operation": "test_op"}
-        error = ElephantQError(
+        error = SoniqError(
             message="Context error", error_code="CONTEXT_ERROR", context=context
         )
         assert error.context == context
@@ -28,7 +28,7 @@ class TestElephantQError:
 
     def test_error_with_suggestions(self):
         suggestions = ["Check configuration", "Restart service"]
-        error = ElephantQError(
+        error = SoniqError(
             message="Suggestion error",
             error_code="SUGGESTION_ERROR",
             suggestions=suggestions,
@@ -36,7 +36,7 @@ class TestElephantQError:
         assert error.suggestions == suggestions
 
     def test_empty_context_and_suggestions(self):
-        error = ElephantQError(
+        error = SoniqError(
             message="Test", error_code="TEST", context={}, suggestions=[]
         )
         error_str = str(error)
@@ -65,8 +65,8 @@ class TestMigrationError:
 
 
 class TestErrorInheritance:
-    def test_migration_inherits_from_elephantq_error(self):
-        assert issubclass(MigrationError, ElephantQError)
+    def test_migration_inherits_from_soniq_error(self):
+        assert issubclass(MigrationError, SoniqError)
         assert issubclass(MigrationError, Exception)
 
     def test_error_can_be_caught_as_exception(self):

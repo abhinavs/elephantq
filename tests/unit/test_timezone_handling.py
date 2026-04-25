@@ -1,5 +1,5 @@
 """
-Tests that ElephantQ handles timezones correctly for users.
+Tests that Soniq handles timezones correctly for users.
 
 Users should be able to pass datetimes in any timezone (or naive local time)
 and the framework converts to UTC for storage as TIMESTAMP WITH TIME ZONE.
@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from elephantq.core.queue import _normalize_scheduled_time
+from soniq.core.queue import _normalize_scheduled_time
 
 
 class TestNormalizeScheduledTime:
@@ -67,12 +67,12 @@ class TestSchedulingBuilderTimezones:
 
     def test_in_seconds_produces_utc_aware(self):
         """in_seconds() should produce a UTC-aware datetime."""
-        from elephantq.features.scheduling import JobScheduleBuilder
+        from soniq.features.scheduling import JobScheduleBuilder
 
         async def dummy():
             pass
 
-        dummy._elephantq_name = "test.dummy"
+        dummy._soniq_name = "test.dummy"
 
         builder = JobScheduleBuilder(dummy)
         builder.in_seconds(30)
@@ -80,12 +80,12 @@ class TestSchedulingBuilderTimezones:
 
     def test_in_seconds_normalizes_to_correct_utc(self):
         """After normalization, in_seconds() result should be correct UTC."""
-        from elephantq.features.scheduling import JobScheduleBuilder
+        from soniq.features.scheduling import JobScheduleBuilder
 
         async def dummy():
             pass
 
-        dummy._elephantq_name = "test.dummy"
+        dummy._soniq_name = "test.dummy"
 
         builder = JobScheduleBuilder(dummy)
         builder.in_seconds(60)

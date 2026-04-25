@@ -1,18 +1,18 @@
 from fastapi import FastAPI
 
-import elephantq
+import soniq
 
-await elephantq.configure(database_url="postgresql://localhost/myapp")
+await soniq.configure(database_url="postgresql://localhost/myapp")
 
 app = FastAPI()
 
 
-@elephantq.job()
+@soniq.job()
 async def process_upload(file_path: str):
     return f"Processed {file_path}"
 
 
 @app.post("/upload")
 async def upload(file_path: str):
-    job_id = await elephantq.enqueue(process_upload, file_path=file_path)
+    job_id = await soniq.enqueue(process_upload, file_path=file_path)
     return {"job_id": job_id}

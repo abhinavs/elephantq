@@ -12,7 +12,7 @@ def test_cwd_added_to_sys_path_when_missing(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(sys, "path", [p for p in sys.path if p != str(tmp_path)])
 
-    from elephantq.discovery import _ensure_cwd_on_path
+    from soniq.discovery import _ensure_cwd_on_path
 
     _ensure_cwd_on_path()
 
@@ -24,7 +24,7 @@ def test_cwd_not_duplicated_when_already_on_path(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(sys, "path", [str(tmp_path)] + sys.path)
 
-    from elephantq.discovery import _ensure_cwd_on_path
+    from soniq.discovery import _ensure_cwd_on_path
 
     _ensure_cwd_on_path()
 
@@ -32,21 +32,21 @@ def test_cwd_not_duplicated_when_already_on_path(monkeypatch, tmp_path):
 
 
 def test_parse_single_module():
-    from elephantq.discovery import parse_jobs_modules
+    from soniq.discovery import parse_jobs_modules
 
     result = parse_jobs_modules("app.tasks")
     assert result == ["app.tasks"]
 
 
 def test_parse_multiple_modules_with_whitespace():
-    from elephantq.discovery import parse_jobs_modules
+    from soniq.discovery import parse_jobs_modules
 
     result = parse_jobs_modules("app.tasks, billing.tasks ,notifications.jobs")
     assert result == ["app.tasks", "billing.tasks", "notifications.jobs"]
 
 
 def test_parse_ignores_empty_segments():
-    from elephantq.discovery import parse_jobs_modules
+    from soniq.discovery import parse_jobs_modules
 
     result = parse_jobs_modules("app.tasks,,  ,billing.tasks")
     assert result == ["app.tasks", "billing.tasks"]
@@ -61,7 +61,7 @@ def test_discover_imports_all_modules(tmp_path, monkeypatch):
 
     monkeypatch.chdir(tmp_path)
 
-    from elephantq.discovery import discover_and_import_modules
+    from soniq.discovery import discover_and_import_modules
 
     discover_and_import_modules(["mypkg.tasks_a", "mypkg.tasks_b"])
 
@@ -75,7 +75,7 @@ def test_discover_imports_all_modules(tmp_path, monkeypatch):
 def test_all_failures_reported_on_bad_modules(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
 
-    from elephantq.discovery import discover_and_import_modules
+    from soniq.discovery import discover_and_import_modules
 
     with pytest.raises(SystemExit):
         discover_and_import_modules(["does.not.exist.a", "does.not.exist.b"])
@@ -94,7 +94,7 @@ def test_partial_failure_reports_only_bad_modules(tmp_path, monkeypatch, capsys)
 
     monkeypatch.chdir(tmp_path)
 
-    from elephantq.discovery import discover_and_import_modules
+    from soniq.discovery import discover_and_import_modules
 
     with pytest.raises(SystemExit):
         discover_and_import_modules(["goodpkg.tasks", "does.not.exist"])
@@ -108,7 +108,7 @@ def test_partial_failure_reports_only_bad_modules(tmp_path, monkeypatch, capsys)
 def test_hint_shown_for_missing_module(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
 
-    from elephantq.discovery import discover_and_import_modules
+    from soniq.discovery import discover_and_import_modules
 
     with pytest.raises(SystemExit):
         discover_and_import_modules(["totally.missing.module"])
@@ -126,7 +126,7 @@ def test_no_hint_for_syntax_error_in_module(tmp_path, monkeypatch, capsys):
 
     monkeypatch.chdir(tmp_path)
 
-    from elephantq.discovery import discover_and_import_modules
+    from soniq.discovery import discover_and_import_modules
 
     with pytest.raises(SystemExit):
         discover_and_import_modules(["brokenpkg.tasks"])

@@ -11,7 +11,7 @@ class TestCleanupStaleWorkersParameterized:
     async def test_interval_is_parameterized(self):
         from contextlib import asynccontextmanager
 
-        from elephantq.core.heartbeat import cleanup_stale_workers
+        from soniq.core.heartbeat import cleanup_stale_workers
 
         mock_conn = AsyncMock()
         mock_conn.fetch = AsyncMock(return_value=[])
@@ -40,7 +40,7 @@ class TestGetDeliveryStatsParameterized:
     async def test_interval_hours_is_parameterized(self, monkeypatch):
         from contextlib import asynccontextmanager
 
-        from elephantq.features import webhooks
+        from soniq.features import webhooks
 
         mock_conn = AsyncMock()
         mock_conn.fetchrow = AsyncMock(
@@ -78,14 +78,14 @@ class TestSecretKeyNotLogged:
     def test_generated_key_not_in_logs(self, caplog, monkeypatch):
         pytest.importorskip("cryptography")
         # Remove any existing key so the manager generates one
-        monkeypatch.delenv("ELEPHANTQ_SECRET_KEY", raising=False)
+        monkeypatch.delenv("SONIQ_SECRET_KEY", raising=False)
 
         # Reset the global manager so a fresh one is created
-        import elephantq.features.signing as signing_mod
+        import soniq.features.signing as signing_mod
 
         signing_mod._secret_manager = None
 
-        with caplog.at_level(logging.DEBUG, logger="elephantq.features.signing"):
+        with caplog.at_level(logging.DEBUG, logger="soniq.features.signing"):
             manager = signing_mod.SecretManager()
 
         # The warning message should not contain the actual key
@@ -109,6 +109,6 @@ class TestRowsAffectedHelper:
         ],
     )
     def test_rows_affected(self, status_string, expected):
-        from elephantq.db.helpers import rows_affected
+        from soniq.db.helpers import rows_affected
 
         assert rows_affected(status_string) == expected

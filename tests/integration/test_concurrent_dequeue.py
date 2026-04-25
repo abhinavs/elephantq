@@ -9,15 +9,15 @@ import asyncio
 
 import pytest
 
-import elephantq
+import soniq
 
 
-@elephantq.job(queue="race-test")
+@soniq.job(queue="race-test")
 async def race_job(n: int):
     pass
 
 
-@elephantq.job(queue="race-test", unique=True)
+@soniq.job(queue="race-test", unique=True)
 async def unique_race_job(key: str):
     pass
 
@@ -28,7 +28,7 @@ async def test_concurrent_dequeue_no_duplicates():
     Multiple async tasks racing to dequeue a single job:
     exactly one should succeed, the rest should get None.
     """
-    app = elephantq._get_global_app()
+    app = soniq._get_global_app()
     backend = app._backend
 
     # Enqueue exactly 1 job
@@ -53,7 +53,7 @@ async def test_concurrent_dequeue_distributes_jobs():
     """
     10 jobs, 5 concurrent workers: all 10 should be claimed with zero duplicates.
     """
-    app = elephantq._get_global_app()
+    app = soniq._get_global_app()
     backend = app._backend
 
     # Enqueue 10 jobs
@@ -84,7 +84,7 @@ async def test_unique_job_concurrent_enqueue():
     10 concurrent enqueue calls with unique=True and same args:
     only 1 job should exist in the database.
     """
-    app = elephantq._get_global_app()
+    app = soniq._get_global_app()
     pool = await app.get_pool()
 
     # Launch 10 concurrent enqueues with same args
@@ -103,7 +103,7 @@ async def test_unique_job_concurrent_enqueue():
     async with pool.acquire() as conn:
         count = await conn.fetchval(
             """
-            SELECT COUNT(*) FROM elephantq_jobs
+            SELECT COUNT(*) FROM soniq_jobs
             WHERE job_name LIKE '%unique_race_job%' AND status = 'queued'
             """
         )

@@ -15,10 +15,10 @@ from pydantic import BaseModel
 from tests.db_utils import TEST_DATABASE_URL
 
 # Ensure we're using test database
-os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
+os.environ["SONIQ_DATABASE_URL"] = TEST_DATABASE_URL
 
-import elephantq  # noqa: E402
-from elephantq.db.connection import get_pool  # noqa: E402
+import soniq  # noqa: E402
+from soniq.db.connection import get_pool  # noqa: E402
 
 
 class JobArgsModel(BaseModel):
@@ -27,13 +27,13 @@ class JobArgsModel(BaseModel):
 
 
 # Register test jobs at module level
-@elephantq.job(args_model=JobArgsModel)
+@soniq.job(args_model=JobArgsModel)
 async def validated_test_job(message: str, count: int = 1):
     """Test job with Pydantic validation"""
     return f"processed: {message} x{count}"
 
 
-@elephantq.job()
+@soniq.job()
 async def simple_test_job(message: str):
     """Simple test job without validation"""
     return f"processed: {message}"
@@ -58,9 +58,9 @@ async def test_corrupted_json_data(clean_db):
     This test verifies that if args somehow contain invalid data,
     the job is dead-lettered via the old conn-based processor path.
     """
-    from elephantq.worker import Worker
+    from soniq.worker import Worker
 
-    global_app = elephantq._get_global_app()
+    global_app = soniq._get_global_app()
     app_pool = await global_app.get_pool()
     registry = global_app._get_job_registry()
     backend = global_app._backend
@@ -70,7 +70,7 @@ async def test_corrupted_json_data(clean_db):
     async with app_pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO elephantq_jobs (id, job_name, args, queue, status, max_attempts)
+            INSERT INTO soniq_jobs (id, job_name, args, queue, status, max_attempts)
             VALUES ($1, $2, $3, 'test', 'queued', 3)
             """,
             job_id,
@@ -86,7 +86,7 @@ async def test_corrupted_json_data(clean_db):
 
     # Job should complete normally (args are valid)
     async with app_pool.acquire() as conn:
-        job = await conn.fetchrow("SELECT * FROM elephantq_jobs WHERE id = $1", job_id)
+        job = await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
         assert job["status"] in (
             "done",
             "dead_letter",
@@ -97,7 +97,7 @@ async def test_corrupted_json_data(clean_db):
 async def test_corrupted_validation_data(clean_db):
     """Test handling of data that fails Pydantic validation"""
     # Use global app pool for consistency
-    global_app = elephantq._get_global_app()
+    global_app = soniq._get_global_app()
     app_pool = await global_app.get_pool()
 
     # Insert job with data that fails validation
@@ -105,7 +105,7 @@ async def test_corrupted_validation_data(clean_db):
     async with app_pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO elephantq_jobs (id, job_name, args, queue, status, max_attempts)
+            INSERT INTO soniq_jobs (id, job_name, args, queue, status, max_attempts)
             VALUES ($1, $2, $3, 'test', 'queued', 3)
             """,
             job_id,
@@ -115,13 +115,13 @@ async def test_corrupted_validation_data(clean_db):
 
     # Process the job
     async with app_pool.acquire() as conn:
-        processed = await elephantq.run_worker(run_once=True, queues=["test"])
+        processed = await soniq.run_worker(run_once=True, queues=["test"])
 
     assert processed  # Job should be processed (moved to dead letter)
 
     # Verify job was moved to dead letter
     async with app_pool.acquire() as conn:
-        job = await conn.fetchrow("SELECT * FROM elephantq_jobs WHERE id = $1", job_id)
+        job = await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
         assert job["status"] == "dead_letter"
         assert "Corrupted argument data" in job["last_error"]
         assert job["attempts"] == 3  # Set to max attempts
@@ -131,7 +131,7 @@ async def test_corrupted_validation_data(clean_db):
 async def test_missing_required_arguments(clean_db):
     """Test handling of missing required function arguments"""
     # Use global app pool for consistency
-    global_app = elephantq._get_global_app()
+    global_app = soniq._get_global_app()
     app_pool = await global_app.get_pool()
 
     # Insert job with missing required arguments
@@ -139,7 +139,7 @@ async def test_missing_required_arguments(clean_db):
     async with app_pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO elephantq_jobs (id, job_name, args, queue, status, max_attempts)
+            INSERT INTO soniq_jobs (id, job_name, args, queue, status, max_attempts)
             VALUES ($1, $2, $3, 'test', 'queued', 3)
             """,
             job_id,
@@ -149,13 +149,13 @@ async def test_missing_required_arguments(clean_db):
 
     # Process the job
     async with app_pool.acquire() as conn:
-        processed = await elephantq.run_worker(run_once=True, queues=["test"])
+        processed = await soniq.run_worker(run_once=True, queues=["test"])
 
     assert processed  # Job should be processed (moved to dead letter)
 
     # Verify job ends up in dead letter after exhausting retries
     async with app_pool.acquire() as conn:
-        job = await conn.fetchrow("SELECT * FROM elephantq_jobs WHERE id = $1", job_id)
+        job = await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
         assert job["status"] == "dead_letter"
         # TypeError from missing argument is now retried (not immediately dead-lettered),
         # so after max_attempts it lands in dead letter with "Max retries exceeded"
@@ -170,7 +170,7 @@ async def test_missing_required_arguments(clean_db):
 async def test_extra_unexpected_arguments(clean_db):
     """Test handling of extra unexpected function arguments"""
     # Use global app pool for consistency
-    global_app = elephantq._get_global_app()
+    global_app = soniq._get_global_app()
     app_pool = await global_app.get_pool()
 
     # Insert job with extra unexpected arguments
@@ -178,7 +178,7 @@ async def test_extra_unexpected_arguments(clean_db):
     async with app_pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO elephantq_jobs (id, job_name, args, queue, status, max_attempts)
+            INSERT INTO soniq_jobs (id, job_name, args, queue, status, max_attempts)
             VALUES ($1, $2, $3, 'test', 'queued', 3)
             """,
             job_id,
@@ -194,13 +194,13 @@ async def test_extra_unexpected_arguments(clean_db):
 
     # Process the job
     async with app_pool.acquire() as conn:
-        processed = await elephantq.run_worker(run_once=True, queues=["test"])
+        processed = await soniq.run_worker(run_once=True, queues=["test"])
 
     assert processed  # Job should be processed (moved to dead letter)
 
     # Verify job ends up in dead letter after exhausting retries
     async with app_pool.acquire() as conn:
-        job = await conn.fetchrow("SELECT * FROM elephantq_jobs WHERE id = $1", job_id)
+        job = await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
         assert job["status"] == "dead_letter"
         # TypeError from extra args is now retried, ending in dead letter
         assert (
@@ -214,7 +214,7 @@ async def test_extra_unexpected_arguments(clean_db):
 async def test_invalid_json_structure(clean_db):
     """Test handling of JSON with invalid structure"""
     # Use global app pool for consistency
-    global_app = elephantq._get_global_app()
+    global_app = soniq._get_global_app()
     app_pool = await global_app.get_pool()
 
     # Insert job with valid JSON but that will cause parsing issues
@@ -222,7 +222,7 @@ async def test_invalid_json_structure(clean_db):
     async with app_pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO elephantq_jobs (id, job_name, args, queue, status, max_attempts)
+            INSERT INTO soniq_jobs (id, job_name, args, queue, status, max_attempts)
             VALUES ($1, $2, $3, 'test', 'queued', 3)
             """,
             job_id,
@@ -232,13 +232,13 @@ async def test_invalid_json_structure(clean_db):
 
     # Process the job
     async with app_pool.acquire() as conn:
-        processed = await elephantq.run_worker(run_once=True, queues=["test"])
+        processed = await soniq.run_worker(run_once=True, queues=["test"])
 
     assert processed  # Job should be processed (moved to dead letter)
 
     # Verify job was moved to dead letter
     async with app_pool.acquire() as conn:
-        job = await conn.fetchrow("SELECT * FROM elephantq_jobs WHERE id = $1", job_id)
+        job = await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
         assert job["status"] == "dead_letter"
         # This might show up as argument mismatch rather than JSON corruption
         assert "Corrupted" in job["last_error"] or "argument" in job["last_error"]
@@ -248,21 +248,21 @@ async def test_invalid_json_structure(clean_db):
 async def test_valid_job_still_processes_normally(clean_db):
     """Test that valid jobs are not affected by corruption handling"""
     # Use global app pool for consistency
-    global_app = elephantq._get_global_app()
+    global_app = soniq._get_global_app()
     app_pool = await global_app.get_pool()
 
     # Enqueue a valid job
-    job_id = await elephantq.enqueue(simple_test_job, message="valid_test")
+    job_id = await soniq.enqueue(simple_test_job, message="valid_test")
 
     # Process the job
     async with app_pool.acquire() as conn:
-        processed = await elephantq.run_worker(run_once=True, queues=["default"])
+        processed = await soniq.run_worker(run_once=True, queues=["default"])
 
     assert processed  # Job should be processed successfully
 
     # Verify job completed successfully
     async with app_pool.acquire() as conn:
-        job = await conn.fetchrow("SELECT * FROM elephantq_jobs WHERE id = $1", job_id)
+        job = await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
         assert job["status"] in ["done", None]  # Either done or deleted (TTL=0)
 
 
@@ -270,21 +270,21 @@ async def test_valid_job_still_processes_normally(clean_db):
 async def test_pydantic_validation_success(clean_db):
     """Test that Pydantic validation works for valid data"""
     # Use global app pool for consistency
-    global_app = elephantq._get_global_app()
+    global_app = soniq._get_global_app()
     app_pool = await global_app.get_pool()
 
     # Debug: Check job registration
     print(f"Job function: {validated_test_job}")
-    print(f"Job name: {validated_test_job._elephantq_name}")
+    print(f"Job name: {validated_test_job._soniq_name}")
 
     # Debug: Check global app database configuration
-    global_app = elephantq._get_global_app()
+    global_app = soniq._get_global_app()
     print(f"Global app database URL: {global_app.settings.database_url}")
     print("Test pool database from get_pool(): Expected test database")
 
     # Enqueue a valid job with Pydantic validation
     try:
-        job_id = await elephantq.enqueue(validated_test_job, message="valid", count=5)
+        job_id = await soniq.enqueue(validated_test_job, message="valid", count=5)
         print(f"Enqueued job ID: {job_id}")
     except Exception as e:
         print(f"Enqueue failed: {e}")
@@ -295,32 +295,32 @@ async def test_pydantic_validation_success(clean_db):
 
     # Debug: Check database state from test pool
     async with app_pool.acquire() as conn:
-        jobs = await conn.fetch("SELECT job_name, status FROM elephantq_jobs")
+        jobs = await conn.fetch("SELECT job_name, status FROM soniq_jobs")
         print(f"Jobs in test database pool: {[dict(job) for job in jobs]}")
 
     # Debug: Check database state from global app pool
-    global_app = elephantq._get_global_app()
+    global_app = soniq._get_global_app()
     await global_app._ensure_initialized()
     async with global_app._pool.acquire() as conn:
-        jobs_global = await conn.fetch("SELECT job_name, status FROM elephantq_jobs")
+        jobs_global = await conn.fetch("SELECT job_name, status FROM soniq_jobs")
         print(f"Jobs in global app pool: {[dict(job) for job in jobs_global]}")
 
     # Debug: Check registry lookup
     if jobs:
         db_job_name = jobs[0]["job_name"]
-        from elephantq.core.registry import get_job
+        from soniq.core.registry import get_job
 
         job_meta = get_job(db_job_name)
         print(f"Job lookup for '{db_job_name}': {job_meta is not None}")
 
         if not job_meta:
             # Check both registries
-            from elephantq.core.registry import _global_registry
+            from soniq.core.registry import _global_registry
 
             print(f"Global registry keys: {list(_global_registry._registry.keys())}")
 
             try:
-                global_app = elephantq._get_global_app()
+                global_app = soniq._get_global_app()
                 app_registry = global_app._get_job_registry()
                 print(f"App registry keys: {list(app_registry._registry.keys())}")
             except Exception as e:
@@ -328,14 +328,14 @@ async def test_pydantic_validation_success(clean_db):
 
     # Process the job
     async with app_pool.acquire() as conn:
-        processed = await elephantq.run_worker(run_once=True, queues=["default"])
+        processed = await soniq.run_worker(run_once=True, queues=["default"])
         print(f"Job processed: {processed}")
 
     assert processed  # Job should be processed successfully
 
     # Verify job completed successfully
     async with app_pool.acquire() as conn:
-        job = await conn.fetchrow("SELECT * FROM elephantq_jobs WHERE id = $1", job_id)
+        job = await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
         assert job["status"] in ["done", None]  # Either done or deleted (TTL=0)
 
 
@@ -343,28 +343,28 @@ async def test_pydantic_validation_success(clean_db):
 async def test_regular_job_exceptions_still_retry(clean_db):
     """Test that regular job exceptions still trigger retry logic"""
 
-    @elephantq.job(retries=0)  # retries=0 means max_attempts=1
+    @soniq.job(retries=0)  # retries=0 means max_attempts=1
     async def failing_job(should_fail: bool = True):
         if should_fail:
             raise ValueError("Intentional failure for testing")
         return "success"
 
     # Use global app pool for consistency
-    global_app = elephantq._get_global_app()
+    global_app = soniq._get_global_app()
     app_pool = await global_app.get_pool()
 
     # Enqueue a job that will fail (with retries=0 so max_attempts=1)
-    job_id = await elephantq.enqueue(failing_job, should_fail=True)
+    job_id = await soniq.enqueue(failing_job, should_fail=True)
 
     # Process the job (should fail and go to dead letter after 1 attempt)
     async with app_pool.acquire() as conn:
-        processed = await elephantq.run_worker(run_once=True, queues=["default"])
+        processed = await soniq.run_worker(run_once=True, queues=["default"])
 
     assert processed  # Job should be processed
 
     # With retries=0, job goes directly to dead letter after first failure
     async with app_pool.acquire() as conn:
-        job = await conn.fetchrow("SELECT * FROM elephantq_jobs WHERE id = $1", job_id)
+        job = await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
         assert (
             job["status"] == "dead_letter"
         )  # Should be in dead letter after max attempts
@@ -376,7 +376,7 @@ async def test_regular_job_exceptions_still_retry(clean_db):
 async def test_mixed_corrupted_and_valid_jobs(clean_db):
     """Test processing queue with mix of corrupted and valid jobs"""
     # Use global app pool for consistency
-    global_app = elephantq._get_global_app()
+    global_app = soniq._get_global_app()
     app_pool = await global_app.get_pool()
 
     # Insert corrupted job (use validation corruption instead of JSON corruption)
@@ -384,7 +384,7 @@ async def test_mixed_corrupted_and_valid_jobs(clean_db):
     async with app_pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO elephantq_jobs (id, job_name, args, queue, status, max_attempts)
+            INSERT INTO soniq_jobs (id, job_name, args, queue, status, max_attempts)
             VALUES ($1, $2, $3, 'mixed', 'queued', 3)
             """,
             corrupted_job_id,
@@ -393,25 +393,23 @@ async def test_mixed_corrupted_and_valid_jobs(clean_db):
         )
 
     # Enqueue valid job
-    valid_job_id = await elephantq.enqueue(
-        simple_test_job, message="valid", queue="mixed"
-    )
+    valid_job_id = await soniq.enqueue(simple_test_job, message="valid", queue="mixed")
 
     # Process jobs with run_once=True (processes all available jobs in single run)
     async with app_pool.acquire() as conn:
-        processed = await elephantq.run_worker(run_once=True, queues=["mixed"])
+        processed = await soniq.run_worker(run_once=True, queues=["mixed"])
 
     assert processed  # Jobs should be processed
 
     # Check corrupted job is in dead letter
     async with app_pool.acquire() as conn:
         corrupted_job = await conn.fetchrow(
-            "SELECT * FROM elephantq_jobs WHERE id = $1", corrupted_job_id
+            "SELECT * FROM soniq_jobs WHERE id = $1", corrupted_job_id
         )
         assert corrupted_job["status"] == "dead_letter"
 
         # Check valid job completed
         valid_job = await conn.fetchrow(
-            "SELECT * FROM elephantq_jobs WHERE id = $1", valid_job_id
+            "SELECT * FROM soniq_jobs WHERE id = $1", valid_job_id
         )
         assert valid_job["status"] in ["done", None]  # Either done or deleted (TTL=0)

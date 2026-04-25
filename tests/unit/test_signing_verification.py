@@ -13,7 +13,7 @@ pytest.importorskip("cryptography")
 @pytest.fixture(autouse=True)
 def _reset_secret_manager():
     """Reset global singleton between tests."""
-    from elephantq.features import signing
+    from soniq.features import signing
 
     signing._secret_manager = None
     yield
@@ -22,7 +22,7 @@ def _reset_secret_manager():
 
 class TestSecretManager:
     def test_encrypt_and_decrypt_roundtrip(self):
-        from elephantq.features.signing import SecretManager
+        from soniq.features.signing import SecretManager
 
         mgr = SecretManager()
         plaintext = "my-super-secret-key"
@@ -32,46 +32,46 @@ class TestSecretManager:
         assert decrypted == plaintext
 
     def test_encrypt_empty_returns_empty(self):
-        from elephantq.features.signing import SecretManager
+        from soniq.features.signing import SecretManager
 
         mgr = SecretManager()
         assert mgr.encrypt("") == ""
 
     def test_decrypt_empty_returns_empty(self):
-        from elephantq.features.signing import SecretManager
+        from soniq.features.signing import SecretManager
 
         mgr = SecretManager()
         assert mgr.decrypt("") == ""
 
     def test_decrypt_invalid_raises(self):
-        from elephantq.features.signing import SecretManager
+        from soniq.features.signing import SecretManager
 
         mgr = SecretManager()
         with pytest.raises((ValueError, Exception)):
             mgr.decrypt("short")
 
     def test_is_encrypted_detects_encrypted(self):
-        from elephantq.features.signing import SecretManager
+        from soniq.features.signing import SecretManager
 
         mgr = SecretManager()
         encrypted = mgr.encrypt("test-secret")
         assert mgr.is_encrypted(encrypted) is True
 
     def test_is_encrypted_detects_plaintext(self):
-        from elephantq.features.signing import SecretManager
+        from soniq.features.signing import SecretManager
 
         mgr = SecretManager()
         assert mgr.is_encrypted("just-a-password") is False
 
     def test_is_encrypted_empty_is_false(self):
-        from elephantq.features.signing import SecretManager
+        from soniq.features.signing import SecretManager
 
         mgr = SecretManager()
         assert mgr.is_encrypted("") is False
 
     def test_encrypt_produces_unique_ciphertexts(self):
         """Each encryption should use a random salt, producing different output."""
-        from elephantq.features.signing import SecretManager
+        from soniq.features.signing import SecretManager
 
         mgr = SecretManager()
         e1 = mgr.encrypt("same-secret")
@@ -79,9 +79,9 @@ class TestSecretManager:
         assert e1 != e2  # Different random salts
 
     def test_uses_env_secret_key(self, monkeypatch):
-        from elephantq.features.signing import SecretManager
+        from soniq.features.signing import SecretManager
 
-        monkeypatch.setenv("ELEPHANTQ_SECRET_KEY", "my-fixed-key-for-testing")
+        monkeypatch.setenv("SONIQ_SECRET_KEY", "my-fixed-key-for-testing")
         mgr = SecretManager()
         encrypted = mgr.encrypt("hello")
         decrypted = mgr.decrypt(encrypted)
@@ -90,20 +90,20 @@ class TestSecretManager:
 
 class TestConvenienceFunctions:
     def test_encrypt_secret(self):
-        from elephantq.features.signing import encrypt_secret
+        from soniq.features.signing import encrypt_secret
 
         result = encrypt_secret("test")
         assert result != "test"
         assert len(result) > 0
 
     def test_decrypt_secret(self):
-        from elephantq.features.signing import decrypt_secret, encrypt_secret
+        from soniq.features.signing import decrypt_secret, encrypt_secret
 
         encrypted = encrypt_secret("roundtrip")
         assert decrypt_secret(encrypted) == "roundtrip"
 
     def test_is_secret_encrypted(self):
-        from elephantq.features.signing import encrypt_secret, is_secret_encrypted
+        from soniq.features.signing import encrypt_secret, is_secret_encrypted
 
         assert is_secret_encrypted("not-encrypted") is False
         assert is_secret_encrypted(encrypt_secret("test")) is True
@@ -111,7 +111,7 @@ class TestConvenienceFunctions:
 
 class TestSecureWebhookSecret:
     def test_plaintext_secret_is_encrypted(self):
-        from elephantq.features.signing import SecureWebhookSecret
+        from soniq.features.signing import SecureWebhookSecret
 
         secret = SecureWebhookSecret("my-webhook-secret")
         assert secret.encrypted is not None
@@ -119,7 +119,7 @@ class TestSecureWebhookSecret:
         assert secret.plaintext == "my-webhook-secret"
 
     def test_encrypted_secret_is_stored(self):
-        from elephantq.features.signing import SecureWebhookSecret, encrypt_secret
+        from soniq.features.signing import SecureWebhookSecret, encrypt_secret
 
         pre_encrypted = encrypt_secret("test-secret")
         secret = SecureWebhookSecret(pre_encrypted)
@@ -127,7 +127,7 @@ class TestSecureWebhookSecret:
         assert secret.plaintext == "test-secret"
 
     def test_none_secret(self):
-        from elephantq.features.signing import SecureWebhookSecret
+        from soniq.features.signing import SecureWebhookSecret
 
         secret = SecureWebhookSecret(None)
         assert secret.encrypted is None
@@ -135,7 +135,7 @@ class TestSecureWebhookSecret:
         assert bool(secret) is False
 
     def test_str_representation(self):
-        from elephantq.features.signing import SecureWebhookSecret
+        from soniq.features.signing import SecureWebhookSecret
 
         secret = SecureWebhookSecret("test")
         # str should return encrypted version, not plaintext
@@ -143,6 +143,6 @@ class TestSecureWebhookSecret:
         assert len(str(secret)) > 0
 
     def test_bool_true_when_set(self):
-        from elephantq.features.signing import SecureWebhookSecret
+        from soniq.features.signing import SecureWebhookSecret
 
         assert bool(SecureWebhookSecret("test")) is True

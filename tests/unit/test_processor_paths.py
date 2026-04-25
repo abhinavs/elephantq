@@ -7,9 +7,9 @@ unregistered job dead-letter, corruption exception handling, hooks.
 
 import pytest
 
-from elephantq.backends.memory import MemoryBackend
-from elephantq.core.processor import process_job_via_backend
-from elephantq.core.registry import JobRegistry
+from soniq.backends.memory import MemoryBackend
+from soniq.core.processor import process_job_via_backend
+from soniq.core.registry import JobRegistry
 
 
 async def _setup(job_func, args="{}", max_attempts=3, attempts_override=None):
@@ -18,7 +18,7 @@ async def _setup(job_func, args="{}", max_attempts=3, attempts_override=None):
     await backend.initialize()
     registry = JobRegistry()
     wrapped = registry.register_job(job_func)
-    job_name = wrapped._elephantq_name
+    job_name = wrapped._soniq_name
 
     await backend.create_job(
         job_id="job-1",

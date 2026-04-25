@@ -1,19 +1,19 @@
 """
 Conftest for Instance API tests
 
-These tests use the instance-based ElephantQ API (app = ElephantQ(), app.job, etc.)
-and create their own isolated ElephantQ instances.
+These tests use the instance-based Soniq API (app = Soniq(), app.job, etc.)
+and create their own isolated Soniq instances.
 """
 
 import os
 
 import pytest
 
-from elephantq.db.connection import close_pool
+from soniq.db.connection import close_pool
 from tests.db_utils import TEST_DATABASE_URL, clear_table, create_test_database
 
 # Ensure test database URL is set
-os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
+os.environ["SONIQ_DATABASE_URL"] = TEST_DATABASE_URL
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -39,9 +39,9 @@ async def clean_instance_api_state():
 async def clean_db():
     """Additional fixture for tests that need explicit clean database state - FAST VERSION."""
     # Just clear tables instead of recreating database
-    from elephantq.app import ElephantQ
+    from soniq.app import Soniq
 
-    app = ElephantQ(database_url=TEST_DATABASE_URL)
+    app = Soniq(database_url=TEST_DATABASE_URL)
     pool = await app.get_pool()
     await clear_table(pool)
     await app.close()

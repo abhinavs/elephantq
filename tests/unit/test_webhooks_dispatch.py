@@ -12,9 +12,9 @@ import pytest
 
 pytest.importorskip("aiohttp")
 
-os.environ.setdefault("ELEPHANTQ_WEBHOOKS_ENABLED", "true")
+os.environ.setdefault("SONIQ_WEBHOOKS_ENABLED", "true")
 
-from elephantq.features.webhooks import (  # noqa: E402
+from soniq.features.webhooks import (  # noqa: E402
     WebhookDelivery,
     WebhookEndpoint,
     WebhookEvent,

@@ -24,20 +24,20 @@ jobs:
           pip install mypy
 
       - name: Check formatting with black
-        run: black --check elephantq/ tests/ examples/ run_tests.py release.py
+        run: black --check soniq/ tests/ examples/ run_tests.py release.py
 
       - name: Check import order with isort
-        run: isort --check-only elephantq/ tests/ examples/ run_tests.py release.py
+        run: isort --check-only soniq/ tests/ examples/ run_tests.py release.py
 
       - name: Lint with flake8
-        run: flake8 elephantq/ tests/
+        run: flake8 soniq/ tests/
 
       - name: Type check with mypy
-        run: mypy elephantq/ --ignore-missing-imports
+        run: mypy soniq/ --ignore-missing-imports
 
       - name: Check for dead documentation URLs
         run: |
-          if grep -r "docs\.elephantq\.dev" elephantq/ examples/ docs/; then
-            echo "ERROR: Found references to non-existent docs.elephantq.dev"
+          if grep -r "docs\.soniq\.dev" soniq/ examples/ docs/; then
+            echo "ERROR: Found references to non-existent docs.soniq.dev"
             exit 1
           fi

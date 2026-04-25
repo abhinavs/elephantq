@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from pydantic import BaseModel
 
-from elephantq.core.queue import _normalize_scheduled_time, _validate_job_arguments
+from soniq.core.queue import _normalize_scheduled_time, _validate_job_arguments
 
 # --- _validate_job_arguments ---
 

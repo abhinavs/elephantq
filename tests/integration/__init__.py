@@ -1,1 +1,1 @@
-# Integration tests for ElephantQ
+# Integration tests for Soniq

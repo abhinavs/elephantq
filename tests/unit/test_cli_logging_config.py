@@ -7,7 +7,7 @@ import logging
 
 import pytest
 
-from elephantq.cli.commands.core import _configure_cli_logging
+from soniq.cli.commands.core import _configure_cli_logging
 
 
 @pytest.fixture
@@ -24,9 +24,7 @@ def clean_root_logger():
 def test_configures_stream_handler_at_info(clean_root_logger):
     _configure_cli_logging("INFO")
     ours = [
-        h
-        for h in clean_root_logger.handlers
-        if getattr(h, "_elephantq_cli_handler", False)
+        h for h in clean_root_logger.handlers if getattr(h, "_soniq_cli_handler", False)
     ]
     assert len(ours) == 1
     assert clean_root_logger.level == logging.INFO
@@ -47,17 +45,15 @@ def test_is_idempotent(clean_root_logger):
     _configure_cli_logging("INFO")
     _configure_cli_logging("INFO")
     ours = [
-        h
-        for h in clean_root_logger.handlers
-        if getattr(h, "_elephantq_cli_handler", False)
+        h for h in clean_root_logger.handlers if getattr(h, "_soniq_cli_handler", False)
     ]
     assert len(ours) == 1
 
 
 def test_processor_logs_are_emitted(clean_root_logger, caplog):
-    """Job-lifecycle logs from elephantq.core.processor reach handlers
+    """Job-lifecycle logs from soniq.core.processor reach handlers
     once CLI logging is configured."""
     _configure_cli_logging("INFO")
-    with caplog.at_level(logging.INFO, logger="elephantq.core.processor"):
-        logging.getLogger("elephantq.core.processor").info("Job abc completed in 12ms")
+    with caplog.at_level(logging.INFO, logger="soniq.core.processor"):
+        logging.getLogger("soniq.core.processor").info("Job abc completed in 12ms")
     assert any("Job abc completed" in rec.message for rec in caplog.records)

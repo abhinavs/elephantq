@@ -4,7 +4,7 @@ Extended tests for dead_letter.py — DeadLetterManager and helpers.
 
 from datetime import datetime, timezone
 
-from elephantq.features.dead_letter import (
+from soniq.features.dead_letter import (
     DeadLetterFilter,
     DeadLetterJob,
     create_filter,

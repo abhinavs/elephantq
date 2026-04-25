@@ -13,15 +13,15 @@ from datetime import datetime, timezone
 
 import pytest
 
-os.environ.setdefault("ELEPHANTQ_SCHEDULING_ENABLED", "true")
+os.environ.setdefault("SONIQ_SCHEDULING_ENABLED", "true")
 
-import elephantq.settings as settings_module  # noqa: E402
-from elephantq.features import scheduling  # noqa: E402
+import soniq.settings as settings_module  # noqa: E402
+from soniq.features import scheduling  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
 def _enable_scheduling(monkeypatch):
-    monkeypatch.setenv("ELEPHANTQ_SCHEDULING_ENABLED", "true")
+    monkeypatch.setenv("SONIQ_SCHEDULING_ENABLED", "true")
     settings_module._settings = None
     importlib.reload(settings_module)
     importlib.reload(scheduling)

@@ -11,15 +11,15 @@ pytest.importorskip("aiosqlite")
 
 @pytest.mark.asyncio
 async def test_sqlite_backend_importable():
-    from elephantq.backends.sqlite import SQLiteBackend
+    from soniq.backends.sqlite import SQLiteBackend
 
     assert SQLiteBackend is not None
 
 
 @pytest.mark.asyncio
 async def test_sqlite_satisfies_protocol():
-    from elephantq.backends import StorageBackend
-    from elephantq.backends.sqlite import SQLiteBackend
+    from soniq.backends import StorageBackend
+    from soniq.backends.sqlite import SQLiteBackend
 
     backend = SQLiteBackend.__new__(SQLiteBackend)
     backend._path = ":memory:"
@@ -29,7 +29,7 @@ async def test_sqlite_satisfies_protocol():
 
 @pytest.mark.asyncio
 async def test_sqlite_capabilities():
-    from elephantq.backends.sqlite import SQLiteBackend
+    from soniq.backends.sqlite import SQLiteBackend
 
     backend = SQLiteBackend(":memory:")
     assert backend.supports_push_notify is False
@@ -38,7 +38,7 @@ async def test_sqlite_capabilities():
 
 @pytest.mark.asyncio
 async def test_sqlite_create_and_get(tmp_path):
-    from elephantq.backends.sqlite import SQLiteBackend
+    from soniq.backends.sqlite import SQLiteBackend
 
     backend = SQLiteBackend(str(tmp_path / "test.db"))
     await backend.initialize()
@@ -69,7 +69,7 @@ async def test_sqlite_create_and_get(tmp_path):
 
 @pytest.mark.asyncio
 async def test_sqlite_full_lifecycle(tmp_path):
-    from elephantq.backends.sqlite import SQLiteBackend
+    from soniq.backends.sqlite import SQLiteBackend
 
     backend = SQLiteBackend(str(tmp_path / "lifecycle.db"))
     await backend.initialize()

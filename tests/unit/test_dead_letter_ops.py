@@ -7,7 +7,7 @@ DeadLetterFilter.to_sql_conditions, DeadLetterStats.
 
 from datetime import datetime, timezone
 
-from elephantq.features.dead_letter import (
+from soniq.features.dead_letter import (
     DeadLetterFilter,
     DeadLetterJob,
     DeadLetterReason,

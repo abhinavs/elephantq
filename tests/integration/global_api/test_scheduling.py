@@ -8,13 +8,13 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-import elephantq
+import soniq
 from tests.db_utils import TEST_DATABASE_URL
 
-os.environ["ELEPHANTQ_DATABASE_URL"] = TEST_DATABASE_URL
+os.environ["SONIQ_DATABASE_URL"] = TEST_DATABASE_URL
 
 
-@elephantq.job(retries=1)
+@soniq.job(retries=1)
 async def scheduled_job(message: str):
     return f"Processed: {message}"
 
@@ -23,31 +23,31 @@ async def scheduled_job(message: str):
 async def test_immediate_vs_scheduled_jobs():
     """Test that scheduled jobs don't run until their scheduled time"""
     # Enqueue immediate job
-    immediate_job_id = await elephantq.enqueue(scheduled_job, message="immediate")
+    immediate_job_id = await soniq.enqueue(scheduled_job, message="immediate")
 
     # Enqueue job scheduled for future
     future_time = datetime.now(timezone.utc) + timedelta(hours=1)
-    scheduled_job_id = await elephantq.enqueue(
+    scheduled_job_id = await soniq.enqueue(
         scheduled_job, scheduled_at=future_time, message="future"
     )
 
     # Process jobs - only immediate should run
-    global_app = elephantq._get_global_app()
+    global_app = soniq._get_global_app()
     app_pool = await global_app.get_pool()
 
-    processed = await elephantq.run_worker(run_once=True)
+    processed = await soniq.run_worker(run_once=True)
     assert processed is True  # Immediate job processed
 
-    processed = await elephantq.run_worker(run_once=True)
+    processed = await soniq.run_worker(run_once=True)
     assert processed is False  # No more jobs to process
 
     # Check statuses
     async with app_pool.acquire() as conn:
         immediate_record = await conn.fetchrow(
-            "SELECT * FROM elephantq_jobs WHERE id = $1", uuid.UUID(immediate_job_id)
+            "SELECT * FROM soniq_jobs WHERE id = $1", uuid.UUID(immediate_job_id)
         )
         scheduled_record = await conn.fetchrow(
-            "SELECT * FROM elephantq_jobs WHERE id = $1", uuid.UUID(scheduled_job_id)
+            "SELECT * FROM soniq_jobs WHERE id = $1", uuid.UUID(scheduled_job_id)
         )
 
         assert immediate_record["status"] == "done"
@@ -58,19 +58,19 @@ async def test_immediate_vs_scheduled_jobs():
 async def test_priority_ordering(clean_db):
     """Test that higher priority jobs (lower numbers) are processed first"""
     # Enqueue jobs with different priorities
-    await elephantq.enqueue(scheduled_job, priority=100, message="low")
-    await elephantq.enqueue(scheduled_job, priority=1, message="high")
-    await elephantq.enqueue(scheduled_job, priority=50, message="medium")
+    await soniq.enqueue(scheduled_job, priority=100, message="low")
+    await soniq.enqueue(scheduled_job, priority=1, message="high")
+    await soniq.enqueue(scheduled_job, priority=50, message="medium")
 
     # Verify jobs are queued in database in priority order
-    global_app = elephantq._get_global_app()
+    global_app = soniq._get_global_app()
     app_pool = await global_app.get_pool()
 
     async with app_pool.acquire() as conn:
         # Get all jobs in processing priority order
         jobs = await conn.fetch(
             """
-            SELECT id, priority FROM elephantq_jobs
+            SELECT id, priority FROM soniq_jobs
             WHERE status = 'queued'
             ORDER BY priority ASC, created_at ASC
         """
@@ -83,7 +83,7 @@ async def test_priority_ordering(clean_db):
     assert processing_order == [1, 50, 100]
 
     # Process all jobs to verify they actually execute correctly
-    await elephantq.run_worker(run_once=True)
+    await soniq.run_worker(run_once=True)
 
 
 @pytest.mark.asyncio
@@ -105,45 +105,45 @@ async def test_unified_schedule_function():
     """Test the new unified schedule() function with different time formats"""
     # Test with datetime object (absolute time)
     future_datetime = datetime.now(timezone.utc) + timedelta(minutes=15)
-    datetime_job_id = await elephantq.schedule(
+    datetime_job_id = await soniq.schedule(
         scheduled_job, run_at=future_datetime, message="scheduled with datetime"
     )
 
     # Test with integer seconds (relative time)
-    seconds_job_id = await elephantq.schedule(
+    seconds_job_id = await soniq.schedule(
         scheduled_job,
         run_in=900,  # 15 minutes in seconds
         message="scheduled with seconds",
     )
 
     # Test with float seconds (relative time)
-    float_job_id = await elephantq.schedule(
+    float_job_id = await soniq.schedule(
         scheduled_job,
         run_in=900.5,  # 15 minutes and 0.5 seconds
         message="scheduled with float seconds",
     )
 
     # Test with timedelta object (relative time)
-    timedelta_job_id = await elephantq.schedule(
+    timedelta_job_id = await soniq.schedule(
         scheduled_job, run_in=timedelta(minutes=15), message="scheduled with timedelta"
     )
 
     # Verify all jobs are scheduled correctly
-    global_app = elephantq._get_global_app()
+    global_app = soniq._get_global_app()
     app_pool = await global_app.get_pool()
 
     async with app_pool.acquire() as conn:
         datetime_record = await conn.fetchrow(
-            "SELECT * FROM elephantq_jobs WHERE id = $1", uuid.UUID(datetime_job_id)
+            "SELECT * FROM soniq_jobs WHERE id = $1", uuid.UUID(datetime_job_id)
         )
         seconds_record = await conn.fetchrow(
-            "SELECT * FROM elephantq_jobs WHERE id = $1", uuid.UUID(seconds_job_id)
+            "SELECT * FROM soniq_jobs WHERE id = $1", uuid.UUID(seconds_job_id)
         )
         float_record = await conn.fetchrow(
-            "SELECT * FROM elephantq_jobs WHERE id = $1", uuid.UUID(float_job_id)
+            "SELECT * FROM soniq_jobs WHERE id = $1", uuid.UUID(float_job_id)
         )
         timedelta_record = await conn.fetchrow(
-            "SELECT * FROM elephantq_jobs WHERE id = $1", uuid.UUID(timedelta_job_id)
+            "SELECT * FROM soniq_jobs WHERE id = $1", uuid.UUID(timedelta_job_id)
         )
 
         # All should be scheduled

@@ -10,7 +10,7 @@ from pathlib import Path
 def test_postgres_backend_pool_has_init_callback():
     """PostgresBackend must pass init= to create_pool."""
     backend_path = (
-        Path(__file__).parent.parent.parent / "elephantq" / "backends" / "postgres.py"
+        Path(__file__).parent.parent.parent / "soniq" / "backends" / "postgres.py"
     )
     source = backend_path.read_text()
     tree = ast.parse(source)
@@ -33,7 +33,7 @@ def test_postgres_backend_pool_has_init_callback():
 def test_processor_does_not_set_timezone_per_query():
     """_fetch_and_lock_job must NOT call SET timezone per-query."""
     processor_path = (
-        Path(__file__).parent.parent.parent / "elephantq" / "core" / "processor.py"
+        Path(__file__).parent.parent.parent / "soniq" / "core" / "processor.py"
     )
     source = processor_path.read_text()
 

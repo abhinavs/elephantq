@@ -7,7 +7,7 @@ Postgres conformance runs separately in tests/integration/.
 
 import pytest
 
-from elephantq.backends.memory import MemoryBackend
+from soniq.backends.memory import MemoryBackend
 
 
 def _get_backend_params():
@@ -26,7 +26,7 @@ async def backend(request, tmp_path):
     if request.param == "memory":
         b = MemoryBackend()
     elif request.param == "sqlite":
-        from elephantq.backends.sqlite import SQLiteBackend
+        from soniq.backends.sqlite import SQLiteBackend
 
         b = SQLiteBackend(str(tmp_path / "test.db"))
     await b.initialize()

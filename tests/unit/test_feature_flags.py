@@ -8,36 +8,36 @@ import pytest
 
 
 def _reset_settings_cache():
-    import elephantq.settings
+    import soniq.settings
 
-    elephantq.settings._settings = None
+    soniq.settings._settings = None
 
 
-def _clear_elephantq_env():
+def _clear_soniq_env():
     for key in list(os.environ.keys()):
-        if key.startswith("ELEPHANTQ_"):
+        if key.startswith("SONIQ_"):
             os.environ.pop(key, None)
 
 
 def _disable_all_feature_flags():
-    os.environ["ELEPHANTQ_WEBHOOKS_ENABLED"] = "false"
-    os.environ["ELEPHANTQ_METRICS_ENABLED"] = "false"
-    os.environ["ELEPHANTQ_LOGGING_ENABLED"] = "false"
-    os.environ["ELEPHANTQ_DEAD_LETTER_QUEUE_ENABLED"] = "false"
-    os.environ["ELEPHANTQ_SIGNING_ENABLED"] = "false"
-    os.environ["ELEPHANTQ_SCHEDULING_ENABLED"] = "false"
-    os.environ["ELEPHANTQ_DEPENDENCIES_ENABLED"] = "false"
-    os.environ["ELEPHANTQ_TIMEOUTS_ENABLED"] = "false"
+    os.environ["SONIQ_WEBHOOKS_ENABLED"] = "false"
+    os.environ["SONIQ_METRICS_ENABLED"] = "false"
+    os.environ["SONIQ_LOGGING_ENABLED"] = "false"
+    os.environ["SONIQ_DEAD_LETTER_QUEUE_ENABLED"] = "false"
+    os.environ["SONIQ_SIGNING_ENABLED"] = "false"
+    os.environ["SONIQ_SCHEDULING_ENABLED"] = "false"
+    os.environ["SONIQ_DEPENDENCIES_ENABLED"] = "false"
+    os.environ["SONIQ_TIMEOUTS_ENABLED"] = "false"
 
 
 def test_feature_managers_require_flags():
-    _clear_elephantq_env()
+    _clear_soniq_env()
     _disable_all_feature_flags()
     _reset_settings_cache()
 
-    from elephantq.features.managers import ElephantQFeatures
+    from soniq.features.managers import SoniqFeatures
 
-    features = ElephantQFeatures()
+    features = SoniqFeatures()
 
     with pytest.raises(RuntimeError, match="Webhooks"):
         _ = features.webhooks
@@ -52,17 +52,17 @@ def test_feature_managers_require_flags():
 
 
 def test_feature_managers_enabled():
-    _clear_elephantq_env()
-    os.environ["ELEPHANTQ_WEBHOOKS_ENABLED"] = "true"
-    os.environ["ELEPHANTQ_METRICS_ENABLED"] = "true"
-    os.environ["ELEPHANTQ_LOGGING_ENABLED"] = "true"
-    os.environ["ELEPHANTQ_DEAD_LETTER_QUEUE_ENABLED"] = "true"
-    os.environ["ELEPHANTQ_SIGNING_ENABLED"] = "true"
+    _clear_soniq_env()
+    os.environ["SONIQ_WEBHOOKS_ENABLED"] = "true"
+    os.environ["SONIQ_METRICS_ENABLED"] = "true"
+    os.environ["SONIQ_LOGGING_ENABLED"] = "true"
+    os.environ["SONIQ_DEAD_LETTER_QUEUE_ENABLED"] = "true"
+    os.environ["SONIQ_SIGNING_ENABLED"] = "true"
     _reset_settings_cache()
 
-    from elephantq.features.managers import ElephantQFeatures
+    from soniq.features.managers import SoniqFeatures
 
-    features = ElephantQFeatures()
+    features = SoniqFeatures()
 
     assert features.webhooks is not None
     assert features.metrics is not None
@@ -72,11 +72,11 @@ def test_feature_managers_enabled():
 
 
 def test_scheduling_flag_required():
-    _clear_elephantq_env()
+    _clear_soniq_env()
     _disable_all_feature_flags()
     _reset_settings_cache()
 
-    from elephantq.features import recurring, scheduling
+    from soniq.features import recurring, scheduling
 
     def noop():
         return None
@@ -90,11 +90,11 @@ def test_scheduling_flag_required():
 
 @pytest.mark.asyncio
 async def test_timeouts_flag_required():
-    _clear_elephantq_env()
+    _clear_soniq_env()
     _disable_all_feature_flags()
     _reset_settings_cache()
 
-    from elephantq.features.timeout_processor import run_worker_with_timeout
+    from soniq.features.timeout_processor import run_worker_with_timeout
 
     with pytest.raises(RuntimeError, match="Timeout processing"):
         await run_worker_with_timeout()

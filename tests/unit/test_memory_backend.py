@@ -9,15 +9,15 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_memory_backend_importable():
-    from elephantq.backends.memory import MemoryBackend
+    from soniq.backends.memory import MemoryBackend
 
     assert MemoryBackend is not None
 
 
 @pytest.mark.asyncio
 async def test_memory_backend_satisfies_protocol():
-    from elephantq.backends import StorageBackend
-    from elephantq.backends.memory import MemoryBackend
+    from soniq.backends import StorageBackend
+    from soniq.backends.memory import MemoryBackend
 
     backend = MemoryBackend()
     assert isinstance(backend, StorageBackend)
@@ -25,7 +25,7 @@ async def test_memory_backend_satisfies_protocol():
 
 @pytest.mark.asyncio
 async def test_create_and_get_job():
-    from elephantq.backends.memory import MemoryBackend
+    from soniq.backends.memory import MemoryBackend
 
     backend = MemoryBackend()
     await backend.initialize()
@@ -53,7 +53,7 @@ async def test_create_and_get_job():
 
 @pytest.mark.asyncio
 async def test_fetch_and_lock_job():
-    from elephantq.backends.memory import MemoryBackend
+    from soniq.backends.memory import MemoryBackend
 
     backend = MemoryBackend()
     await backend.initialize()
@@ -87,7 +87,7 @@ async def test_fetch_and_lock_job():
 
 @pytest.mark.asyncio
 async def test_mark_done_and_failed():
-    from elephantq.backends.memory import MemoryBackend
+    from soniq.backends.memory import MemoryBackend
 
     backend = MemoryBackend()
     await backend.initialize()
@@ -131,7 +131,7 @@ async def test_mark_done_and_failed():
 
 @pytest.mark.asyncio
 async def test_dead_letter():
-    from elephantq.backends.memory import MemoryBackend
+    from soniq.backends.memory import MemoryBackend
 
     backend = MemoryBackend()
     await backend.initialize()
@@ -156,7 +156,7 @@ async def test_dead_letter():
 
 @pytest.mark.asyncio
 async def test_cancel_and_retry():
-    from elephantq.backends.memory import MemoryBackend
+    from soniq.backends.memory import MemoryBackend
 
     backend = MemoryBackend()
     await backend.initialize()
@@ -183,7 +183,7 @@ async def test_cancel_and_retry():
 
 @pytest.mark.asyncio
 async def test_reset():
-    from elephantq.backends.memory import MemoryBackend
+    from soniq.backends.memory import MemoryBackend
 
     backend = MemoryBackend()
     await backend.initialize()
@@ -211,7 +211,7 @@ async def test_reset():
 
 @pytest.mark.asyncio
 async def test_capabilities():
-    from elephantq.backends.memory import MemoryBackend
+    from soniq.backends.memory import MemoryBackend
 
     backend = MemoryBackend()
     assert backend.supports_push_notify is False
@@ -220,7 +220,7 @@ async def test_capabilities():
 @pytest.mark.asyncio
 async def test_result_persisted_and_retrieved_memory():
     """Memory backend persists handler return value through mark_job_done."""
-    from elephantq.backends.memory import MemoryBackend
+    from soniq.backends.memory import MemoryBackend
 
     backend = MemoryBackend()
     await backend.initialize()

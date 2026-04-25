@@ -8,7 +8,7 @@ import asyncio
 import signal
 from unittest.mock import MagicMock, patch
 
-from elephantq.utils.signals import (
+from soniq.utils.signals import (
     GracefulSignalHandler,
     cleanup_global_signal_handlers,
     setup_global_signal_handlers,
@@ -134,7 +134,7 @@ class TestGracefulSignalHandler:
 class TestGlobalSignalHandlers:
     """Test global signal handler utilities"""
 
-    @patch("elephantq.utils.signals.GracefulSignalHandler")
+    @patch("soniq.utils.signals.GracefulSignalHandler")
     def test_setup_global_signal_handlers(self, mock_handler_class):
         """Test global signal handler setup"""
         mock_handler = MagicMock()
@@ -151,7 +151,7 @@ class TestGlobalSignalHandlers:
 
     def test_cleanup_global_signal_handlers(self):
         """Test global signal handler cleanup"""
-        from elephantq.utils import signals
+        from soniq.utils import signals
 
         # Mock the global handler
         mock_handler = MagicMock()

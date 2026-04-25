@@ -2,13 +2,13 @@
 Tests for db/context.py — DatabaseContext class.
 """
 
-from elephantq.db.context import DatabaseContext
+from soniq.db.context import DatabaseContext
 
 
 class TestDatabaseContext:
     def test_from_global_api(self):
         ctx = DatabaseContext.from_global_api()
-        assert ctx._elephantq_instance is None
+        assert ctx._soniq_instance is None
         assert ctx._database_url is None
 
     def test_from_database_url(self):
@@ -16,11 +16,11 @@ class TestDatabaseContext:
         assert ctx._database_url == "postgresql://localhost/test"
 
     def test_from_instance(self):
-        from elephantq import ElephantQ
+        from soniq import Soniq
 
-        app = ElephantQ(backend="memory")
+        app = Soniq(backend="memory")
         ctx = DatabaseContext.from_instance(app)
-        assert ctx._elephantq_instance is app
+        assert ctx._soniq_instance is app
 
     def test_init_defaults(self):
         ctx = DatabaseContext()

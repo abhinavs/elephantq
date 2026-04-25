@@ -11,7 +11,7 @@ import pytest
 
 class TestMetricsIndex:
     def test_has_job_metrics_index(self):
-        from elephantq.features.metrics import MetricsCollector
+        from soniq.features.metrics import MetricsCollector
 
         collector = MetricsCollector()
         assert hasattr(collector, "_job_metrics_index")
@@ -19,7 +19,7 @@ class TestMetricsIndex:
 
     def test_record_completion_uses_index(self):
         """record_job_completion should use dict index, not linear scan."""
-        from elephantq.features.metrics import MetricsCollector
+        from soniq.features.metrics import MetricsCollector
 
         source = inspect.getsource(MetricsCollector.record_job_completion)
         assert (
@@ -31,7 +31,7 @@ class TestMetricsIndex:
 
     @pytest.mark.asyncio
     async def test_record_and_complete_roundtrip(self):
-        from elephantq.features.metrics import MetricsCollector
+        from soniq.features.metrics import MetricsCollector
 
         collector = MetricsCollector()
         await collector.record_job_start("job-1", "test.task", "default")

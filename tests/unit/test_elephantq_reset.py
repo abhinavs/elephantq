@@ -1,23 +1,23 @@
 """
-Tests for elephantq._reset() — global reset function for test fixtures.
+Tests for soniq._reset() — global reset function for test fixtures.
 """
 
 import pytest
 
 
-def test_elephantq_has_reset_function():
-    """elephantq module should expose a _reset() function."""
-    import elephantq
+def test_soniq_has_reset_function():
+    """soniq module should expose a _reset() function."""
+    import soniq
 
-    assert hasattr(elephantq, "_reset")
-    assert callable(elephantq._reset)
+    assert hasattr(soniq, "_reset")
+    assert callable(soniq._reset)
 
 
-def test_elephantq_client_has_reset_method():
-    """ElephantQ class should have a _reset() method."""
-    from elephantq.app import ElephantQ
+def test_soniq_client_has_reset_method():
+    """Soniq class should have a _reset() method."""
+    from soniq.app import Soniq
 
-    assert hasattr(ElephantQ, "_reset")
+    assert hasattr(Soniq, "_reset")
 
 
 @pytest.mark.asyncio
@@ -25,9 +25,9 @@ async def test_reset_clears_jobs_via_memory_backend():
     """reset() should clear all jobs when using MemoryBackend."""
     import uuid
 
-    from elephantq.app import ElephantQ
+    from soniq.app import Soniq
 
-    app = ElephantQ(backend="memory")
+    app = Soniq(backend="memory")
     await app._ensure_initialized()
 
     @app.job()

@@ -11,20 +11,20 @@ import uuid
 
 import pytest
 
-os.environ.setdefault("ELEPHANTQ_SCHEDULING_ENABLED", "true")
-os.environ.setdefault("ELEPHANTQ_DEPENDENCIES_ENABLED", "true")
-os.environ.setdefault("ELEPHANTQ_TIMEOUTS_ENABLED", "true")
+os.environ.setdefault("SONIQ_SCHEDULING_ENABLED", "true")
+os.environ.setdefault("SONIQ_DEPENDENCIES_ENABLED", "true")
+os.environ.setdefault("SONIQ_TIMEOUTS_ENABLED", "true")
 
-import elephantq.settings as settings_module  # noqa: E402
-from elephantq.features import scheduling  # noqa: E402
-from elephantq.features.scheduling import BatchScheduler  # noqa: E402
+import soniq.settings as settings_module  # noqa: E402
+from soniq.features import scheduling  # noqa: E402
+from soniq.features.scheduling import BatchScheduler  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
 def enable_scheduling(monkeypatch):
-    monkeypatch.setenv("ELEPHANTQ_SCHEDULING_ENABLED", "true")
-    monkeypatch.setenv("ELEPHANTQ_DEPENDENCIES_ENABLED", "true")
-    monkeypatch.setenv("ELEPHANTQ_TIMEOUTS_ENABLED", "true")
+    monkeypatch.setenv("SONIQ_SCHEDULING_ENABLED", "true")
+    monkeypatch.setenv("SONIQ_DEPENDENCIES_ENABLED", "true")
+    monkeypatch.setenv("SONIQ_TIMEOUTS_ENABLED", "true")
     settings_module._settings = None
     importlib.reload(settings_module)
     importlib.reload(scheduling)
@@ -91,7 +91,7 @@ def fake_pool(monkeypatch):
     async def fake_get_context_pool():
         return pool
 
-    import elephantq.db.context as db_context
+    import soniq.db.context as db_context
 
     monkeypatch.setattr(db_context, "get_context_pool", fake_get_context_pool)
     return pool
