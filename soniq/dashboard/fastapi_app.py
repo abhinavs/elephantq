@@ -251,6 +251,18 @@ def create_dashboard_app() -> "FastAPI":
         """Get overall system health metrics"""
         return await get_system_health()
 
+    @app.get("/api/tasks/drift")
+    async def api_task_registry_drift(
+        window_minutes: int = 60,
+    ) -> Dict[str, Any]:
+        """Names with recent queued / dead-letter rows that no worker has
+        registered. Surfaces deploy-skew between producer and consumer
+        services that share a database. Backed by the
+        soniq_task_registry observability table populated by workers."""
+        from .app import get_task_registry_drift
+
+        return await get_task_registry_drift(window_minutes=window_minutes)
+
     return app
 
 

@@ -207,9 +207,15 @@ def job(**kwargs):
     """
 
     def decorator(func):
-        _global_job_registry.append((func, kwargs))
+        # Register with the global app first so a missing/invalid name=
+        # raises before we mutate the global registry. Otherwise a test
+        # that exercises the negative path (`@soniq.job()` with no
+        # name=) would leave a poison tuple in _global_job_registry
+        # that breaks later tests when configure() iterates the list.
         app = _get_global_app()
-        return app.job(**kwargs)(func)
+        wrapped = app.job(**kwargs)(func)
+        _global_job_registry.append((func, kwargs))
+        return wrapped
 
     return decorator
 
