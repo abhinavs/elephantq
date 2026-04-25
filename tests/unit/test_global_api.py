@@ -50,14 +50,13 @@ class TestGlobalAPI:
         """Test that @soniq.job() registers with global app"""
         await soniq.configure(database_url="postgresql://test@localhost/test_db")
 
-        @soniq.job(retries=3, queue="test")
+        @soniq.job(name="test_job", retries=3, queue="test")
         async def test_job(message: str):
             return f"Processed: {message}"
 
-        # Check job is registered in global app
+        # Check job is registered in global app under its explicit name
         app = soniq._get_global_app()
-        job_name = "tests.unit.test_global_api.test_job"
-        job_meta = app._get_job_registry().get_job(job_name)
+        job_meta = app._get_job_registry().get_job("test_job")
 
         assert job_meta is not None
         assert job_meta["max_retries"] == 3
@@ -66,7 +65,7 @@ class TestGlobalAPI:
     def test_job_decorator_returns_callable_function(self):
         """Test that job decorator returns a callable function"""
 
-        @soniq.job()
+        @soniq.job(name="test_job")
         async def test_job(x: int, y: int):
             return x + y
 
@@ -80,7 +79,7 @@ class TestGlobalAPI:
         """Test that soniq.enqueue() uses the global app"""
         await soniq.configure(database_url="postgresql://test@localhost/test_db")
 
-        @soniq.job()
+        @soniq.job(name="test_job")
         async def test_job(message: str):
             return message
 
@@ -90,11 +89,18 @@ class TestGlobalAPI:
             mock_enqueue.return_value = "test-job-id"
 
             # Call global enqueue
-            job_id = await soniq.enqueue(test_job, message="test")
+            job_id = await soniq.enqueue("test_job", args={"message": "test"})
 
-            # Should have called app.enqueue
+            # Should have called app.enqueue with the new signature
             mock_enqueue.assert_called_once_with(
-                test_job, connection=None, message="test"
+                "test_job",
+                args={"message": "test"},
+                queue=None,
+                priority=None,
+                scheduled_at=None,
+                unique=None,
+                dedup_key=None,
+                connection=None,
             )
             assert job_id == "test-job-id"
 
@@ -103,7 +109,7 @@ class TestGlobalAPI:
         """Test that soniq.schedule() uses the global app"""
         from datetime import datetime, timedelta
 
-        @soniq.job()
+        @soniq.job(name="test_job")
         async def test_job(message: str):
             return message
 
@@ -114,12 +120,18 @@ class TestGlobalAPI:
             # Call global schedule
             run_at = datetime.now() + timedelta(hours=1)
             job_id = await soniq.schedule(
-                test_job, run_at=run_at, connection="conn", message="test"
+                "test_job",
+                args={"message": "test"},
+                run_at=run_at,
+                connection="conn",
             )
 
             # Should have called enqueue with scheduled_at parameter
             mock_enqueue.assert_called_once_with(
-                test_job, connection="conn", scheduled_at=run_at, message="test"
+                "test_job",
+                args={"message": "test"},
+                connection="conn",
+                scheduled_at=run_at,
             )
             assert job_id == "scheduled-job-id"
 
@@ -150,35 +162,26 @@ class TestGlobalAPI:
         instance_app = Soniq(database_url="postgresql://instance@localhost/instance_db")
 
         # Register jobs in both
-        @soniq.job()
+        @soniq.job(name="global_job")
         async def global_job():
             return "global"
 
-        @instance_app.job()
+        @instance_app.job(name="instance_job")
         async def instance_job():
             return "instance"
 
-        # Check isolation
+        # Check isolation under explicit names
         global_app = soniq._get_global_app()
 
         # Global app should have global_job but not instance_job
         global_registry = global_app._get_job_registry()
-        assert (
-            global_registry.get_job("tests.unit.test_global_api.global_job") is not None
-        )
-        assert (
-            global_registry.get_job("tests.unit.test_global_api.instance_job") is None
-        )
+        assert global_registry.get_job("global_job") is not None
+        assert global_registry.get_job("instance_job") is None
 
         # Instance app should have instance_job but not global_job
         instance_registry = instance_app._get_job_registry()
-        assert (
-            instance_registry.get_job("tests.unit.test_global_api.instance_job")
-            is not None
-        )
-        assert (
-            instance_registry.get_job("tests.unit.test_global_api.global_job") is None
-        )
+        assert instance_registry.get_job("instance_job") is not None
+        assert instance_registry.get_job("global_job") is None
 
     @pytest.mark.asyncio
     async def test_global_api_configuration_persistence(self):
@@ -221,7 +224,7 @@ class TestGlobalAPI:
         """Test that job decorator works without explicit configure()"""
         # Don't call configure() - should use default settings
 
-        @soniq.job()
+        @soniq.job(name="default_job")
         async def default_job():
             return "default"
 
@@ -230,8 +233,6 @@ class TestGlobalAPI:
         assert app is not None
         assert app.settings.database_url is not None  # Should have some default
 
-        # Job should be registered
-        job_meta = app._get_job_registry().get_job(
-            "tests.unit.test_global_api.default_job"
-        )
+        # Job should be registered under its explicit name
+        job_meta = app._get_job_registry().get_job("default_job")
         assert job_meta is not None

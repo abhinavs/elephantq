@@ -75,7 +75,7 @@ async def _run_one(
     backend = MemoryBackend()
     await backend.initialize()
     registry = JobRegistry()
-    wrapped = registry.register_job(job_func)
+    wrapped = registry.register_job(job_func, name=job_func.__name__)
     job_name = wrapped._soniq_name
     job_id = "metrics-job"
     await backend.create_job(
@@ -201,7 +201,7 @@ async def test_metrics_sink_records_dead_letter_on_corruption():
     backend = MemoryBackend()
     await backend.initialize()
     registry = JobRegistry()
-    wrapped = registry.register_job(task)
+    wrapped = registry.register_job(task, name=task.__name__)
     await backend.create_job(
         job_id="corrupt",
         job_name=wrapped._soniq_name,

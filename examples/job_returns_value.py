@@ -12,7 +12,7 @@ import os
 import soniq
 
 
-@soniq.job()
+@soniq.job(name="compute_summary")
 async def compute_summary(a: int, b: int):
     return {"total": a + b, "inputs": [a, b]}
 
@@ -25,7 +25,7 @@ async def main():
 
     await soniq._setup()
 
-    job_id = await soniq.enqueue(compute_summary, a=7, b=35)
+    job_id = await soniq.enqueue("compute_summary", args={"a": 7, "b": 35})
     await soniq.run_worker(run_once=True)
 
     result = await soniq.get_result(job_id)

@@ -23,11 +23,11 @@ async def test_dead_letter_move_creates_record():
 
     await dead_letter.setup_dead_letter_queue()
 
-    @soniq.job(retries=0)
+    @soniq.job(name="always_fail", retries=0)
     async def always_fail():
         raise RuntimeError("boom")
 
-    job_id = await soniq.enqueue(always_fail)
+    job_id = await soniq.enqueue("always_fail")
 
     moved = await dead_letter.move_job_to_dead_letter(
         job_id,

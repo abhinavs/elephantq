@@ -390,7 +390,7 @@ async def test_soniq_integration_with_contexts():
     await clear_table(pool)
 
     # Enqueue a job via the app API
-    job_id = await app.enqueue(test_context_job, value=21)
+    job_id = await app.enqueue("test_context_job", args={"value": 21})
 
     # Process the job using Worker + backend
     worker = Worker(app._backend, registry)

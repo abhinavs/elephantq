@@ -17,11 +17,11 @@ async def test_context_manager_enqueue_and_process():
 
     async with Soniq(backend="memory") as app:
 
-        @app.job()
+        @app.job(name="greet")
         async def greet(name: str):
             executed.append(name)
 
-        await app.enqueue(greet, name="world")
+        await app.enqueue("greet", args={"name": "world"})
         await app.run_worker(run_once=True)
 
     assert executed == ["world"]

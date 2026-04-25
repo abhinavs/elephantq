@@ -15,7 +15,7 @@ import soniq
 from soniq import Snooze
 
 
-@soniq.job(retries=3)
+@soniq.job(name="call_rate_limited_api", retries=3)
 async def call_rate_limited_api(order_id: str):
     response = await _simulated_api_call(order_id)
     if response["status"] == 429:
@@ -30,7 +30,7 @@ async def _simulated_api_call(order_id: str) -> dict:
 
 
 async def main():
-    await soniq.enqueue(call_rate_limited_api, order_id="order-1")
+    await soniq.enqueue("call_rate_limited_api", args={"order_id": "order-1"})
     await soniq.run_worker(concurrency=1)
 
 

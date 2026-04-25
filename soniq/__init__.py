@@ -263,15 +263,21 @@ def periodic(
         schedule_value = val * multipliers[name]  # type: ignore[operator]
 
     def decorator(func):
-        # Register as a job first
-        wrapped = job(**job_kwargs)(func)
+        # `@periodic` jobs share the mandatory-name rule with `@app.job`.
+        # If the caller didn't pass an explicit name=, derive one from the
+        # function name so existing single-repo `@periodic` users keep
+        # working. This is the one place soniq still derives a name; it's
+        # justified because `@periodic` jobs are by convention single-repo
+        # bookkeeping (cron-style maintenance) rather than cross-service
+        # protocol identifiers.
+        local_kwargs = dict(job_kwargs)
+        local_kwargs.setdefault("name", func.__name__)
 
-        # Store schedule metadata on the function
+        wrapped = job(**local_kwargs)(func)
         wrapped._soniq_periodic = {  # type: ignore[attr-defined]
             "type": schedule_type,
             "value": schedule_value,
         }
-
         return wrapped
 
     return decorator

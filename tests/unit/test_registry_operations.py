@@ -21,9 +21,9 @@ def _make_registry_with_jobs():
     async def task_c():
         pass
 
-    registry.register_job(task_a, queue="emails")
-    registry.register_job(task_b, queue="emails")
-    registry.register_job(task_c, queue="billing")
+    registry.register_job(task_a, name="task_a", queue="emails")
+    registry.register_job(task_b, name="task_b", queue="emails")
+    registry.register_job(task_c, name="task_c", queue="billing")
     return registry
 
 
@@ -81,7 +81,7 @@ def test_len_reflects_registered_count():
     async def task():
         pass
 
-    registry.register_job(task)
+    registry.register_job(task, name="task")
     assert len(registry) == 1
 
 
@@ -91,7 +91,7 @@ def test_contains_checks_job_names():
     async def task():
         pass
 
-    wrapped = registry.register_job(task)
+    wrapped = registry.register_job(task, name="task")
     job_name = wrapped._soniq_name
     assert job_name in registry
     assert "nonexistent.task" not in registry
@@ -105,6 +105,7 @@ def test_register_job_stores_all_config_fields():
 
     registry.register_job(
         my_job,
+        name="my_job",
         retries=5,
         priority=50,
         queue="special",
@@ -114,8 +115,7 @@ def test_register_job_stores_all_config_fields():
         retry_max_delay=30,
         timeout=60,
     )
-    name = f"{my_job.__module__}.{my_job.__name__}"
-    config = registry.get_job(name)
+    config = registry.get_job("my_job")
     assert config["max_retries"] == 5
     assert config["priority"] == 50
     assert config["queue"] == "special"
@@ -132,9 +132,8 @@ def test_max_retries_overrides_retries():
     async def my_job():
         pass
 
-    registry.register_job(my_job, retries=3, max_retries=10)
-    name = f"{my_job.__module__}.{my_job.__name__}"
-    assert registry.get_job(name)["max_retries"] == 10
+    registry.register_job(my_job, name="my_job", retries=3, max_retries=10)
+    assert registry.get_job("my_job")["max_retries"] == 10
 
 
 def test_validate_alias_for_args_model():
@@ -148,9 +147,8 @@ def test_validate_alias_for_args_model():
     async def my_job():
         pass
 
-    registry.register_job(my_job, validate=MyModel)
-    name = f"{my_job.__module__}.{my_job.__name__}"
-    assert registry.get_job(name)["args_model"] is MyModel
+    registry.register_job(my_job, name="my_job", validate=MyModel)
+    assert registry.get_job("my_job")["args_model"] is MyModel
 
 
 # ---------------------------------------------------------------------------

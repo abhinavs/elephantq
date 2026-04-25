@@ -14,11 +14,11 @@ from soniq import Soniq
 async def test_app_with_memory_backend():
     app = Soniq(backend="memory")
 
-    @app.job()
+    @app.job(name="my_task")
     async def my_task(x: int):
         return x * 2
 
-    job_id = await app.enqueue(my_task, x=10)
+    job_id = await app.enqueue("my_task", args={"x": 10})
     assert job_id is not None
 
     status = await app.get_job(job_id)
@@ -38,23 +38,23 @@ async def test_app_close_is_idempotent():
 async def test_app_as_context_manager():
     async with Soniq(backend="memory") as app:
 
-        @app.job()
+        @app.job(name="my_task")
         async def my_task():
             pass
 
-        job_id = await app.enqueue(my_task)
+        job_id = await app.enqueue("my_task")
         assert job_id is not None
 
 
 @pytest.mark.asyncio
 async def test_enqueue_unregistered_job_raises():
+    from soniq.errors import SONIQ_UNKNOWN_TASK_NAME, SoniqError
+
     app = Soniq(backend="memory")
 
-    async def not_registered():
-        pass
-
-    with pytest.raises(ValueError, match="not registered"):
-        await app.enqueue(not_registered)
+    with pytest.raises(SoniqError) as exc_info:
+        await app.enqueue("not_registered")
+    assert exc_info.value.error_code == SONIQ_UNKNOWN_TASK_NAME
 
     await app.close()
 
@@ -65,12 +65,12 @@ async def test_schedule_delegates_to_enqueue():
 
     app = Soniq(backend="memory")
 
-    @app.job()
+    @app.job(name="my_task")
     async def my_task(msg: str):
         pass
 
     run_at = datetime.now(timezone.utc) + timedelta(hours=1)
-    job_id = await app.schedule(my_task, run_at=run_at, msg="hello")
+    job_id = await app.schedule("my_task", args={"msg": "hello"}, run_at=run_at)
     assert job_id is not None
 
     status = await app.get_job(job_id)
@@ -83,11 +83,11 @@ async def test_schedule_delegates_to_enqueue():
 async def test_cancel_job():
     app = Soniq(backend="memory")
 
-    @app.job()
+    @app.job(name="my_task")
     async def my_task():
         pass
 
-    job_id = await app.enqueue(my_task)
+    job_id = await app.enqueue("my_task")
     result = await app.cancel_job(job_id)
     assert result is True
 
@@ -101,11 +101,11 @@ async def test_cancel_job():
 async def test_delete_job():
     app = Soniq(backend="memory")
 
-    @app.job()
+    @app.job(name="my_task")
     async def my_task():
         pass
 
-    job_id = await app.enqueue(my_task)
+    job_id = await app.enqueue("my_task")
     result = await app.delete_job(job_id)
     assert result is True
 
@@ -119,12 +119,12 @@ async def test_delete_job():
 async def test_list_jobs_with_status_filter():
     app = Soniq(backend="memory")
 
-    @app.job()
+    @app.job(name="my_task")
     async def my_task():
         pass
 
-    await app.enqueue(my_task)
-    await app.enqueue(my_task)
+    await app.enqueue("my_task")
+    await app.enqueue("my_task")
 
     jobs = await app.list_jobs(status="queued")
     assert len(jobs) == 2
@@ -136,11 +136,11 @@ async def test_list_jobs_with_status_filter():
 async def test_get_queue_stats():
     app = Soniq(backend="memory")
 
-    @app.job()
+    @app.job(name="my_task")
     async def my_task():
         pass
 
-    await app.enqueue(my_task)
+    await app.enqueue("my_task")
     stats = await app.get_queue_stats()
     assert isinstance(stats, (dict, list))
 
@@ -151,11 +151,11 @@ async def test_get_queue_stats():
 async def test_retry_job():
     app = Soniq(backend="memory")
 
-    @app.job(retries=2)
+    @app.job(name="failing_task", retries=2)
     async def failing_task():
         raise RuntimeError("fail")
 
-    job_id = await app.enqueue(failing_task)
+    job_id = await app.enqueue("failing_task")
 
     # Process to make it fail
     await app.run_worker(run_once=True)
@@ -187,11 +187,11 @@ async def test_hook_registration():
     async def on_error(job_name, job_id, error, attempt):
         error_calls.append(error)
 
-    @app.job()
+    @app.job(name="my_task")
     async def my_task():
         pass
 
-    await app.enqueue(my_task)
+    await app.enqueue("my_task")
     await app.run_worker(run_once=True)
 
     assert len(before_calls) == 1
@@ -206,12 +206,12 @@ async def test_run_worker_processes_jobs():
     app = Soniq(backend="memory")
     results = []
 
-    @app.job()
+    @app.job(name="accumulate")
     async def accumulate(val: str):
         results.append(val)
 
-    await app.enqueue(accumulate, val="a")
-    await app.enqueue(accumulate, val="b")
+    await app.enqueue("accumulate", args={"val": "a"})
+    await app.enqueue("accumulate", args={"val": "b"})
     await app.run_worker(run_once=True)
 
     assert sorted(results) == ["a", "b"]

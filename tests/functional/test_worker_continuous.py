@@ -14,11 +14,11 @@ async def test_worker_processes_job_and_shuts_down():
 
     executed = asyncio.Event()
 
-    @app.job()
+    @app.job(name="signal_done")
     async def signal_done():
         executed.set()
 
-    await app.enqueue(signal_done)
+    await app.enqueue("signal_done")
 
     async def run_and_stop():
         from soniq.core.worker import Worker
@@ -58,12 +58,12 @@ async def test_worker_run_method_dispatches_correctly():
 
     results = []
 
-    @app.job()
+    @app.job(name="collect")
     async def collect(value: str):
         results.append(value)
 
-    await app.enqueue(collect, value="a")
-    await app.enqueue(collect, value="b")
+    await app.enqueue("collect", args={"value": "a"})
+    await app.enqueue("collect", args={"value": "b"})
 
     from soniq.core.worker import Worker
 

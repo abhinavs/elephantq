@@ -19,7 +19,7 @@ import soniq  # noqa: E402
 from soniq.settings import get_settings  # noqa: E402
 
 
-@soniq.job()
+@soniq.job(name="ttl_test_job")
 async def ttl_test_job(message: str):
     """Simple test job for TTL testing"""
     return f"processed: {message}"
@@ -35,7 +35,9 @@ async def test_ttl_zero_deletes_immediately():
 
     try:
         # Enqueue a job
-        job_id = await soniq.enqueue(ttl_test_job, message="test_immediate_delete")
+        job_id = await soniq.enqueue(
+            "ttl_test_job", args={"message": "test_immediate_delete"}
+        )
 
         # Process the job
         processed = await soniq.run_worker(run_once=True)
@@ -61,7 +63,7 @@ async def test_ttl_positive_sets_expires_at():
 
     try:
         # Enqueue and process a job
-        job_id = await soniq.enqueue(ttl_test_job, message="test_ttl_field")
+        job_id = await soniq.enqueue("ttl_test_job", args={"message": "test_ttl_field"})
 
         processed = await soniq.run_worker(run_once=True)
         assert processed
@@ -97,7 +99,7 @@ async def test_ttl_cleanup_removes_expired_jobs():
 
     try:
         # Enqueue and process a job
-        job_id = await soniq.enqueue(ttl_test_job, message="test_cleanup")
+        job_id = await soniq.enqueue("ttl_test_job", args={"message": "test_cleanup"})
 
         processed = await soniq.run_worker(run_once=True)
         assert processed
@@ -129,7 +131,7 @@ async def test_ttl_failed_jobs_not_cleaned_up():
     """Test that failed jobs are not cleaned up by TTL"""
 
     # Create a job that will fail
-    @soniq.job()
+    @soniq.job(name="failing_ttl_job")
     async def failing_ttl_job():
         raise Exception("Intentional failure for TTL test")
 
@@ -140,7 +142,7 @@ async def test_ttl_failed_jobs_not_cleaned_up():
 
     try:
         # Enqueue failing job
-        job_id = await soniq.enqueue(failing_ttl_job)
+        job_id = await soniq.enqueue("failing_ttl_job")
 
         # Process job (it will fail)
         for _ in range(5):  # Multiple attempts due to retries

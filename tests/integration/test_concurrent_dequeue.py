@@ -12,12 +12,12 @@ import pytest
 import soniq
 
 
-@soniq.job(queue="race-test")
+@soniq.job(name="race_job", queue="race-test")
 async def race_job(n: int):
     pass
 
 
-@soniq.job(queue="race-test", unique=True)
+@soniq.job(name="unique_race_job", queue="race-test", unique=True)
 async def unique_race_job(key: str):
     pass
 
@@ -32,7 +32,7 @@ async def test_concurrent_dequeue_no_duplicates():
     backend = app._backend
 
     # Enqueue exactly 1 job
-    await app.enqueue(race_job, n=1)
+    await app.enqueue("race_job", args={"n": 1})
 
     # Launch 5 concurrent dequeue attempts via backend
     async def try_dequeue():
@@ -58,7 +58,7 @@ async def test_concurrent_dequeue_distributes_jobs():
 
     # Enqueue 10 jobs
     for i in range(10):
-        await app.enqueue(race_job, n=i)
+        await app.enqueue("race_job", args={"n": i})
 
     # 5 concurrent workers, each dequeuing until None
     claimed_ids = []
@@ -89,7 +89,7 @@ async def test_unique_job_concurrent_enqueue():
 
     # Launch 10 concurrent enqueues with same args
     async def try_enqueue():
-        return await app.enqueue(unique_race_job, key="same-key")
+        return await app.enqueue("unique_race_job", args={"key": "same-key"})
 
     results = await asyncio.gather(*[try_enqueue() for _ in range(10)])
 

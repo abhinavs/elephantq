@@ -21,11 +21,11 @@ async def app():
 async def test_get_job(app):
     """get_job should work on MemoryBackend."""
 
-    @app.job()
+    @app.job(name="noop")
     async def noop():
         pass
 
-    job_id = await app.enqueue(noop)
+    job_id = await app.enqueue("noop")
     status = await app.get_job(job_id)
     assert status is not None
     assert status["status"] == "queued"
@@ -41,11 +41,11 @@ async def test_get_job_not_found(app):
 async def test_cancel_job(app):
     """cancel_job should work on MemoryBackend."""
 
-    @app.job()
+    @app.job(name="noop")
     async def noop():
         pass
 
-    job_id = await app.enqueue(noop)
+    job_id = await app.enqueue("noop")
     result = await app.cancel_job(job_id)
     assert result is True
 
@@ -62,11 +62,11 @@ async def test_cancel_nonexistent_returns_false(app):
 async def test_delete_job(app):
     """delete_job should work on MemoryBackend."""
 
-    @app.job()
+    @app.job(name="noop")
     async def noop():
         pass
 
-    job_id = await app.enqueue(noop)
+    job_id = await app.enqueue("noop")
     result = await app.delete_job(job_id)
     assert result is True
 
@@ -77,12 +77,12 @@ async def test_delete_job(app):
 async def test_list_jobs(app):
     """list_jobs should work on MemoryBackend."""
 
-    @app.job()
+    @app.job(name="noop")
     async def noop():
         pass
 
-    await app.enqueue(noop)
-    await app.enqueue(noop)
+    await app.enqueue("noop")
+    await app.enqueue("noop")
 
     jobs = await app.list_jobs()
     assert len(jobs) == 2
@@ -91,12 +91,12 @@ async def test_list_jobs(app):
 async def test_list_jobs_filtered_by_status(app):
     """list_jobs with status filter should work on MemoryBackend."""
 
-    @app.job()
+    @app.job(name="noop")
     async def noop():
         pass
 
-    job_id = await app.enqueue(noop)
-    await app.enqueue(noop)
+    job_id = await app.enqueue("noop")
+    await app.enqueue("noop")
     await app.cancel_job(job_id)
 
     queued = await app.list_jobs(status="queued")
@@ -109,12 +109,12 @@ async def test_list_jobs_filtered_by_status(app):
 async def test_get_queue_stats(app):
     """get_queue_stats should work on MemoryBackend."""
 
-    @app.job()
+    @app.job(name="noop")
     async def noop():
         pass
 
-    await app.enqueue(noop)
-    await app.enqueue(noop)
+    await app.enqueue("noop")
+    await app.enqueue("noop")
 
     stats = await app.get_queue_stats()
     assert len(stats) >= 1
@@ -124,11 +124,11 @@ async def test_get_queue_stats(app):
 async def test_retry_job(app):
     """retry_job should work on MemoryBackend."""
 
-    @app.job(retries=1)
+    @app.job(name="failing_job", retries=1)
     async def failing_job():
         raise RuntimeError("boom")
 
-    job_id = await app.enqueue(failing_job)
+    job_id = await app.enqueue("failing_job")
 
     # Process until dead_letter
     await app.run_worker(run_once=True)

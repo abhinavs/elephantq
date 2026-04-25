@@ -24,7 +24,7 @@ DATABASE_URL = "postgresql://postgres@localhost/soniq"
 # ── Jobs ────────────────────────────────────────────────────────────────
 
 
-@soniq.job(queue="emails", retries=3)
+@soniq.job(name="send_welcome_email", queue="emails", retries=3)
 async def send_welcome_email(user_id: int, email: str):
     """Send a welcome email to a newly registered user."""
     print(f"Sending welcome email to {email} (user {user_id})")
@@ -85,10 +85,9 @@ async def create_user(req: CreateUserRequest):
 
             # Enqueue inside the same transaction
             job_id = await soniq.enqueue(
-                send_welcome_email,
+                "send_welcome_email",
+                args={"user_id": user_id, "email": req.email},
                 connection=conn,
-                user_id=user_id,
-                email=req.email,
             )
 
     return {"user_id": user_id, "welcome_email_job": job_id}

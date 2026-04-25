@@ -16,7 +16,7 @@ from soniq.core.heartbeat import cleanup_stale_workers
 from soniq.core.worker import Worker
 
 
-@soniq.job()
+@soniq.job(name="recoverable_job")
 async def recoverable_job(marker: str):
     """A job that always succeeds."""
     pass
@@ -94,7 +94,9 @@ async def test_recovered_job_is_processed_by_new_worker():
     worker = Worker(backend, registry)
 
     # Enqueue a job, then manually set it to 'processing' with a stale worker
-    job_id = await app.enqueue(recoverable_job, marker="crash-recovery-test")
+    job_id = await app.enqueue(
+        "recoverable_job", args={"marker": "crash-recovery-test"}
+    )
 
     async with pool.acquire() as conn:
         stale_worker_id = uuid.uuid4()

@@ -26,7 +26,9 @@ PROJECT_ROOT = str(Path(__file__).parent.parent.parent.parent)
 
 
 # Test job functions
-@soniq.job(unique=False)  # Ensure multiple instances can be enqueued
+@soniq.job(
+    name="job_counter", unique=False
+)  # Ensure multiple instances can be enqueued
 async def job_counter(counter_file: str, job_index: int = 0):
     """Test job that writes to a file to track execution"""
     # Ensure directory exists
@@ -37,7 +39,7 @@ async def job_counter(counter_file: str, job_index: int = 0):
     return f"completed-{job_index}"
 
 
-@soniq.job()
+@soniq.job(name="slow_test_job")
 async def slow_test_job(duration: float, result_file: str):
     """Job that takes time - useful for testing interruption"""
     start_time = time.time()
@@ -50,7 +52,7 @@ async def slow_test_job(duration: float, result_file: str):
     return f"slow_job_completed_after_{duration}s"
 
 
-@soniq.job()
+@soniq.job(name="database_intensive_job")
 async def database_intensive_job(job_id: str, iterations: int = 100):
     """Job that does database operations - useful for testing connection issues"""
     async with DatabaseContext() as pool:
@@ -65,7 +67,7 @@ async def database_intensive_job(job_id: str, iterations: int = 100):
             return f"database_job_completed_{len(results)}_operations"
 
 
-@soniq.job()
+@soniq.job(name="failing_job")
 async def failing_job(should_fail: bool, job_id: int):
     """Job that can be configured to fail"""
     if should_fail:
@@ -73,7 +75,7 @@ async def failing_job(should_fail: bool, job_id: int):
     return f"success_job_{job_id}"
 
 
-@soniq.job()
+@soniq.job(name="timed_job")
 async def timed_job(expected_time: str, log_file: str):
     """Job that logs its execution time"""
     execution_time = datetime.now().isoformat()
@@ -100,13 +102,14 @@ class TestProductionScenarios:
                 # Fast jobs that should complete
                 for i in range(5):
                     job_id = await soniq.enqueue(
-                        job_counter, counter_file=counter_file, job_index=i
+                        "job_counter",
+                        args={"counter_file": counter_file, "job_index": i},
                     )
                     job_ids.append(job_id)
 
                 # Slow job that will be interrupted
                 slow_job_id = await soniq.enqueue(
-                    slow_test_job, duration=10.0, result_file=result_file
+                    "slow_test_job", args={"duration": 10.0, "result_file": result_file}
                 )
                 job_ids.append(slow_job_id)
 
@@ -187,7 +190,8 @@ if __name__ == "__main__":
                 job_ids_before = []
                 for i in range(3):
                     job_id = await soniq.enqueue(
-                        job_counter, counter_file=success_file, job_index=i
+                        "job_counter",
+                        args={"counter_file": success_file, "job_index": i},
                     )
                     job_ids_before.append(job_id)
 
@@ -209,7 +213,8 @@ if __name__ == "__main__":
                 job_ids_after = []
                 for i in range(2):
                     job_id = await soniq.enqueue(
-                        job_counter, counter_file=success_file, job_index=i + 10
+                        "job_counter",
+                        args={"counter_file": success_file, "job_index": i + 10},
                     )
                     job_ids_after.append(job_id)
 
@@ -247,7 +252,8 @@ if __name__ == "__main__":
                 job_ids = []
                 for i in range(20):
                     job_id = await soniq.enqueue(
-                        job_counter, counter_file=execution_log, job_index=i
+                        "job_counter",
+                        args={"counter_file": execution_log, "job_index": i},
                     )
                     job_ids.append(job_id)
 
@@ -315,7 +321,7 @@ if __name__ == "__main__":
     async def test_worker_resilience_to_job_failures(self):
         """Test that workers continue processing after job failures"""
 
-        @soniq.job(retries=1, unique=False)
+        @soniq.job(name="failing_job", retries=1, unique=False)
         async def failing_job(should_fail: bool, job_id: int = 0):
             """Job that fails conditionally"""
             if should_fail:
@@ -335,14 +341,15 @@ if __name__ == "__main__":
                 # Failing jobs
                 for i in range(3):
                     job_id = await soniq.enqueue(
-                        failing_job, should_fail=True, job_id=i
+                        "failing_job", args={"should_fail": True, "job_id": i}
                     )
                     job_ids.append(job_id)
 
                 # Successful jobs
                 for i in range(5):
                     job_id = await soniq.enqueue(
-                        job_counter, counter_file=success_file, job_index=i + 100
+                        "job_counter",
+                        args={"counter_file": success_file, "job_index": i + 100},
                     )
                     job_ids.append(job_id)
 
@@ -409,7 +416,7 @@ if __name__ == "__main__":
 
             from datetime import timezone as _tz
 
-            @soniq.job()
+            @soniq.job(name="timed_job")
             async def timed_job(expected_time: str, log_file: str):
                 """Job that logs when it actually executed"""
                 actual_time = datetime.now(_tz.utc)
@@ -436,9 +443,11 @@ if __name__ == "__main__":
                 job_ids = []
                 for scheduled_time in scheduled_times:
                     job_id = await soniq.enqueue(
-                        timed_job,
-                        expected_time=scheduled_time.isoformat(),
-                        log_file=timing_file,
+                        "timed_job",
+                        args={
+                            "expected_time": scheduled_time.isoformat(),
+                            "log_file": timing_file,
+                        },
                         scheduled_at=scheduled_time,
                     )
                     job_ids.append(job_id)
@@ -498,7 +507,8 @@ if __name__ == "__main__":
 
                 for i in range(job_count):
                     job_id = await soniq.enqueue(
-                        job_counter, counter_file=throughput_file, job_index=i
+                        "job_counter",
+                        args={"counter_file": throughput_file, "job_index": i},
                     )
                     job_ids.append(job_id)
 

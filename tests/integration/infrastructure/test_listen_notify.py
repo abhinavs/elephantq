@@ -57,7 +57,7 @@ async def test_listen_setup_verification(test_db, clean_app):
     """Test that LISTEN is actually set up correctly on worker start"""
     app = clean_app
 
-    @app.job()
+    @app.job(name="test_job")
     async def test_job():
         processed_jobs.append({"processed": True})
 
@@ -110,7 +110,7 @@ async def test_notify_sent_verification(test_db, clean_app):
     """Test that NOTIFY is actually sent when jobs are enqueued"""
     app = clean_app
 
-    @app.job()
+    @app.job(name="test_job")
     async def test_job(message: str):
         processed_jobs.append({"message": message})
 
@@ -137,7 +137,7 @@ async def test_notify_sent_verification(test_db, clean_app):
         await asyncio.sleep(0.5)  # Let worker start
 
         # Enqueue a job - this should trigger NOTIFY
-        await app.enqueue(test_job, message="test notification")
+        await app.enqueue("test_job", args={"message": "test notification"})
 
         # Wait for notification (should be immediate)
         await asyncio.sleep(0.5)
@@ -175,11 +175,11 @@ async def test_queue_specific_notifications(test_db, clean_app):
     """Test that different queues generate notifications with correct payload"""
     app = clean_app
 
-    @app.job(queue="high")
+    @app.job(name="high_priority_job", queue="high")
     async def high_priority_job(message: str):
         processed_jobs.append({"queue": "high", "message": message})
 
-    @app.job(queue="low")
+    @app.job(name="low_priority_job", queue="low")
     async def low_priority_job(message: str):
         processed_jobs.append({"queue": "low", "message": message})
 
@@ -205,9 +205,9 @@ async def test_queue_specific_notifications(test_db, clean_app):
         await asyncio.sleep(0.5)
 
         # Enqueue jobs to different queues
-        await app.enqueue(high_priority_job, message="high job")
+        await app.enqueue("high_priority_job", args={"message": "high job"})
         await asyncio.sleep(0.2)
-        await app.enqueue(low_priority_job, message="low job")
+        await app.enqueue("low_priority_job", args={"message": "low job"})
 
         # Wait for notifications
         await asyncio.sleep(1.0)
@@ -241,7 +241,7 @@ async def test_notification_vs_polling_behavior(test_db, clean_app):
     """Test that proves jobs are processed via notifications, not just polling"""
     app = clean_app
 
-    @app.job()
+    @app.job(name="timed_job")
     async def timed_job(enqueue_time: float):
         processed_jobs.append(
             {
@@ -270,7 +270,7 @@ async def test_notification_vs_polling_behavior(test_db, clean_app):
 
         # Enqueue job and measure time to processing
         enqueue_time = time.time()
-        await app.enqueue(timed_job, enqueue_time=enqueue_time)
+        await app.enqueue("timed_job", args={"enqueue_time": enqueue_time})
 
         # Wait for processing - should be fast if LISTEN/NOTIFY works
         start_wait = time.time()
@@ -311,7 +311,7 @@ async def test_multiple_workers_all_notified(test_db, clean_app):
 
     worker_responses = []
 
-    @app.job()
+    @app.job(name="worker_test_job")
     async def worker_test_job(message: str):
         # Record which worker processed this job
         worker_responses.append({"message": message, "timestamp": time.time()})
@@ -328,7 +328,7 @@ async def test_multiple_workers_all_notified(test_db, clean_app):
 
         # Enqueue jobs with slight delay to allow distribution
         for i in range(4):
-            await app.enqueue(worker_test_job, message=f"job_{i}")
+            await app.enqueue("worker_test_job", args={"message": f"job_{i}"})
             await asyncio.sleep(0.2)  # Slight delay for distribution
 
         # Wait for processing
@@ -369,7 +369,7 @@ async def test_notification_failure_fallback(test_db, clean_app):
     """Test that system still works if notifications fail (polling fallback)"""
     app = clean_app
 
-    @app.job()
+    @app.job(name="fallback_job")
     async def fallback_job(message: str):
         processed_jobs.append({"message": message, "timestamp": time.time()})
 
@@ -388,7 +388,7 @@ async def test_notification_failure_fallback(test_db, clean_app):
         await asyncio.sleep(1.5)
 
         start_time = time.time()
-        await app.enqueue(fallback_job, message="fallback test")
+        await app.enqueue("fallback_job", args={"message": "fallback test"})
 
         # Wait for processing
         while len(processed_jobs) == 0 and (time.time() - start_time) < 10:

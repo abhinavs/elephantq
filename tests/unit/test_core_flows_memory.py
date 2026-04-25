@@ -27,15 +27,16 @@ def registry():
 
 async def _enqueue(backend, registry, func, args=None, **overrides):
     """Helper to register a job and create it in the backend."""
+    job_name = func.__name__
     registry.register_job(
         func,
+        name=job_name,
         **{
             k: v
             for k, v in overrides.items()
             if k in ("max_retries", "queue", "priority", "timeout")
         },
     )
-    job_name = f"{func.__module__}.{func.__name__}"
     job_id = str(uuid.uuid4())
 
     args_dict = args or {}
@@ -168,8 +169,8 @@ async def test_unique_job_deduplication(backend, registry):
     async def my_job():
         pass
 
-    registry.register_job(my_job, unique=True)
-    job_name = f"{my_job.__module__}.{my_job.__name__}"
+    job_name = my_job.__name__
+    registry.register_job(my_job, name=job_name, unique=True)
     from soniq.utils.hashing import compute_args_hash
 
     args_hash = compute_args_hash({"key": "value"})
@@ -210,8 +211,8 @@ async def test_priority_ordering(backend, registry):
     async def task(name: str):
         executed.append(name)
 
-    registry.register_job(task)
-    job_name = f"{task.__module__}.{task.__name__}"
+    job_name = task.__name__
+    registry.register_job(task, name=job_name)
 
     # Enqueue low priority first, high priority second
     await backend.create_job(

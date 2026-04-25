@@ -10,7 +10,7 @@ import soniq
 from soniq.core.worker import Worker
 
 
-@soniq.job(retries=1, timeout=0.1)
+@soniq.job(name="slow_timeout_job", retries=1, timeout=0.1)
 async def slow_timeout_job():
     """Job that always exceeds its per-job timeout."""
     await asyncio.sleep(5)
@@ -27,7 +27,7 @@ async def test_timed_out_job_retried_then_dead_lettered():
     backend = app._backend
     worker = Worker(backend, registry)
 
-    job_id = await app.enqueue(slow_timeout_job)
+    job_id = await app.enqueue("slow_timeout_job")
 
     # First processing: job times out -> failure (attempt 1)
     processed = await worker.run_once(queues=None, max_jobs=1)

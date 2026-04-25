@@ -29,8 +29,8 @@ async def test_last_error_includes_traceback():
     async def failing_task():
         _helper_that_explodes()
 
-    registry.register_job(failing_task, retries=0)
-    job_name = f"{failing_task.__module__}.{failing_task.__name__}"
+    registry.register_job(failing_task, name=failing_task.__name__, retries=0)
+    job_name = failing_task.__name__
 
     await backend.create_job(
         job_id="err-1",
@@ -67,8 +67,8 @@ async def test_last_error_truncated_to_reasonable_size():
     async def noisy_failure():
         raise RuntimeError("x" * 50000)
 
-    registry.register_job(noisy_failure, retries=0)
-    job_name = f"{noisy_failure.__module__}.{noisy_failure.__name__}"
+    registry.register_job(noisy_failure, name=noisy_failure.__name__, retries=0)
+    job_name = noisy_failure.__name__
 
     await backend.create_job(
         job_id="err-big",
