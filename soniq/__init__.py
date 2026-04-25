@@ -32,6 +32,7 @@ from ._active import _active_app
 from .app import Soniq
 from .job import JobContext, JobStatus, Snooze
 from .settings import configure as settings_configure
+from .task_ref import TaskRef, task_ref
 
 
 def _resolve_app() -> Soniq:
@@ -79,6 +80,8 @@ __all__ = [
     "JobContext",
     "JobStatus",
     "Snooze",
+    "TaskRef",
+    "task_ref",
     "every",
     "cron",
     "features",
