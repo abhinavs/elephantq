@@ -13,7 +13,7 @@ import pytest
 
 import soniq
 from soniq.core.heartbeat import cleanup_stale_workers
-from soniq.worker import Worker
+from soniq.core.worker import Worker
 
 
 @soniq.job()

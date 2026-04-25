@@ -8,13 +8,13 @@ import pytest
 
 
 def test_worker_importable():
-    from soniq.worker import Worker
+    from soniq.core.worker import Worker
 
     assert Worker is not None
 
 
 def test_worker_takes_backend_and_registry():
-    from soniq.worker import Worker
+    from soniq.core.worker import Worker
 
     sig = inspect.signature(Worker.__init__)
     params = list(sig.parameters.keys())
@@ -23,14 +23,14 @@ def test_worker_takes_backend_and_registry():
 
 
 def test_worker_has_run_method():
-    from soniq.worker import Worker
+    from soniq.core.worker import Worker
 
     assert hasattr(Worker, "run")
     assert asyncio_iscoroutinefunction_safe(Worker.run)
 
 
 def test_worker_has_run_once_method():
-    from soniq.worker import Worker
+    from soniq.core.worker import Worker
 
     assert hasattr(Worker, "run_once")
     assert asyncio_iscoroutinefunction_safe(Worker.run_once)
@@ -49,7 +49,7 @@ async def test_worker_run_once_processes_job():
 
     from soniq.backends.memory import MemoryBackend
     from soniq.core.registry import JobRegistry
-    from soniq.worker import Worker
+    from soniq.core.worker import Worker
 
     backend = MemoryBackend()
     registry = JobRegistry()

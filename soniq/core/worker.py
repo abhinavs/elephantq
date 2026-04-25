@@ -10,9 +10,9 @@ import logging
 import time
 from typing import Any, List, Optional
 
-from .core.processor import process_job_via_backend
-from .core.registry import JobRegistry
-from .settings import SoniqSettings, get_settings
+from ..settings import SoniqSettings, get_settings
+from .processor import process_job_via_backend
+from .registry import JobRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +105,7 @@ class Worker:
         self, concurrency: int, queues: Optional[List[str]] = None
     ) -> bool:
         """Run continuous worker with heartbeat and signal handling."""
-        from .utils.signals import GracefulSignalHandler
+        from ..utils.signals import GracefulSignalHandler
 
         shutdown_event = asyncio.Event()
         notification_event = asyncio.Event()
@@ -283,7 +283,7 @@ class Worker:
         if current - self._last_cleanup < self._settings.cleanup_interval:
             return
 
-        from .core.leadership import with_advisory_lock
+        from .leadership import with_advisory_lock
 
         try:
             async with with_advisory_lock(self._backend, "soniq.maintenance") as leader:

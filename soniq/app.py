@@ -484,7 +484,7 @@ class Soniq:
 
         self._check_pool_sizing(concurrency)
 
-        from .worker import Worker
+        from .core.worker import Worker
 
         worker = Worker(
             backend=self._backend,

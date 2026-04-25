@@ -57,7 +57,7 @@ async def test_corrupted_json_data(clean_db):
     This test verifies that if args somehow contain invalid data,
     the job is dead-lettered via the old conn-based processor path.
     """
-    from soniq.worker import Worker
+    from soniq.core.worker import Worker
 
     global_app = soniq._get_global_app()
     app_pool = await global_app.get_pool()

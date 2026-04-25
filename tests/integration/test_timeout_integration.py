@@ -7,7 +7,7 @@ import asyncio
 import pytest
 
 import soniq
-from soniq.worker import Worker
+from soniq.core.worker import Worker
 
 
 @soniq.job(retries=1, timeout=0.1)

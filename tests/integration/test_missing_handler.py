@@ -8,7 +8,7 @@ import pytest
 
 import soniq
 from soniq.core.registry import JobRegistry
-from soniq.worker import Worker
+from soniq.core.worker import Worker
 
 
 @pytest.mark.asyncio

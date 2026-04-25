@@ -23,7 +23,7 @@ os.environ["SONIQ_DATABASE_URL"] = TEST_DATABASE_URL
 
 from soniq import Soniq  # noqa: E402
 from soniq.core.registry import clear_registry  # noqa: E402
-from soniq.worker import Worker  # noqa: E402
+from soniq.core.worker import Worker  # noqa: E402
 from tests.db_utils import clear_table  # noqa: E402
 
 

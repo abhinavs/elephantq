@@ -13,7 +13,7 @@ def test_listen_handle_initialized_before_try():
     listen_handle must be set to None before the try block in
     _run_continuous so the finally block can always check it.
     """
-    worker_path = Path(__file__).parent.parent.parent / "soniq" / "worker.py"
+    worker_path = Path(__file__).parent.parent.parent / "soniq" / "core" / "worker.py"
     source = worker_path.read_text()
 
     # Verify listen_handle = None appears before the try block

@@ -444,7 +444,7 @@ if __name__ == "__main__":
                     job_ids.append(job_id)
 
                 # Process jobs with timing checks — wait for scheduled times
-                from soniq.worker import Worker
+                from soniq.core.worker import Worker
 
                 global_app = soniq._get_global_app()
                 worker = Worker(global_app._backend, global_app._get_job_registry())

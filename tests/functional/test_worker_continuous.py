@@ -21,7 +21,7 @@ async def test_worker_processes_job_and_shuts_down():
     await app.enqueue(signal_done)
 
     async def run_and_stop():
-        from soniq.worker import Worker
+        from soniq.core.worker import Worker
 
         worker = Worker(
             backend=app._backend,
@@ -65,7 +65,7 @@ async def test_worker_run_method_dispatches_correctly():
     await app.enqueue(collect, value="a")
     await app.enqueue(collect, value="b")
 
-    from soniq.worker import Worker
+    from soniq.core.worker import Worker
 
     worker = Worker(
         backend=app._backend,

@@ -370,7 +370,7 @@ async def test_soniq_integration_with_contexts():
     await create_test_database()
 
     from soniq import Soniq
-    from soniq.worker import Worker
+    from soniq.core.worker import Worker
 
     # Reset global state
     await close_pool()

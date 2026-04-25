@@ -12,7 +12,7 @@ import pytest
 
 from soniq.backends.memory import MemoryBackend
 from soniq.core.registry import JobRegistry
-from soniq.worker import Worker
+from soniq.core.worker import Worker
 
 
 async def _create_jobs(backend, registry, job_func, count, args_template=None):

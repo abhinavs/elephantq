@@ -28,7 +28,7 @@ def _make_app(monkeypatch):
 
     monkeypatch.setattr(app, "_ensure_initialized", fake_init)
     monkeypatch.setattr(app, "_check_pool_sizing", lambda concurrency: None)
-    monkeypatch.setattr("soniq.worker.Worker", _FakeWorker)
+    monkeypatch.setattr("soniq.core.worker.Worker", _FakeWorker)
     return app
 
 
