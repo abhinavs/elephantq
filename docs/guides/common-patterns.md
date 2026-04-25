@@ -1,15 +1,15 @@
 # Common Patterns
 
-Patterns you'll reach for in most ElephantQ applications: middleware hooks, job context, deduplication, results, and the async context manager.
+Patterns you'll reach for in most Soniq applications: middleware hooks, job context, deduplication, results, and the async context manager.
 
 ## Middleware hooks
 
 Register functions that run before and after every job, or when a job fails. Useful for logging, metrics, tracing, and cleanup.
 
 ```python
-from elephantq import ElephantQ
+from soniq import Soniq
 
-eq = ElephantQ(database_url="postgresql://localhost/myapp")
+eq = Soniq(database_url="postgresql://localhost/myapp")
 
 
 @eq.before_job
@@ -40,7 +40,7 @@ You can register multiple hooks of each type. They run in registration order.
 Job functions can receive runtime metadata by adding a `ctx: JobContext` parameter:
 
 ```python
-from elephantq.job import JobContext
+from soniq.job import JobContext
 
 @eq.job(queue="default")
 async def process_order(order_id: int, ctx: JobContext):
@@ -48,7 +48,7 @@ async def process_order(order_id: int, ctx: JobContext):
     print(f"Queue: {ctx.queue}, Worker: {ctx.worker_id}")
 ```
 
-ElephantQ injects the context automatically when it sees the type annotation. The parameter name doesn't matter, but `ctx` is conventional.
+Soniq injects the context automatically when it sees the type annotation. The parameter name doesn't matter, but `ctx` is conventional.
 
 Available fields:
 
@@ -69,7 +69,7 @@ Prevent duplicate jobs with `unique=True` or a custom `dedup_key`.
 
 ### Argument-based deduplication
 
-With `unique=True`, ElephantQ hashes the job arguments. If a job with the same name and arguments already exists in a non-terminal state, the enqueue is a no-op:
+With `unique=True`, Soniq hashes the job arguments. If a job with the same name and arguments already exists in a non-terminal state, the enqueue is a no-op:
 
 ```python
 @eq.job(unique=True)
@@ -131,7 +131,7 @@ status = await eq.get_job_status(job_id)
 For scripts, migrations, or one-off tasks, use the async context manager to handle setup and teardown automatically:
 
 ```python
-async with ElephantQ(database_url="postgresql://localhost/myapp") as eq:
+async with Soniq(database_url="postgresql://localhost/myapp") as eq:
     @eq.job()
     async def my_task(value: str):
         print(value)

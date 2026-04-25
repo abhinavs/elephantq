@@ -1,13 +1,13 @@
 # Recipe: Scheduled Reports
 
-A pattern for generating recurring reports on a cron schedule using `@elephantq.periodic`.
+A pattern for generating recurring reports on a cron schedule using `@soniq.periodic`.
 
 ## The job
 
 ```python
-import elephantq
+import soniq
 
-@elephantq.periodic(cron="0 9 * * 1")  # Every Monday at 9 AM
+@soniq.periodic(cron="0 9 * * 1")  # Every Monday at 9 AM
 async def weekly_sales_report():
     start, end = get_last_week_range()
     data = await fetch_sales_data(start, end)
@@ -19,7 +19,7 @@ async def weekly_sales_report():
     )
 ```
 
-The `@elephantq.periodic` decorator registers both the job and its schedule. The scheduler picks it up automatically.
+The `@soniq.periodic` decorator registers both the job and its schedule. The scheduler picks it up automatically.
 
 ## Enabling the scheduler
 
@@ -27,13 +27,13 @@ The scheduler is a separate process that creates job instances on schedule. Enab
 
 ```bash
 # Required environment variable
-export ELEPHANTQ_SCHEDULING_ENABLED=true
+export SONIQ_SCHEDULING_ENABLED=true
 
 # Terminal 1: Scheduler (creates jobs on schedule)
-elephantq scheduler
+soniq scheduler
 
 # Terminal 2: Worker (processes created jobs)
-ELEPHANTQ_JOBS_MODULES="app.reports" elephantq start
+SONIQ_JOBS_MODULES="app.reports" soniq start
 ```
 
 The scheduler checks registered periodic jobs and enqueues them when their schedule fires. The worker processes them like any other job.
@@ -43,15 +43,15 @@ The scheduler checks registered periodic jobs and enqueues them when their sched
 Cron expressions for specific times:
 
 ```python
-@elephantq.periodic(cron="0 9 * * *")       # Daily at 9 AM
+@soniq.periodic(cron="0 9 * * *")       # Daily at 9 AM
 async def daily_digest():
     ...
 
-@elephantq.periodic(cron="0 0 1 * *")       # First of every month
+@soniq.periodic(cron="0 0 1 * *")       # First of every month
 async def monthly_summary():
     ...
 
-@elephantq.periodic(cron="*/15 * * * *")     # Every 15 minutes
+@soniq.periodic(cron="*/15 * * * *")     # Every 15 minutes
 async def check_stale_orders():
     ...
 ```
@@ -59,15 +59,15 @@ async def check_stale_orders():
 Interval helpers for simpler cases:
 
 ```python
-@elephantq.periodic(every_minutes=10)
+@soniq.periodic(every_minutes=10)
 async def cleanup_temp_files():
     ...
 
-@elephantq.periodic(every_hours=1)
+@soniq.periodic(every_hours=1)
 async def sync_inventory():
     ...
 
-@elephantq.periodic(every_seconds=30)
+@soniq.periodic(every_seconds=30)
 async def health_ping():
     ...
 ```
@@ -75,22 +75,22 @@ async def health_ping():
 You can combine `@periodic` with any `@job` option:
 
 ```python
-@elephantq.periodic(cron="0 9 * * 1", queue="reports", max_retries=2, timeout=300)
+@soniq.periodic(cron="0 9 * * 1", queue="reports", max_retries=2, timeout=300)
 async def weekly_report():
     ...
 ```
 
 ## Instance API
 
-With the Instance API, define periodic jobs on your `ElephantQ` instance. Note that `periodic` is only available on the global API. Register the job normally and configure the schedule separately, or use the global decorator:
+With the Instance API, define periodic jobs on your `Soniq` instance. Note that `periodic` is only available on the global API. Register the job normally and configure the schedule separately, or use the global decorator:
 
 ```python
-import elephantq
-from elephantq import ElephantQ
+import soniq
+from soniq import Soniq
 
-eq = ElephantQ(database_url="postgresql://localhost/myapp")
+eq = Soniq(database_url="postgresql://localhost/myapp")
 
-@elephantq.periodic(cron="0 9 * * 1")
+@soniq.periodic(cron="0 9 * * 1")
 async def weekly_report():
     data = await fetch_weekly_data()
     await send_report(data)
@@ -100,9 +100,9 @@ async def weekly_report():
 
 ```python
 # app/reports.py
-import elephantq
+import soniq
 
-@elephantq.periodic(cron="0 9 * * 1", queue="reports", timeout=300)
+@soniq.periodic(cron="0 9 * * 1", queue="reports", timeout=300)
 async def weekly_sales_report():
     start, end = get_last_week_range()
     data = await fetch_sales_data(start, end)
@@ -115,7 +115,7 @@ async def weekly_sales_report():
     )
 
 
-@elephantq.periodic(cron="0 6 * * *", queue="reports")
+@soniq.periodic(cron="0 6 * * *", queue="reports")
 async def daily_error_digest():
     errors = await fetch_errors_since_yesterday()
     if not errors:
@@ -129,11 +129,11 @@ async def daily_error_digest():
 
 ```bash
 # Run everything
-ELEPHANTQ_DATABASE_URL="postgresql://localhost/myapp" \
-ELEPHANTQ_SCHEDULING_ENABLED=true \
-ELEPHANTQ_JOBS_MODULES="app.reports"
+SONIQ_DATABASE_URL="postgresql://localhost/myapp" \
+SONIQ_SCHEDULING_ENABLED=true \
+SONIQ_JOBS_MODULES="app.reports"
 
 # In separate terminals:
-elephantq scheduler
-elephantq start --queues reports --concurrency 2
+soniq scheduler
+soniq start --queues reports --concurrency 2
 ```

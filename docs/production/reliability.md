@@ -1,10 +1,10 @@
 # Reliability
 
-This document covers what ElephantQ guarantees, what it doesn't, and how to handle the failure modes you'll encounter in production.
+This document covers what Soniq guarantees, what it doesn't, and how to handle the failure modes you'll encounter in production.
 
 ## Delivery guarantees
 
-ElephantQ provides **at-least-once delivery**. Every enqueued job will be executed at least once, assuming workers are running and the database is available.
+Soniq provides **at-least-once delivery**. Every enqueued job will be executed at least once, assuming workers are running and the database is available.
 
 It does not provide exactly-once delivery. Here's why: there is a window between when a job finishes executing and when its status is updated in the database. If the worker crashes in that window (SIGKILL, OOM, kernel panic, pod eviction), the job stays in `processing` status. When a healthy worker eventually detects the stale worker and resets the job, it runs again.
 
@@ -21,7 +21,7 @@ Common patterns:
 **Sent flags.** Before sending an email or webhook, check a flag in your database. Set the flag inside the same transaction as the action.
 
 ```python
-@elephantq.job()
+@soniq.job()
 async def send_welcome_email(user_id: int):
     user = await db.get(user_id)
     if user.welcome_email_sent:
@@ -36,10 +36,10 @@ async def send_welcome_email(user_id: int):
 
 ## Retry semantics
 
-When a job raises an exception, ElephantQ retries it automatically up to `max_retries` (default 3). Each retry respects the configured delay.
+When a job raises an exception, Soniq retries it automatically up to `max_retries` (default 3). Each retry respects the configured delay.
 
 ```python
-@elephantq.job(max_retries=5, timeout=120)
+@soniq.job(max_retries=5, timeout=120)
 async def call_external_api(payload: dict):
     response = await httpx.post("https://api.example.com", json=payload)
     response.raise_for_status()
@@ -47,7 +47,7 @@ async def call_external_api(payload: dict):
 
 After exhausting retries:
 
-- If `ELEPHANTQ_DEAD_LETTER_QUEUE_ENABLED=true`, the job moves to the dead-letter queue. Inspect and retry with `elephantq dead-letter list` and `elephantq dead-letter resurrect <id>`.
+- If `SONIQ_DEAD_LETTER_QUEUE_ENABLED=true`, the job moves to the dead-letter queue. Inspect and retry with `soniq dead-letter list` and `soniq dead-letter resurrect <id>`.
 - If DLQ is disabled, the job is marked as `failed`.
 
 ## Stuck job recovery
@@ -69,18 +69,18 @@ Running workers periodically scan for stale peers. When a worker's heartbeat exc
 Worst-case recovery time = `stale_worker_threshold` + `cleanup_interval`. With defaults, that's 10 minutes. Tune for your needs:
 
 ```bash
-ELEPHANTQ_STALE_WORKER_THRESHOLD=120   # 2 minutes
-ELEPHANTQ_CLEANUP_INTERVAL=60          # check every minute
+SONIQ_STALE_WORKER_THRESHOLD=120   # 2 minutes
+SONIQ_CLEANUP_INTERVAL=60          # check every minute
 ```
 
-The default 300-second job timeout also prevents most stuck-job scenarios caused by hung code (infinite loops, dead network calls). Override per-job with `@elephantq.job(timeout=600)`.
+The default 300-second job timeout also prevents most stuck-job scenarios caused by hung code (infinite loops, dead network calls). Override per-job with `@soniq.job(timeout=600)`.
 
 ### Manual recovery
 
 If no workers are running (or you need to recover faster), reset stuck jobs directly:
 
 ```sql
-UPDATE elephantq_jobs
+UPDATE soniq_jobs
 SET status = 'queued', worker_id = NULL, updated_at = NOW()
 WHERE status = 'processing'
   AND updated_at < NOW() - INTERVAL '10 minutes';
@@ -91,13 +91,13 @@ WHERE status = 'processing'
 ### Cleaning up stale workers
 
 ```bash
-elephantq workers --cleanup
+soniq workers --cleanup
 ```
 
 Or manually:
 
 ```sql
-UPDATE elephantq_workers
+UPDATE soniq_workers
 SET status = 'stopped'
 WHERE status = 'active'
   AND last_heartbeat < NOW() - INTERVAL '10 minutes';
@@ -107,7 +107,7 @@ WHERE status = 'active'
 
 ```sql
 SELECT id, job_name, queue, attempts, updated_at
-FROM elephantq_jobs
+FROM soniq_jobs
 WHERE status = 'processing'
   AND updated_at < NOW() - INTERVAL '10 minutes'
 ORDER BY updated_at ASC;
@@ -116,12 +116,12 @@ ORDER BY updated_at ASC;
 Check for stale workers:
 
 ```bash
-elephantq workers --stale
+soniq workers --stale
 ```
 
 ## Worker crash behavior
 
-Workers send heartbeats every `ELEPHANTQ_WORKER_HEARTBEAT_INTERVAL` seconds (default 5). If a worker stops heartbeating, it's considered stale after `ELEPHANTQ_STALE_WORKER_THRESHOLD` seconds (default 300).
+Workers send heartbeats every `SONIQ_WORKER_HEARTBEAT_INTERVAL` seconds (default 5). If a worker stops heartbeating, it's considered stale after `SONIQ_STALE_WORKER_THRESHOLD` seconds (default 300).
 
 When a worker is detected as stale:
 
@@ -131,16 +131,16 @@ When a worker is detected as stale:
 
 Preventive measures:
 
-- Use `SIGTERM` for graceful shutdown. ElephantQ finishes in-flight jobs before exiting.
+- Use `SIGTERM` for graceful shutdown. Soniq finishes in-flight jobs before exiting.
 - In Kubernetes, set `terminationGracePeriodSeconds` to match your longest job timeout.
 - In systemd, set `TimeoutStopSec` appropriately.
-- Monitor memory usage. The `ELEPHANTQ_MEMORY_USAGE_THRESHOLD` setting (default 90%) triggers a health warning.
+- Monitor memory usage. The `SONIQ_MEMORY_USAGE_THRESHOLD` setting (default 90%) triggers a health warning.
 
 ## Database failure behavior
 
 If the database becomes unreachable:
 
-- Workers cannot pick up new jobs. They enter a reconnect loop with exponential backoff starting at `ELEPHANTQ_ERROR_RETRY_DELAY` seconds (default 5).
+- Workers cannot pick up new jobs. They enter a reconnect loop with exponential backoff starting at `SONIQ_ERROR_RETRY_DELAY` seconds (default 5).
 - In-flight jobs that are purely in-memory (no DB calls) may continue running. When they finish, the status update will fail. The job will be retried after the worker reconnects and the stale detection kicks in.
 - LISTEN/NOTIFY stops working. After reconnection, workers fall back to polling temporarily, then re-establish listeners.
 
@@ -171,12 +171,12 @@ Do not run SQLite in production.
 
 ### PostgreSQL scaling limits
 
-ElephantQ is comfortable processing thousands of jobs per second on a single PostgreSQL instance. At 10,000+ jobs/sec, you'll start hitting contention on the jobs table. At that scale, consider:
+Soniq is comfortable processing thousands of jobs per second on a single PostgreSQL instance. At 10,000+ jobs/sec, you'll start hitting contention on the jobs table. At that scale, consider:
 
 - Partitioning the jobs table by queue
 - Dedicated PostgreSQL instances per queue group
 - Reducing payload sizes
-- Archiving completed jobs aggressively (`ELEPHANTQ_RESULT_TTL`)
+- Archiving completed jobs aggressively (`SONIQ_RESULT_TTL`)
 
 ### Stuck jobs after SIGKILL or OOM
 

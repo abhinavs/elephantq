@@ -1,28 +1,28 @@
 # Testing
 
-Practical patterns for testing applications that use ElephantQ. All examples use pytest.
+Practical patterns for testing applications that use Soniq. All examples use pytest.
 
 ## Memory backend for unit tests
 
 The fastest way to test. No external services, no cleanup scripts. State lives in Python dicts and disappears when the process exits:
 
 ```python
-from elephantq import ElephantQ
+from soniq import Soniq
 
-app = ElephantQ(backend="memory")
+app = Soniq(backend="memory")
 ```
 
 ## Pytest fixture
 
-A reusable fixture that gives each test a clean, isolated ElephantQ instance:
+A reusable fixture that gives each test a clean, isolated Soniq instance:
 
 ```python
 import pytest
-from elephantq import ElephantQ
+from soniq import Soniq
 
 @pytest.fixture
 async def eq():
-    app = ElephantQ(backend="memory")
+    app = Soniq(backend="memory")
     yield app
     await app._reset()
     await app.close()
@@ -137,12 +137,12 @@ When you need to test against a real SQL database but don't want to run PostgreS
 
 ```python
 import pytest
-from elephantq import ElephantQ
+from soniq import Soniq
 
 @pytest.fixture
 async def eq(tmp_path):
     db_path = str(tmp_path / "test.db")
-    app = ElephantQ(backend="sqlite", database_url=db_path)
+    app = Soniq(backend="sqlite", database_url=db_path)
     yield app
     await app.close()
 ```

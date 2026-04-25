@@ -1,12 +1,12 @@
 # Scheduling
 
-ElephantQ supports one-off delayed jobs and recurring schedules. Both require the scheduling feature flag.
+Soniq supports one-off delayed jobs and recurring schedules. Both require the scheduling feature flag.
 
 ## Setup
 
 ```bash
-export ELEPHANTQ_SCHEDULING_ENABLED=true
-pip install elephantq[scheduling]  # installs croniter for cron expressions
+export SONIQ_SCHEDULING_ENABLED=true
+pip install soniq[scheduling]  # installs croniter for cron expressions
 ```
 
 ## One-off scheduling
@@ -31,30 +31,30 @@ await app.schedule(
 from datetime import timedelta
 
 # Using the global API
-await elephantq.schedule(send_report, run_in=timedelta(minutes=30), report_id="q4")
-await elephantq.schedule(send_report, run_in=600, report_id="q4")  # 600 seconds
+await soniq.schedule(send_report, run_in=timedelta(minutes=30), report_id="q4")
+await soniq.schedule(send_report, run_in=600, report_id="q4")  # 600 seconds
 ```
 
 Under the hood, `schedule()` calls `enqueue()` with a `scheduled_at` timestamp. The worker ignores scheduled jobs until their time arrives.
 
 ## Recurring jobs
 
-### `@elephantq.periodic()` decorator
+### `@soniq.periodic()` decorator
 
 The simplest way to define recurring jobs. Declares both the job and its schedule at definition time.
 
 ```python
-import elephantq
+import soniq
 
-@elephantq.periodic(cron="0 9 * * *")
+@soniq.periodic(cron="0 9 * * *")
 async def daily_sales_report():
     ...
 
-@elephantq.periodic(every_minutes=10, queue="maintenance")
+@soniq.periodic(every_minutes=10, queue="maintenance")
 async def cleanup_temp_files():
     ...
 
-@elephantq.periodic(every_hours=2)
+@soniq.periodic(every_hours=2)
 async def sync_inventory():
     ...
 ```
@@ -66,7 +66,7 @@ The scheduler picks up all `@periodic` functions automatically.
 For schedules defined at runtime, use the fluent builders:
 
 ```python
-from elephantq.features.recurring import every, daily, weekly, monthly, cron
+from soniq.features.recurring import every, daily, weekly, monthly, cron
 
 # Every 5 minutes
 await every(5).minutes().schedule(cleanup_temp_files)
@@ -98,7 +98,7 @@ await every(30).minutes().queue("reports").priority(10).schedule(generate_dashbo
 An alternative decorator that accepts shorthand expressions:
 
 ```python
-from elephantq.features.recurring import recurring
+from soniq.features.recurring import recurring
 
 @recurring("*/15 * * * *")  # cron
 async def health_check():
@@ -116,7 +116,7 @@ Shorthand units: `s` (seconds), `m` (minutes), `h` (hours), `d` (days).
 For advanced one-off scheduling with metadata, use `JobScheduleBuilder`:
 
 ```python
-from elephantq.features.scheduling import schedule_job
+from soniq.features.scheduling import schedule_job
 
 await (
     schedule_job(cleanup_temp_files)
@@ -148,7 +148,7 @@ Available methods:
 Schedule multiple jobs together:
 
 ```python
-from elephantq.features.scheduling import create_batch
+from soniq.features.scheduling import create_batch
 
 batch = create_batch()
 batch.add(send_report, report_id="daily").with_priority(10)
@@ -161,27 +161,27 @@ job_ids = await batch.enqueue_all(batch_priority=5)
 Recurring jobs need a running scheduler to check for due jobs and enqueue them. Start it separately from your worker:
 
 ```bash
-elephantq scheduler --check-interval 60
+soniq scheduler --check-interval 60
 ```
 
 The scheduler checks for due recurring jobs every `--check-interval` seconds (default: 60). When a job is due, it enqueues a new instance into the regular job queue. Workers then pick it up as usual.
 
-Multiple scheduler instances are safe. ElephantQ uses optimistic locking on the `next_run` timestamp -- only one scheduler claims each run.
+Multiple scheduler instances are safe. Soniq uses optimistic locking on the `next_run` timestamp -- only one scheduler claims each run.
 
 ### Checking scheduler status
 
 ```bash
-elephantq scheduler --status
+soniq scheduler --status
 ```
 
 ### Programmatic start
 
 ```python
-from elephantq.features.recurring import start_recurring_scheduler
+from soniq.features.recurring import start_recurring_scheduler
 
 await start_recurring_scheduler(check_interval=30)
 ```
 
 ## Persistence
 
-Recurring job schedules are stored in the `elephantq_recurring_jobs` table. If the scheduler restarts, it reloads all active schedules and resumes where it left off. No schedules are lost.
+Recurring job schedules are stored in the `soniq_recurring_jobs` table. If the scheduler restarts, it reloads all active schedules and resumes where it left off. No schedules are lost.

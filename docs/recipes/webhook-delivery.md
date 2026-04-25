@@ -9,10 +9,10 @@ import hashlib
 import hmac
 import json
 import aiohttp
-from elephantq import ElephantQ
-from elephantq.job import JobContext
+from soniq import Soniq
+from soniq.job import JobContext
 
-eq = ElephantQ(database_url="postgresql://localhost/myapp")
+eq = Soniq(database_url="postgresql://localhost/myapp")
 
 
 @eq.job(queue="webhooks", max_retries=5, retry_delay=[1, 5, 30, 120, 600])

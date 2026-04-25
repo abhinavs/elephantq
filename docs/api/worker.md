@@ -1,7 +1,7 @@
 # Worker
 
 Workers fetch jobs from the database, execute them, and update their status.
-Most users start workers through the CLI (`elephantq start`) or `app.run_worker()`.
+Most users start workers through the CLI (`soniq start`) or `app.run_worker()`.
 The `Worker` class itself is documented here for advanced use cases.
 
 
@@ -10,7 +10,7 @@ The `Worker` class itself is documented here for advanced use cases.
 The recommended way to start processing jobs from application code.
 
 ```python
-app = ElephantQ(database_url="postgresql://localhost/myapp")
+app = Soniq(database_url="postgresql://localhost/myapp")
 
 await app.run_worker(
     concurrency=4,
@@ -30,9 +30,9 @@ await app.run_worker(
 The global API exposes the same function:
 
 ```python
-import elephantq
+import soniq
 
-await elephantq.run_worker(concurrency=8, queues=["urgent", "default"])
+await soniq.run_worker(concurrency=8, queues=["urgent", "default"])
 ```
 
 ### What happens during run_worker
@@ -50,15 +50,15 @@ settings:
 
 | Env var | Default | Description |
 |---|---|---|
-| `ELEPHANTQ_CONCURRENCY` | `4` | Default concurrency (overridden by `--concurrency` flag). |
-| `ELEPHANTQ_QUEUES` | `default` | Comma-separated queue list (overridden by `--queues` flag). |
-| `ELEPHANTQ_POLL_INTERVAL` | `5.0` | Seconds to wait when no jobs are available before polling again. Also the `LISTEN/NOTIFY` timeout. |
-| `ELEPHANTQ_HEARTBEAT_INTERVAL` | `5.0` | Seconds between heartbeat updates. |
-| `ELEPHANTQ_HEARTBEAT_TIMEOUT` | `300.0` | Seconds after which a worker with no heartbeat is considered stale. |
-| `ELEPHANTQ_CLEANUP_INTERVAL` | `300.0` | Seconds between expired-job and stale-worker cleanup runs. |
-| `ELEPHANTQ_ERROR_RETRY_DELAY` | `5.0` | Seconds to sleep after an unexpected worker-level error before resuming. |
-| `ELEPHANTQ_JOBS_MODULE` | `jobs` | Module name for automatic job discovery. |
-| `ELEPHANTQ_JOBS_MODULES` | (empty) | Comma-separated list of modules to import on worker startup. Required by the CLI. |
+| `SONIQ_CONCURRENCY` | `4` | Default concurrency (overridden by `--concurrency` flag). |
+| `SONIQ_QUEUES` | `default` | Comma-separated queue list (overridden by `--queues` flag). |
+| `SONIQ_POLL_INTERVAL` | `5.0` | Seconds to wait when no jobs are available before polling again. Also the `LISTEN/NOTIFY` timeout. |
+| `SONIQ_HEARTBEAT_INTERVAL` | `5.0` | Seconds between heartbeat updates. |
+| `SONIQ_HEARTBEAT_TIMEOUT` | `300.0` | Seconds after which a worker with no heartbeat is considered stale. |
+| `SONIQ_CLEANUP_INTERVAL` | `300.0` | Seconds between expired-job and stale-worker cleanup runs. |
+| `SONIQ_ERROR_RETRY_DELAY` | `5.0` | Seconds to sleep after an unexpected worker-level error before resuming. |
+| `SONIQ_JOBS_MODULE` | `jobs` | Module name for automatic job discovery. |
+| `SONIQ_JOBS_MODULES` | (empty) | Comma-separated list of modules to import on worker startup. Required by the CLI. |
 
 
 ## Worker class (advanced)
@@ -67,14 +67,14 @@ Most users never instantiate `Worker` directly. It is documented here for
 contributors and users who need fine-grained control.
 
 ```python
-from elephantq.worker import Worker
-from elephantq.core.registry import JobRegistry
-from elephantq.settings import ElephantQSettings
+from soniq.worker import Worker
+from soniq.core.registry import JobRegistry
+from soniq.settings import SoniqSettings
 
 worker = Worker(
     backend=backend,       # A StorageBackend instance
     registry=registry,     # A JobRegistry with registered jobs
-    settings=settings,     # ElephantQSettings (optional, uses global defaults)
+    settings=settings,     # SoniqSettings (optional, uses global defaults)
     hooks=hooks,           # Dict of hook lists (optional)
 )
 ```
@@ -85,7 +85,7 @@ worker = Worker(
 |---|---|---|---|
 | `backend` | `StorageBackend` | (required) | The storage backend (PostgresBackend, SQLiteBackend, or MemoryBackend). |
 | `registry` | `JobRegistry` | (required) | Job registry containing all `@app.job()` registrations. |
-| `settings` | `ElephantQSettings \| None` | `None` | Settings instance. Falls back to global settings when `None`. |
+| `settings` | `SoniqSettings \| None` | `None` | Settings instance. Falls back to global settings when `None`. |
 | `hooks` | `dict \| None` | `None` | Hook dictionary with keys `"before_job"`, `"after_job"`, `"on_error"`, each mapping to a list of callables. |
 
 ### run()
@@ -131,7 +131,7 @@ A second signal during shutdown forces an immediate exit.
 ## LISTEN/NOTIFY
 
 When the backend supports push notifications (PostgreSQL), the worker subscribes
-to the `elephantq_new_job` channel. When a job is enqueued, the worker wakes up
+to the `soniq_new_job` channel. When a job is enqueued, the worker wakes up
 immediately instead of waiting for the next poll cycle. This keeps latency low
 without hammering the database with frequent polls.
 

@@ -9,16 +9,16 @@ Registers a function as a job. Works on both instance and global APIs.
 
 ```python
 # Instance API
-app = ElephantQ(database_url="postgresql://localhost/myapp")
+app = Soniq(database_url="postgresql://localhost/myapp")
 
 @app.job()
 async def send_email(to: str, subject: str, body: str):
     ...
 
 # Global API
-import elephantq
+import soniq
 
-@elephantq.job()
+@soniq.job()
 async def send_email(to: str, subject: str, body: str):
     ...
 ```
@@ -108,20 +108,20 @@ job_id = await app.schedule(send_report, run_at=tomorrow_9am, user_id=42)
 
 ### Global API
 
-The global `elephantq.schedule()` supports both absolute and relative times:
+The global `soniq.schedule()` supports both absolute and relative times:
 
 ```python
-import elephantq
+import soniq
 from datetime import datetime, timedelta, timezone
 
 # Absolute time
-await elephantq.schedule(send_report, run_at=datetime(2025, 1, 1, 9, 0, tzinfo=timezone.utc))
+await soniq.schedule(send_report, run_at=datetime(2025, 1, 1, 9, 0, tzinfo=timezone.utc))
 
 # Relative delay in seconds
-await elephantq.schedule(send_reminder, run_in=3600)
+await soniq.schedule(send_reminder, run_in=3600)
 
 # Relative delay as timedelta
-await elephantq.schedule(send_reminder, run_in=timedelta(hours=1))
+await soniq.schedule(send_reminder, run_in=timedelta(hours=1))
 ```
 
 ```python
@@ -138,17 +138,17 @@ async def schedule(
 Exactly one of `run_at` or `run_in` is required.
 
 
-## @app.periodic() / @elephantq.periodic()
+## @app.periodic() / @soniq.periodic()
 
 Declares a job that runs on a recurring schedule. The scheduler process
-(`elephantq scheduler`) picks up all `@periodic` functions automatically.
+(`soniq scheduler`) picks up all `@periodic` functions automatically.
 
 ```python
-@elephantq.periodic(cron="0 9 * * *")
+@soniq.periodic(cron="0 9 * * *")
 async def daily_report():
     ...
 
-@elephantq.periodic(every_minutes=10, queue="maintenance")
+@soniq.periodic(every_minutes=10, queue="maintenance")
 async def cleanup_old_sessions():
     ...
 ```
@@ -168,17 +168,17 @@ Rules:
 - You cannot combine `cron` with any `every_*` parameter.
 - You cannot combine multiple `every_*` parameters.
 
-Requires `ELEPHANTQ_SCHEDULING_ENABLED=true` and a running `elephantq scheduler`
+Requires `SONIQ_SCHEDULING_ENABLED=true` and a running `soniq scheduler`
 process.
 
 
 ## JobContext
 
 Runtime metadata injected into your job function. Declare a parameter with
-type annotation `JobContext` and ElephantQ fills it in automatically.
+type annotation `JobContext` and Soniq fills it in automatically.
 
 ```python
-from elephantq import JobContext
+from soniq import JobContext
 
 @app.job()
 async def process_order(order_id: int, ctx: JobContext):
@@ -206,7 +206,7 @@ async def process_order(order_id: int, ctx: JobContext):
 Enum of all job lifecycle states.
 
 ```python
-from elephantq import JobStatus
+from soniq import JobStatus
 ```
 
 | Value | Meaning |
@@ -222,10 +222,10 @@ from elephantq import JobStatus
 ## JobScheduleBuilder (advanced scheduling)
 
 A fluent interface for building complex schedules. Requires
-`ELEPHANTQ_SCHEDULING_ENABLED=true`.
+`SONIQ_SCHEDULING_ENABLED=true`.
 
 ```python
-from elephantq.features.scheduling import schedule_job
+from soniq.features.scheduling import schedule_job
 
 job_id = await (
     schedule_job(send_report)
@@ -271,7 +271,7 @@ dictionary instead.
 Enqueue multiple jobs as a logical batch:
 
 ```python
-from elephantq.features.scheduling import create_batch
+from soniq.features.scheduling import create_batch
 
 batch = create_batch()
 batch.add(send_email, to="a@b.com").with_priority(10)
@@ -282,14 +282,14 @@ job_ids = await batch.enqueue_all()
 ## Recurring schedule helpers
 
 The `every()` and `cron()` helpers provide a fluent API for registering recurring
-jobs. They require `ELEPHANTQ_SCHEDULING_ENABLED=true`.
+jobs. They require `SONIQ_SCHEDULING_ENABLED=true`.
 
 ```python
-import elephantq
+import soniq
 
 # Every 5 minutes
-await elephantq.every(5).minutes().schedule(cleanup_task)
+await soniq.every(5).minutes().schedule(cleanup_task)
 
 # Cron expression
-await elephantq.cron("0 9 * * *").schedule(daily_report)
+await soniq.cron("0 9 * * *").schedule(daily_report)
 ```

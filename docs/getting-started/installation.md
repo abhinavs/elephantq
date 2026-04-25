@@ -7,7 +7,7 @@ Python 3.10 or later.
 ## Core install
 
 ```bash
-pip install elephantq
+pip install soniq
 ```
 
 This pulls in `asyncpg` (PostgreSQL driver), `click`, and `pydantic-settings`. Enough to run jobs on PostgreSQL right away.
@@ -17,20 +17,20 @@ This pulls in `asyncpg` (PostgreSQL driver), `click`, and `pydantic-settings`. E
 Install only what you need:
 
 ```bash
-pip install elephantq[sqlite]       # aiosqlite -- SQLite backend for local dev
-pip install elephantq[scheduling]   # croniter -- recurring/cron jobs
-pip install elephantq[webhooks]     # aiohttp + cryptography -- HTTP callbacks and payload signing
-pip install elephantq[dashboard]    # fastapi + uvicorn -- web dashboard
-pip install elephantq[monitoring]   # prometheus-client + psutil -- metrics and health checks
-pip install elephantq[logging]      # structlog -- structured JSON logging
-pip install elephantq[full]         # everything above
+pip install soniq[sqlite]       # aiosqlite -- SQLite backend for local dev
+pip install soniq[scheduling]   # croniter -- recurring/cron jobs
+pip install soniq[webhooks]     # aiohttp + cryptography -- HTTP callbacks and payload signing
+pip install soniq[dashboard]    # fastapi + uvicorn -- web dashboard
+pip install soniq[monitoring]   # prometheus-client + psutil -- metrics and health checks
+pip install soniq[logging]      # structlog -- structured JSON logging
+pip install soniq[full]         # everything above
 ```
 
-Combine extras freely: `pip install elephantq[sqlite,scheduling,dashboard]`.
+Combine extras freely: `pip install soniq[sqlite,scheduling,dashboard]`.
 
 ## Backend auto-detection
 
-ElephantQ picks the storage backend from your `database_url`:
+Soniq picks the storage backend from your `database_url`:
 
 | URL pattern | Backend | Driver |
 |---|---|---|
@@ -39,16 +39,16 @@ ElephantQ picks the storage backend from your `database_url`:
 | `backend="memory"` | In-memory | none |
 
 ```python
-from elephantq import ElephantQ
+from soniq import Soniq
 
 # PostgreSQL -- production
-app = ElephantQ(database_url="postgresql://localhost/myapp")
+app = Soniq(database_url="postgresql://localhost/myapp")
 
 # SQLite -- local dev, no server
-app = ElephantQ(database_url="local.db")
+app = Soniq(database_url="local.db")
 
 # In-memory -- unit tests
-app = ElephantQ(backend="memory")
+app = Soniq(backend="memory")
 ```
 
 **PostgreSQL** is the only production-grade backend. It supports multiple concurrent workers, instant job delivery via `LISTEN/NOTIFY`, and transactional enqueue (enqueue a job inside your application's database transaction so the job only exists if the transaction commits).
@@ -63,40 +63,40 @@ Every optional feature is **disabled by default**. Enable them with environment 
 
 ```bash
 # .env
-ELEPHANTQ_DASHBOARD_ENABLED=true
-ELEPHANTQ_SCHEDULING_ENABLED=true
-ELEPHANTQ_DEAD_LETTER_QUEUE_ENABLED=true
+SONIQ_DASHBOARD_ENABLED=true
+SONIQ_SCHEDULING_ENABLED=true
+SONIQ_DEAD_LETTER_QUEUE_ENABLED=true
 ```
 
 Here are the available flags:
 
 | Environment variable | What it enables | Extra needed |
 |---|---|---|
-| `ELEPHANTQ_SCHEDULING_ENABLED` | Recurring jobs and cron schedules | `scheduling` |
-| `ELEPHANTQ_DEAD_LETTER_QUEUE_ENABLED` | Dead-letter queue for permanently failed jobs | -- |
-| `ELEPHANTQ_TIMEOUTS_ENABLED` | Per-job timeout enforcement | -- |
-| `ELEPHANTQ_METRICS_ENABLED` | Prometheus-style counters and health metrics | `monitoring` |
-| `ELEPHANTQ_LOGGING_ENABLED` | Structured JSON logging | `logging` |
-| `ELEPHANTQ_WEBHOOKS_ENABLED` | HTTP webhook notifications on job events | `webhooks` |
-| `ELEPHANTQ_SIGNING_ENABLED` | Webhook payload signing and secret helpers | `webhooks` |
-| `ELEPHANTQ_DASHBOARD_ENABLED` | Web UI for inspecting queues and jobs | `dashboard` |
-| `ELEPHANTQ_DASHBOARD_WRITE_ENABLED` | Retry/delete/cancel buttons in the dashboard | `dashboard` |
+| `SONIQ_SCHEDULING_ENABLED` | Recurring jobs and cron schedules | `scheduling` |
+| `SONIQ_DEAD_LETTER_QUEUE_ENABLED` | Dead-letter queue for permanently failed jobs | -- |
+| `SONIQ_TIMEOUTS_ENABLED` | Per-job timeout enforcement | -- |
+| `SONIQ_METRICS_ENABLED` | Prometheus-style counters and health metrics | `monitoring` |
+| `SONIQ_LOGGING_ENABLED` | Structured JSON logging | `logging` |
+| `SONIQ_WEBHOOKS_ENABLED` | HTTP webhook notifications on job events | `webhooks` |
+| `SONIQ_SIGNING_ENABLED` | Webhook payload signing and secret helpers | `webhooks` |
+| `SONIQ_DASHBOARD_ENABLED` | Web UI for inspecting queues and jobs | `dashboard` |
+| `SONIQ_DASHBOARD_WRITE_ENABLED` | Retry/delete/cancel buttons in the dashboard | `dashboard` |
 
-All flags accept `true`/`false` (case-insensitive). If the required extra isn't installed, ElephantQ will raise an import error at startup with a clear message about which package to install.
+All flags accept `true`/`false` (case-insensitive). If the required extra isn't installed, Soniq will raise an import error at startup with a clear message about which package to install.
 
 ## Verifying the install
 
 ```bash
 # Check the version
-elephantq --version
+soniq --version
 
 # Create tables (run against your database)
-ELEPHANTQ_DATABASE_URL="postgresql://localhost/myapp" elephantq setup
+SONIQ_DATABASE_URL="postgresql://localhost/myapp" soniq setup
 
 # Start a worker
-ELEPHANTQ_DATABASE_URL="postgresql://localhost/myapp" \
-ELEPHANTQ_JOBS_MODULES="myapp.jobs" \
-elephantq start
+SONIQ_DATABASE_URL="postgresql://localhost/myapp" \
+SONIQ_JOBS_MODULES="myapp.jobs" \
+soniq start
 ```
 
 See [quickstart.md](quickstart.md) to run your first job end-to-end.

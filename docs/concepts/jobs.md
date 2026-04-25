@@ -1,13 +1,13 @@
 # Jobs
 
-A job is an async Python function that ElephantQ runs in the background. You define it with a decorator, enqueue it with arguments, and a worker picks it up.
+A job is an async Python function that Soniq runs in the background. You define it with a decorator, enqueue it with arguments, and a worker picks it up.
 
 ## Defining a job
 
 ```python
-from elephantq import ElephantQ
+from soniq import Soniq
 
-app = ElephantQ(database_url="postgresql://localhost/myapp")
+app = Soniq(database_url="postgresql://localhost/myapp")
 
 @app.job()
 async def send_welcome_email(user_id: int, template: str = "default"):
@@ -46,24 +46,24 @@ async def charge_subscription(account_id: str, amount: int):
 
 ## Global API vs Instance API
 
-ElephantQ provides two ways to register jobs.
+Soniq provides two ways to register jobs.
 
 **Global API** -- works without creating an instance:
 
 ```python
-import elephantq
+import soniq
 
-@elephantq.job()
+@soniq.job()
 async def send_welcome_email(user_id: int):
     ...
 
-await elephantq.enqueue(send_welcome_email, user_id=42)
+await soniq.enqueue(send_welcome_email, user_id=42)
 ```
 
 **Instance API** -- explicit app object, recommended for FastAPI and multi-instance setups:
 
 ```python
-app = ElephantQ(database_url="postgresql://localhost/myapp")
+app = Soniq(database_url="postgresql://localhost/myapp")
 
 @app.job()
 async def send_welcome_email(user_id: int):
@@ -106,10 +106,10 @@ async with pool.acquire() as conn:
 
 ## JobContext injection
 
-Declare a parameter typed as `JobContext` and ElephantQ injects runtime metadata automatically.
+Declare a parameter typed as `JobContext` and Soniq injects runtime metadata automatically.
 
 ```python
-from elephantq import JobContext
+from soniq import JobContext
 
 @app.job()
 async def process_invoice(invoice_id: str, ctx: JobContext):

@@ -1,27 +1,27 @@
 # Workers
 
-A worker is a long-running process that fetches jobs from the database and executes them. ElephantQ workers are async -- they use asyncio tasks, not threads.
+A worker is a long-running process that fetches jobs from the database and executes them. Soniq workers are async -- they use asyncio tasks, not threads.
 
 ## Starting a worker
 
 **CLI** (most common):
 
 ```bash
-elephantq start
-elephantq start --concurrency 8 --queues emails,billing
+soniq start
+soniq start --concurrency 8 --queues emails,billing
 ```
 
 **Programmatic** (useful for testing or embedding):
 
 ```python
-app = ElephantQ(database_url="postgresql://localhost/myapp")
+app = Soniq(database_url="postgresql://localhost/myapp")
 await app.run_worker(concurrency=4, queues=["emails", "billing"])
 ```
 
 **Run-once mode** processes all available jobs and exits. Useful for testing and cron-style batch processing:
 
 ```bash
-elephantq start --run-once
+soniq start --run-once
 ```
 
 ## Concurrency model
@@ -46,17 +46,17 @@ The connection pool should be large enough to handle your worker concurrency plu
 
 The formula: `pool_max_size >= concurrency + pool_headroom`
 
-Defaults: `pool_max_size=20`, `pool_headroom=2`. ElephantQ warns at startup if your pool is too small for the configured concurrency.
+Defaults: `pool_max_size=20`, `pool_headroom=2`. Soniq warns at startup if your pool is too small for the configured concurrency.
 
 ```bash
-export ELEPHANTQ_POOL_MAX_SIZE=30
-export ELEPHANTQ_POOL_HEADROOM=2
-elephantq start --concurrency 25
+export SONIQ_POOL_MAX_SIZE=30
+export SONIQ_POOL_HEADROOM=2
+soniq start --concurrency 25
 ```
 
 ## Job pickup: LISTEN/NOTIFY
 
-When a job is enqueued, ElephantQ sends a PostgreSQL `NOTIFY` on the `elephantq_new_job` channel. Workers listening on that channel wake up immediately and compete for the job using `SELECT ... FOR UPDATE SKIP LOCKED`. The winner processes it; the losers move on.
+When a job is enqueued, Soniq sends a PostgreSQL `NOTIFY` on the `soniq_new_job` channel. Workers listening on that channel wake up immediately and compete for the job using `SELECT ... FOR UPDATE SKIP LOCKED`. The winner processes it; the losers move on.
 
 This makes job pickup near-instant (typically under 10ms) without polling overhead.
 
@@ -64,14 +64,14 @@ This makes job pickup near-instant (typically under 10ms) without polling overhe
 
 ## Heartbeat system
 
-Workers send periodic heartbeats so ElephantQ can detect which workers are alive.
+Workers send periodic heartbeats so Soniq can detect which workers are alive.
 
 | Setting | Default | Description |
 | --- | --- | --- |
-| `ELEPHANTQ_HEARTBEAT_INTERVAL` | `5s` | How often a worker writes a heartbeat |
-| `ELEPHANTQ_HEARTBEAT_TIMEOUT` | `300s` | After this long without a heartbeat, a worker is considered stale |
+| `SONIQ_HEARTBEAT_INTERVAL` | `5s` | How often a worker writes a heartbeat |
+| `SONIQ_HEARTBEAT_TIMEOUT` | `300s` | After this long without a heartbeat, a worker is considered stale |
 
-The heartbeat is a simple timestamp update in the `elephantq_workers` table. The dashboard and `elephantq workers` CLI command use it to show live worker status.
+The heartbeat is a simple timestamp update in the `soniq_workers` table. The dashboard and `soniq workers` CLI command use it to show live worker status.
 
 ## Graceful shutdown
 
@@ -82,7 +82,7 @@ Workers handle `SIGINT` (Ctrl+C) and `SIGTERM`:
 3. Mark the worker as stopped in the database.
 4. Close the connection pool.
 
-This makes ElephantQ safe in Docker, Kubernetes, and systemd environments. Send `SIGTERM` and the worker drains gracefully.
+This makes Soniq safe in Docker, Kubernetes, and systemd environments. Send `SIGTERM` and the worker drains gracefully.
 
 ## Crash recovery
 
@@ -92,15 +92,15 @@ To recover these jobs:
 
 ```bash
 # Show stale workers
-elephantq workers --stale
+soniq workers --stale
 
 # Clean up stale workers and release their jobs
-elephantq workers --cleanup
+soniq workers --cleanup
 ```
 
 The cleanup operation marks stale workers as stopped and resets their in-flight jobs back to `queued` status so they can be retried.
 
-> **Warning:** In production, run `elephantq workers --cleanup` on a schedule (e.g., via cron) or rely on the periodic cleanup that running workers perform automatically every 5 minutes.
+> **Warning:** In production, run `soniq workers --cleanup` on a schedule (e.g., via cron) or rely on the periodic cleanup that running workers perform automatically every 5 minutes.
 
 ## Worker lifecycle hooks
 

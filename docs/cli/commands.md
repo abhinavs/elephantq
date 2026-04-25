@@ -1,10 +1,10 @@
 # CLI Commands
 
-All commands accept `--database-url URL` to override the `ELEPHANTQ_DATABASE_URL`
+All commands accept `--database-url URL` to override the `SONIQ_DATABASE_URL`
 environment variable.
 
 ```
-elephantq <command> [options]
+soniq <command> [options]
 ```
 
 
@@ -13,7 +13,7 @@ elephantq <command> [options]
 Create or update the database schema. Idempotent -- run it on every deploy.
 
 ```bash
-elephantq setup
+soniq setup
 ```
 
 What it does:
@@ -24,7 +24,7 @@ What it does:
 If the schema is already up to date, it prints a confirmation and exits.
 
 **When to use:** during deployment, in CI pipelines, or the first time you set up
-ElephantQ.
+Soniq.
 
 
 ## start
@@ -32,7 +32,7 @@ ElephantQ.
 Start a worker process that fetches and executes jobs.
 
 ```bash
-elephantq start [--concurrency N] [--queues QUEUES] [--run-once]
+soniq start [--concurrency N] [--queues QUEUES] [--run-once]
 ```
 
 | Flag | Type | Default | Description |
@@ -41,12 +41,12 @@ elephantq start [--concurrency N] [--queues QUEUES] [--run-once]
 | `--queues` | `str` | all queues | Comma-separated list of queue names to process. |
 | `--run-once` | flag | off | Process all available jobs and exit. |
 
-Requires `ELEPHANTQ_JOBS_MODULES` to be set so the worker can discover and import
+Requires `SONIQ_JOBS_MODULES` to be set so the worker can discover and import
 your job functions.
 
 ```bash
-export ELEPHANTQ_JOBS_MODULES=myapp.tasks,myapp.other_tasks
-elephantq start --concurrency 8 --queues urgent,default
+export SONIQ_JOBS_MODULES=myapp.tasks,myapp.other_tasks
+soniq start --concurrency 8 --queues urgent,default
 ```
 
 The worker handles `SIGINT` and `SIGTERM` for graceful shutdown. Send the signal
@@ -58,7 +58,7 @@ once to finish current jobs, twice to force exit.
 Show system health, queue statistics, and optionally recent jobs.
 
 ```bash
-elephantq status [--verbose] [--jobs]
+soniq status [--verbose] [--jobs]
 ```
 
 | Flag | Type | Default | Description |
@@ -67,7 +67,7 @@ elephantq status [--verbose] [--jobs]
 | `--jobs` | flag | off | Show the 10 most recent jobs. |
 
 ```bash
-elephantq status --verbose --jobs
+soniq status --verbose --jobs
 ```
 
 Output includes:
@@ -83,7 +83,7 @@ Output includes:
 List registered workers and their status.
 
 ```bash
-elephantq workers [--stale] [--cleanup]
+soniq workers [--stale] [--cleanup]
 ```
 
 | Flag | Type | Default | Description |
@@ -93,13 +93,13 @@ elephantq workers [--stale] [--cleanup]
 
 ```bash
 # Show active workers
-elephantq workers
+soniq workers
 
 # Show stale workers too
-elephantq workers --stale
+soniq workers --stale
 
 # Clean up stale records
-elephantq workers --cleanup
+soniq workers --cleanup
 ```
 
 For each active worker, shows: hostname, PID, queues, concurrency, uptime, last
@@ -110,10 +110,10 @@ heartbeat, and resource usage (CPU/memory) when available.
 
 Manage jobs that exhausted all retries.
 
-Requires `ELEPHANTQ_DEAD_LETTER_QUEUE_ENABLED=true`.
+Requires `SONIQ_DEAD_LETTER_QUEUE_ENABLED=true`.
 
 ```bash
-elephantq dead-letter <action> [options]
+soniq dead-letter <action> [options]
 ```
 
 ### Actions
@@ -121,35 +121,35 @@ elephantq dead-letter <action> [options]
 **list** -- show dead-letter jobs.
 
 ```bash
-elephantq dead-letter list [--limit 50] [--filter JOB_NAME]
+soniq dead-letter list [--limit 50] [--filter JOB_NAME]
 ```
 
 **resurrect** -- move a job back to the queue for another attempt.
 
 ```bash
-elephantq dead-letter resurrect <job-id> [<job-id> ...]
-elephantq dead-letter resurrect --all
+soniq dead-letter resurrect <job-id> [<job-id> ...]
+soniq dead-letter resurrect --all
 ```
 
 **delete** -- permanently remove a dead-letter job.
 
 ```bash
-elephantq dead-letter delete <job-id> [<job-id> ...]
-elephantq dead-letter delete --all
+soniq dead-letter delete <job-id> [<job-id> ...]
+soniq dead-letter delete --all
 ```
 
 **cleanup** -- remove dead-letter jobs older than N days.
 
 ```bash
-elephantq dead-letter cleanup --days 30
-elephantq dead-letter cleanup --days 7 --dry-run   # preview what would be deleted
+soniq dead-letter cleanup --days 30
+soniq dead-letter cleanup --days 7 --dry-run   # preview what would be deleted
 ```
 
 **export** -- export dead-letter jobs to a file.
 
 ```bash
-elephantq dead-letter export --format json --output dead_letter.json
-elephantq dead-letter export --format csv --output dead_letter.csv
+soniq dead-letter export --format json --output dead_letter.json
+soniq dead-letter export --format csv --output dead_letter.csv
 ```
 
 ### Common flags
@@ -169,10 +169,10 @@ elephantq dead-letter export --format csv --output dead_letter.csv
 
 Launch the web dashboard for monitoring jobs, queues, and workers.
 
-Requires `pip install elephantq[dashboard]` and `ELEPHANTQ_DASHBOARD_ENABLED=true`.
+Requires `pip install soniq[dashboard]` and `SONIQ_DASHBOARD_ENABLED=true`.
 
 ```bash
-elephantq dashboard [--host HOST] [--port PORT] [--reload]
+soniq dashboard [--host HOST] [--port PORT] [--reload]
 ```
 
 | Flag | Type | Default | Description |
@@ -182,13 +182,13 @@ elephantq dashboard [--host HOST] [--port PORT] [--reload]
 | `--reload` | flag | off | Auto-reload on code changes (development only). |
 
 ```bash
-export ELEPHANTQ_DASHBOARD_ENABLED=true
-elephantq dashboard --host 0.0.0.0 --port 6161
+export SONIQ_DASHBOARD_ENABLED=true
+soniq dashboard --host 0.0.0.0 --port 6161
 ```
 
 Open `http://localhost:6161` in your browser.
 
-The dashboard is read-only by default. Set `ELEPHANTQ_DASHBOARD_WRITE_ENABLED=true`
+The dashboard is read-only by default. Set `SONIQ_DASHBOARD_WRITE_ENABLED=true`
 to enable retry, delete, and cancel buttons.
 
 
@@ -197,10 +197,10 @@ to enable retry, delete, and cancel buttons.
 Start the recurring job scheduler. It checks for due `@periodic` jobs and
 enqueues them.
 
-Requires `ELEPHANTQ_SCHEDULING_ENABLED=true`.
+Requires `SONIQ_SCHEDULING_ENABLED=true`.
 
 ```bash
-elephantq scheduler [--check-interval SECONDS] [--status]
+soniq scheduler [--check-interval SECONDS] [--status]
 ```
 
 | Flag | Type | Default | Description |
@@ -210,10 +210,10 @@ elephantq scheduler [--check-interval SECONDS] [--status]
 
 ```bash
 # Start the scheduler
-elephantq scheduler --check-interval 30
+soniq scheduler --check-interval 30
 
 # Check if the scheduler is running
-elephantq scheduler --status
+soniq scheduler --status
 ```
 
 Stop the scheduler gracefully with `Ctrl+C`.
@@ -223,10 +223,10 @@ Stop the scheduler gracefully with `Ctrl+C`.
 
 Display job performance metrics.
 
-Requires `ELEPHANTQ_METRICS_ENABLED=true`.
+Requires `SONIQ_METRICS_ENABLED=true`.
 
 ```bash
-elephantq metrics [--hours N] [--format FORMAT] [--export FILE]
+soniq metrics [--hours N] [--format FORMAT] [--export FILE]
 ```
 
 | Flag | Type | Default | Description |
@@ -237,13 +237,13 @@ elephantq metrics [--hours N] [--format FORMAT] [--export FILE]
 
 ```bash
 # Table output for the last 24 hours
-elephantq metrics
+soniq metrics
 
 # JSON output for the last hour
-elephantq metrics --format json --hours 1
+soniq metrics --format json --hours 1
 
 # Export to file
-elephantq metrics --format json --export metrics.json
+soniq metrics --format json --export metrics.json
 ```
 
 
@@ -252,8 +252,8 @@ elephantq metrics --format json --export metrics.json
 Show which database migrations have been applied and which are pending.
 
 ```bash
-elephantq migrate-status
+soniq migrate-status
 ```
 
 Output lists each migration with its status (applied or pending). If migrations
-are pending, it tells you to run `elephantq setup`.
+are pending, it tells you to run `soniq setup`.

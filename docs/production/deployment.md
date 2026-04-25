@@ -1,6 +1,6 @@
 # Deployment
 
-This guide covers the major deployment paths for ElephantQ. Ready-to-use configuration files live in the [`deployment/`](../../deployment/) directory.
+This guide covers the major deployment paths for Soniq. Ready-to-use configuration files live in the [`deployment/`](../../deployment/) directory.
 
 ## Prerequisites
 
@@ -20,44 +20,44 @@ This guide covers the major deployment paths for ElephantQ. Ready-to-use configu
 ### Database setup
 
 ```bash
-createdb elephantq_prod
-psql -c "CREATE USER elephantq WITH PASSWORD 'your_secure_password';"
-psql -c "GRANT ALL PRIVILEGES ON DATABASE elephantq_prod TO elephantq;"
+createdb soniq_prod
+psql -c "CREATE USER soniq WITH PASSWORD 'your_secure_password';"
+psql -c "GRANT ALL PRIVILEGES ON DATABASE soniq_prod TO soniq;"
 
-export ELEPHANTQ_DATABASE_URL="postgresql://elephantq:your_secure_password@localhost/elephantq_prod"
-elephantq setup
+export SONIQ_DATABASE_URL="postgresql://soniq:your_secure_password@localhost/soniq_prod"
+soniq setup
 ```
 
 ### Application user (Linux)
 
 ```bash
-sudo useradd --system --create-home --shell /bin/bash elephantq
-sudo mkdir -p /opt/elephantq /var/log/elephantq
-sudo chown elephantq:elephantq /opt/elephantq /var/log/elephantq
+sudo useradd --system --create-home --shell /bin/bash soniq
+sudo mkdir -p /opt/soniq /var/log/soniq
+sudo chown soniq:soniq /opt/soniq /var/log/soniq
 ```
 
 ---
 
 ## Systemd
 
-Best for modern Linux servers with direct process control. Files: `deployment/elephantq-worker.service` and `deployment/elephantq-dashboard.service`.
+Best for modern Linux servers with direct process control. Files: `deployment/soniq-worker.service` and `deployment/soniq-dashboard.service`.
 
 ### Worker service
 
 ```ini
 [Unit]
-Description=ElephantQ Worker
+Description=Soniq Worker
 After=network.target
 
 [Service]
 Type=exec
-User=elephantq
-Group=elephantq
-WorkingDirectory=/opt/elephantq
-Environment=ELEPHANTQ_DATABASE_URL=postgresql://elephantq:password@localhost/elephantq_prod
-Environment=ELEPHANTQ_LOG_LEVEL=INFO
-Environment=ELEPHANTQ_JOBS_MODULES=myapp.jobs
-ExecStart=/opt/elephantq/venv/bin/elephantq start --concurrency=4
+User=soniq
+Group=soniq
+WorkingDirectory=/opt/soniq
+Environment=SONIQ_DATABASE_URL=postgresql://soniq:password@localhost/soniq_prod
+Environment=SONIQ_LOG_LEVEL=INFO
+Environment=SONIQ_JOBS_MODULES=myapp.jobs
+ExecStart=/opt/soniq/venv/bin/soniq start --concurrency=4
 ExecReload=/bin/kill -HUP $MAINPID
 KillMode=mixed
 Restart=always
@@ -69,7 +69,7 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
-ReadWritePaths=/opt/elephantq /var/log/elephantq
+ReadWritePaths=/opt/soniq /var/log/soniq
 
 # Resource limits
 MemoryMax=512M
@@ -81,7 +81,7 @@ TimeoutStopSec=310
 # Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=elephantq-worker
+SyslogIdentifier=soniq-worker
 
 [Install]
 WantedBy=multi-user.target
@@ -91,18 +91,18 @@ WantedBy=multi-user.target
 
 ```ini
 [Unit]
-Description=ElephantQ Dashboard
-After=network.target elephantq-worker.service
-Wants=elephantq-worker.service
+Description=Soniq Dashboard
+After=network.target soniq-worker.service
+Wants=soniq-worker.service
 
 [Service]
 Type=exec
-User=elephantq
-Group=elephantq
-WorkingDirectory=/opt/elephantq
-Environment=ELEPHANTQ_DATABASE_URL=postgresql://elephantq:password@localhost/elephantq_prod
-Environment=ELEPHANTQ_DASHBOARD_ENABLED=true
-ExecStart=/opt/elephantq/venv/bin/elephantq dashboard --host=0.0.0.0 --port=8000
+User=soniq
+Group=soniq
+WorkingDirectory=/opt/soniq
+Environment=SONIQ_DATABASE_URL=postgresql://soniq:password@localhost/soniq_prod
+Environment=SONIQ_DASHBOARD_ENABLED=true
+ExecStart=/opt/soniq/venv/bin/soniq dashboard --host=0.0.0.0 --port=8000
 Restart=always
 RestartSec=5
 
@@ -110,12 +110,12 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
-ReadWritePaths=/opt/elephantq /var/log/elephantq
+ReadWritePaths=/opt/soniq /var/log/soniq
 MemoryMax=256M
 
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=elephantq-dashboard
+SyslogIdentifier=soniq-dashboard
 
 [Install]
 WantedBy=multi-user.target
@@ -124,21 +124,21 @@ WantedBy=multi-user.target
 ### Managing the services
 
 ```bash
-sudo cp deployment/elephantq-worker.service /etc/systemd/system/
-sudo cp deployment/elephantq-dashboard.service /etc/systemd/system/
+sudo cp deployment/soniq-worker.service /etc/systemd/system/
+sudo cp deployment/soniq-dashboard.service /etc/systemd/system/
 sudo systemctl daemon-reload
 
-sudo systemctl enable elephantq-worker elephantq-dashboard
-sudo systemctl start elephantq-worker elephantq-dashboard
+sudo systemctl enable soniq-worker soniq-dashboard
+sudo systemctl start soniq-worker soniq-dashboard
 
 # Check status
-sudo systemctl status elephantq-worker
+sudo systemctl status soniq-worker
 
 # View logs
-sudo journalctl -u elephantq-worker -f
+sudo journalctl -u soniq-worker -f
 
 # Restart
-sudo systemctl restart elephantq-worker
+sudo systemctl restart soniq-worker
 ```
 
 ---
@@ -155,18 +155,18 @@ services:
     image: postgres:15-alpine
     restart: always
     environment:
-      POSTGRES_DB: elephantq_prod
-      POSTGRES_USER: elephantq
+      POSTGRES_DB: soniq_prod
+      POSTGRES_USER: soniq
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U elephantq -d elephantq_prod"]
+      test: ["CMD-SHELL", "pg_isready -U soniq -d soniq_prod"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  elephantq_worker:
+  soniq_worker:
     build:
       context: .
       dockerfile: Dockerfile.worker
@@ -175,18 +175,18 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      ELEPHANTQ_DATABASE_URL: postgresql://elephantq:${POSTGRES_PASSWORD:-changeme}@postgres:5432/elephantq_prod
-      ELEPHANTQ_JOBS_MODULES: myapp.jobs
-      ELEPHANTQ_TIMEOUTS_ENABLED: "true"
-      ELEPHANTQ_DEAD_LETTER_QUEUE_ENABLED: "true"
-    command: ["elephantq", "start", "--concurrency=4"]
+      SONIQ_DATABASE_URL: postgresql://soniq:${POSTGRES_PASSWORD:-changeme}@postgres:5432/soniq_prod
+      SONIQ_JOBS_MODULES: myapp.jobs
+      SONIQ_TIMEOUTS_ENABLED: "true"
+      SONIQ_DEAD_LETTER_QUEUE_ENABLED: "true"
+    command: ["soniq", "start", "--concurrency=4"]
     deploy:
       resources:
         limits:
           memory: 512M
           cpus: "1.0"
 
-  elephantq_dashboard:
+  soniq_dashboard:
     build:
       context: .
       dockerfile: Dockerfile.dashboard
@@ -195,11 +195,11 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      ELEPHANTQ_DATABASE_URL: postgresql://elephantq:${POSTGRES_PASSWORD:-changeme}@postgres:5432/elephantq_prod
-      ELEPHANTQ_DASHBOARD_ENABLED: "true"
+      SONIQ_DATABASE_URL: postgresql://soniq:${POSTGRES_PASSWORD:-changeme}@postgres:5432/soniq_prod
+      SONIQ_DASHBOARD_ENABLED: "true"
     ports:
       - "8000:8000"
-    command: ["elephantq", "dashboard", "--host=0.0.0.0", "--port=8000"]
+    command: ["soniq", "dashboard", "--host=0.0.0.0", "--port=8000"]
 
 volumes:
   postgres_data:
@@ -208,7 +208,7 @@ volumes:
 ### Scaling workers
 
 ```bash
-docker-compose up -d --scale elephantq_worker=3
+docker-compose up -d --scale soniq_worker=3
 ```
 
 ---
@@ -223,25 +223,25 @@ Best for containerized environments with autoscaling. File: `deployment/kubernet
 apiVersion: v1
 kind: Secret
 metadata:
-  name: elephantq-secrets
-  namespace: elephantq
+  name: soniq-secrets
+  namespace: soniq
 type: Opaque
 data:
   # echo -n "postgresql://user:pass@host/db" | base64
-  ELEPHANTQ_DATABASE_URL: <base64-encoded-url>
+  SONIQ_DATABASE_URL: <base64-encoded-url>
 
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: elephantq-config
-  namespace: elephantq
+  name: soniq-config
+  namespace: soniq
 data:
-  ELEPHANTQ_LOG_LEVEL: "INFO"
-  ELEPHANTQ_JOBS_MODULES: "myapp.jobs"
-  ELEPHANTQ_TIMEOUTS_ENABLED: "true"
-  ELEPHANTQ_DEAD_LETTER_QUEUE_ENABLED: "true"
-  ELEPHANTQ_METRICS_ENABLED: "true"
+  SONIQ_LOG_LEVEL: "INFO"
+  SONIQ_JOBS_MODULES: "myapp.jobs"
+  SONIQ_TIMEOUTS_ENABLED: "true"
+  SONIQ_DEAD_LETTER_QUEUE_ENABLED: "true"
+  SONIQ_METRICS_ENABLED: "true"
 ```
 
 ### Worker Deployment
@@ -250,32 +250,32 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: elephantq-worker
-  namespace: elephantq
+  name: soniq-worker
+  namespace: soniq
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: elephantq-worker
+      app: soniq-worker
   template:
     metadata:
       labels:
-        app: elephantq-worker
+        app: soniq-worker
     spec:
       terminationGracePeriodSeconds: 310  # match your longest job timeout
       containers:
       - name: worker
-        image: elephantq/worker:latest
-        args: ["elephantq", "start", "--concurrency=4"]
+        image: soniq/worker:latest
+        args: ["soniq", "start", "--concurrency=4"]
         env:
-        - name: ELEPHANTQ_DATABASE_URL
+        - name: SONIQ_DATABASE_URL
           valueFrom:
             secretKeyRef:
-              name: elephantq-secrets
-              key: ELEPHANTQ_DATABASE_URL
+              name: soniq-secrets
+              key: SONIQ_DATABASE_URL
         envFrom:
         - configMapRef:
-            name: elephantq-config
+            name: soniq-config
         resources:
           requests:
             memory: "256Mi"
@@ -285,12 +285,12 @@ spec:
             cpu: "500m"
         livenessProbe:
           exec:
-            command: ["elephantq", "health"]
+            command: ["soniq", "health"]
           initialDelaySeconds: 30
           periodSeconds: 30
         readinessProbe:
           exec:
-            command: ["elephantq", "ready"]
+            command: ["soniq", "ready"]
           initialDelaySeconds: 5
           periodSeconds: 10
 ```
@@ -301,31 +301,31 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: elephantq-dashboard
-  namespace: elephantq
+  name: soniq-dashboard
+  namespace: soniq
 spec:
   replicas: 2
   selector:
     matchLabels:
-      app: elephantq-dashboard
+      app: soniq-dashboard
   template:
     metadata:
       labels:
-        app: elephantq-dashboard
+        app: soniq-dashboard
     spec:
       containers:
       - name: dashboard
-        image: elephantq/dashboard:latest
-        args: ["elephantq", "dashboard", "--host=0.0.0.0", "--port=8000"]
+        image: soniq/dashboard:latest
+        args: ["soniq", "dashboard", "--host=0.0.0.0", "--port=8000"]
         env:
-        - name: ELEPHANTQ_DATABASE_URL
+        - name: SONIQ_DATABASE_URL
           valueFrom:
             secretKeyRef:
-              name: elephantq-secrets
-              key: ELEPHANTQ_DATABASE_URL
+              name: soniq-secrets
+              key: SONIQ_DATABASE_URL
         envFrom:
         - configMapRef:
-            name: elephantq-config
+            name: soniq-config
         ports:
         - containerPort: 8000
         livenessProbe:
@@ -343,11 +343,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: elephantq-dashboard
-  namespace: elephantq
+  name: soniq-dashboard
+  namespace: soniq
 spec:
   selector:
-    app: elephantq-dashboard
+    app: soniq-dashboard
   ports:
   - port: 80
     targetPort: 8000
@@ -357,8 +357,8 @@ spec:
 ### Autoscaling
 
 ```bash
-kubectl autoscale deployment elephantq-worker \
-  --namespace=elephantq \
+kubectl autoscale deployment soniq-worker \
+  --namespace=soniq \
   --cpu-percent=70 \
   --min=2 --max=10
 ```
@@ -372,43 +372,43 @@ The `deployment/kubernetes.yaml` file also includes an HPA manifest and a Servic
 Good for older setups or shared environments. File: `deployment/supervisor.conf`.
 
 ```ini
-[group:elephantq]
-programs=elephantq_worker,elephantq_dashboard
+[group:soniq]
+programs=soniq_worker,soniq_dashboard
 
-[program:elephantq_worker]
-command=/opt/elephantq/venv/bin/elephantq start --concurrency=4
-directory=/opt/elephantq
-user=elephantq
+[program:soniq_worker]
+command=/opt/soniq/venv/bin/soniq start --concurrency=4
+directory=/opt/soniq
+user=soniq
 autostart=true
 autorestart=true
 startretries=3
 redirect_stderr=true
-stdout_logfile=/var/log/elephantq/worker.log
+stdout_logfile=/var/log/soniq/worker.log
 stdout_logfile_maxbytes=10MB
 stdout_logfile_backups=5
-environment=ELEPHANTQ_DATABASE_URL="postgresql://elephantq:password@localhost/elephantq_prod",ELEPHANTQ_LOG_LEVEL="INFO",ELEPHANTQ_JOBS_MODULES="myapp.jobs"
+environment=SONIQ_DATABASE_URL="postgresql://soniq:password@localhost/soniq_prod",SONIQ_LOG_LEVEL="INFO",SONIQ_JOBS_MODULES="myapp.jobs"
 
-[program:elephantq_dashboard]
-command=/opt/elephantq/venv/bin/elephantq dashboard --host=0.0.0.0 --port=8000
-directory=/opt/elephantq
-user=elephantq
+[program:soniq_dashboard]
+command=/opt/soniq/venv/bin/soniq dashboard --host=0.0.0.0 --port=8000
+directory=/opt/soniq
+user=soniq
 autostart=true
 autorestart=true
 startretries=3
 redirect_stderr=true
-stdout_logfile=/var/log/elephantq/dashboard.log
+stdout_logfile=/var/log/soniq/dashboard.log
 stdout_logfile_maxbytes=10MB
 stdout_logfile_backups=5
-environment=ELEPHANTQ_DATABASE_URL="postgresql://elephantq:password@localhost/elephantq_prod",ELEPHANTQ_DASHBOARD_ENABLED="true"
+environment=SONIQ_DATABASE_URL="postgresql://soniq:password@localhost/soniq_prod",SONIQ_DASHBOARD_ENABLED="true"
 ```
 
 ### Managing with Supervisor
 
 ```bash
-sudo cp deployment/supervisor.conf /etc/supervisor/conf.d/elephantq.conf
+sudo cp deployment/supervisor.conf /etc/supervisor/conf.d/soniq.conf
 sudo supervisorctl reread
 sudo supervisorctl update
-sudo supervisorctl start elephantq_worker
+sudo supervisorctl start soniq_worker
 sudo supervisorctl status
 ```
 
@@ -420,10 +420,10 @@ When different queues have different throughput or latency needs, run separate w
 
 ```bash
 # Email workers -- high concurrency, IO-bound
-elephantq start --concurrency=8 --queues=emails,notifications
+soniq start --concurrency=8 --queues=emails,notifications
 
 # Media workers -- low concurrency, CPU-bound
-elephantq start --concurrency=2 --queues=media,transcode
+soniq start --concurrency=2 --queues=media,transcode
 ```
 
 In Kubernetes, use separate Deployments. In Docker Compose, use separate services. In Supervisor, use separate `[program:]` blocks. See the `deployment/` directory for examples with queue routing already configured.
@@ -440,7 +440,7 @@ In Kubernetes, use separate Deployments. In Docker Compose, use separate service
 
 ### Graceful shutdown
 
-Always stop workers with `SIGTERM`, not `SIGKILL`. ElephantQ handles `SIGTERM` by finishing in-flight jobs before exiting.
+Always stop workers with `SIGTERM`, not `SIGKILL`. Soniq handles `SIGTERM` by finishing in-flight jobs before exiting.
 
 - **Systemd:** Set `TimeoutStopSec` to match your longest job timeout plus a buffer.
 - **Kubernetes:** Set `terminationGracePeriodSeconds` the same way. Default is 30s, which is too short for most production workloads.

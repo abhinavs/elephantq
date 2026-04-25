@@ -1,18 +1,18 @@
-# ElephantQ
+# Soniq
 
 Background jobs for Python. Powered by the Postgres you already have.
 
 ## Quickstart
 
 ```bash
-pip install elephantq
+pip install soniq
 ```
 
 ```python
 # jobs.py
-from elephantq import ElephantQ
+from soniq import Soniq
 
-app = ElephantQ(database_url="postgresql://localhost/myapp")
+app = Soniq(database_url="postgresql://localhost/myapp")
 
 @app.job(max_retries=3)
 async def send_welcome(to: str):
@@ -26,14 +26,14 @@ await app.enqueue(send_welcome, to="dev@example.com")
 
 ```bash
 # set up tables and start processing
-elephantq setup
-elephantq start --concurrency 4
+soniq setup
+soniq start --concurrency 4
 ```
 
 Four steps. Define a job, enqueue it, set up the database, start a worker.
 
 !!! tip "Local dev without PostgreSQL?"
-    Use SQLite: `ElephantQ(database_url="local.db")` (requires `pip install elephantq[sqlite]`).
+    Use SQLite: `Soniq(database_url="local.db")` (requires `pip install soniq[sqlite]`).
     For production, always use PostgreSQL.
 
 [Full quickstart guide](getting-started/quickstart.md){ .md-button }
@@ -52,13 +52,13 @@ async with pool.acquire() as conn:
 
 No Redis queue can do this. Your job and your data land in the same commit. If something fails halfway through, both roll back. No stale jobs, no ghost tasks, no cleanup scripts.
 
-## Why ElephantQ
+## Why Soniq
 
 Most Python job queues force you to run Redis or RabbitMQ alongside your database. That's another service to deploy, monitor, back up, and debug when things go wrong at 3am.
 
-ElephantQ uses your existing PostgreSQL. One dependency. One place your data lives. One thing to back up.
+Soniq uses your existing PostgreSQL. One dependency. One place your data lives. One thing to back up.
 
-| Feature             | ElephantQ | Celery         | RQ     |
+| Feature             | Soniq | Celery         | RQ     |
 | ------------------- | --------- | -------------- | ------ |
 | No Redis dependency | Yes       | No             | No     |
 | Async native        | Yes       | Partial        | No     |
@@ -88,27 +88,27 @@ ElephantQ uses your existing PostgreSQL. One dependency. One place your data liv
 Monitor queues, workers, retries, and system health from a built-in web UI.
 
 ```bash
-pip install elephantq[dashboard]
-elephantq dashboard
+pip install soniq[dashboard]
+soniq dashboard
 ```
 
-![ElephantQ Dashboard](assets/elephantq_dashboard.png)
+![Soniq Dashboard](assets/soniq_dashboard.png)
 
 ## Install
 
 ```bash
-pip install elephantq              # core (PostgreSQL backend)
-pip install elephantq[full]        # everything below
-pip install elephantq[sqlite]      # SQLite backend for local dev
-pip install elephantq[scheduling]  # cron-based recurring jobs
-pip install elephantq[dashboard]   # web dashboard
-pip install elephantq[monitoring]  # Prometheus metrics
-pip install elephantq[webhooks]    # webhook delivery + signing
+pip install soniq              # core (PostgreSQL backend)
+pip install soniq[full]        # everything below
+pip install soniq[sqlite]      # SQLite backend for local dev
+pip install soniq[scheduling]  # cron-based recurring jobs
+pip install soniq[dashboard]   # web dashboard
+pip install soniq[monitoring]  # Prometheus metrics
+pip install soniq[webhooks]    # webhook delivery + signing
 ```
 
-## When NOT to use ElephantQ
+## When NOT to use Soniq
 
 - **You need 10k+ jobs/sec sustained throughput.** PostgreSQL row locking has limits. Redis-backed queues like Celery or Arq are built for this.
-- **You need cross-language consumers.** ElephantQ is Python-only. If your workers are in Go or Node, use RabbitMQ or a similar broker.
+- **You need cross-language consumers.** Soniq is Python-only. If your workers are in Go or Node, use RabbitMQ or a similar broker.
 - **You're not using PostgreSQL.** The production backend requires PostgreSQL. If your stack is MySQL or MongoDB, this isn't for you.
-- **You need DAG-based workflow orchestration.** ElephantQ handles individual jobs, not pipelines. Look at Prefect or Airflow.
+- **You need DAG-based workflow orchestration.** Soniq handles individual jobs, not pipelines. Look at Prefect or Airflow.

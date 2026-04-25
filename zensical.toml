@@ -1,6 +1,6 @@
 [project]
-site_name = "ElephantQ"
-site_url = "https://elephantq.dev/docs/"
+site_name = "Soniq"
+site_url = "https://soniq.dev/docs/"
 site_description = "Background jobs for Python. Powered by the Postgres you already have."
 site_author = "Abhinav Saxena"
 docs_dir = "docs"
@@ -26,7 +26,7 @@ nav = [
     { "Testing" = "guides/testing.md" },
   ] },
   { "API Reference" = [
-    { "ElephantQ" = "api/elephantq.md" },
+    { "Soniq" = "api/soniq.md" },
     { "Jobs" = "api/jobs.md" },
     { "Worker" = "api/worker.md" },
     { "Hooks" = "api/hooks.md" },
@@ -44,10 +44,6 @@ nav = [
     { "File processing" = "recipes/file-processing.md" },
     { "Scheduled reports" = "recipes/scheduled-reports.md" },
     { "Webhook delivery" = "recipes/webhook-delivery.md" },
-  ] },
-  { "Migration" = [
-    { "From Celery" = "migration/from-celery.md" },
-    { "From RQ" = "migration/from-rq.md" },
   ] },
 ]
 

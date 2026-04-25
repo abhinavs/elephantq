@@ -7,10 +7,10 @@ your job functions.
 
 ## Registering hooks
 
-Use the decorator methods on your `ElephantQ` instance:
+Use the decorator methods on your `Soniq` instance:
 
 ```python
-app = ElephantQ(database_url="postgresql://localhost/myapp")
+app = Soniq(database_url="postgresql://localhost/myapp")
 
 @app.before_job
 async def log_start(job_name: str, job_id: str, attempt: int):
@@ -94,7 +94,7 @@ before_job -> job function (raises) -> on_error
 
 ## Sync and async hooks
 
-Hooks can be either sync or async. ElephantQ inspects each hook at call time
+Hooks can be either sync or async. Soniq inspects each hook at call time
 and awaits it if it is a coroutine function.
 
 ```python
@@ -112,7 +112,7 @@ def sync_hook(job_name, job_id, attempt):
 
 ## Error handling in hooks
 
-If a hook raises an exception, ElephantQ logs a warning and continues. A broken
+If a hook raises an exception, Soniq logs a warning and continues. A broken
 hook never prevents a job from running or its result from being recorded.
 
 ```
@@ -132,7 +132,7 @@ job function itself.
 import logging
 import json
 
-logger = logging.getLogger("elephantq.hooks")
+logger = logging.getLogger("soniq.hooks")
 
 @app.before_job
 async def structured_log_start(job_name, job_id, attempt):
@@ -158,9 +158,9 @@ async def structured_log_done(job_name, job_id, duration_ms):
 ```python
 from prometheus_client import Counter, Histogram
 
-jobs_started = Counter("elephantq_jobs_started", "Jobs started", ["job_name"])
-jobs_completed = Histogram("elephantq_jobs_duration_ms", "Job duration", ["job_name"])
-jobs_failed = Counter("elephantq_jobs_failed", "Jobs failed", ["job_name"])
+jobs_started = Counter("soniq_jobs_started", "Jobs started", ["job_name"])
+jobs_completed = Histogram("soniq_jobs_duration_ms", "Job duration", ["job_name"])
+jobs_failed = Counter("soniq_jobs_failed", "Jobs failed", ["job_name"])
 
 @app.before_job
 async def track_start(job_name, job_id, attempt):
@@ -193,7 +193,7 @@ async def alert_on_final_failure(job_name, job_id, error, attempt):
 ```python
 from opentelemetry import trace
 
-tracer = trace.get_tracer("elephantq")
+tracer = trace.get_tracer("soniq")
 _spans = {}
 
 @app.before_job

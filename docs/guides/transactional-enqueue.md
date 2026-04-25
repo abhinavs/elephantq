@@ -4,7 +4,7 @@ Enqueue a job inside a database transaction. If the transaction rolls back, the 
 
 ## How it works
 
-When you pass `connection=conn` to `enqueue()`, the job row is inserted into `elephantq_jobs` using that connection. The INSERT is part of your transaction, so the job only becomes visible to workers after `COMMIT`.
+When you pass `connection=conn` to `enqueue()`, the job row is inserted into `soniq_jobs` using that connection. The INSERT is part of your transaction, so the job only becomes visible to workers after `COMMIT`.
 
 Either both your business data and the job are committed, or neither is.
 
@@ -27,9 +27,9 @@ A real-world order creation endpoint where the order record and the follow-up jo
 ```python
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from elephantq import ElephantQ
+from soniq import Soniq
 
-eq = ElephantQ(database_url="postgresql://localhost/myapp")
+eq = Soniq(database_url="postgresql://localhost/myapp")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -75,7 +75,7 @@ The common thread: any workflow where "row exists but job is missing" would be a
 
 Transactional enqueue guarantees the job enters the queue if and only if the transaction commits. It does not guarantee single execution.
 
-ElephantQ provides **at-least-once delivery**. If a worker crashes after executing the job but before marking it done, stale worker recovery will re-queue it. Design your job functions to be idempotent -- use upserts, deduplication keys, or check-before-act patterns for side effects like sending emails or charging payments.
+Soniq provides **at-least-once delivery**. If a worker crashes after executing the job but before marking it done, stale worker recovery will re-queue it. Design your job functions to be idempotent -- use upserts, deduplication keys, or check-before-act patterns for side effects like sending emails or charging payments.
 
 ## What transactional enqueue does NOT guarantee
 
@@ -87,13 +87,13 @@ ElephantQ provides **at-least-once delivery**. If a worker crashes after executi
 The same pattern works with the global API:
 
 ```python
-import elephantq
+import soniq
 
-pool = await elephantq.get_pool()
+pool = await soniq.get_pool()
 async with pool.acquire() as conn:
     async with conn.transaction():
         await conn.execute("INSERT INTO orders ...")
-        await elephantq.enqueue(send_invoice, connection=conn, order_id=order_id)
+        await soniq.enqueue(send_invoice, connection=conn, order_id=order_id)
 ```
 
 > **Note:** Transactional enqueue requires PostgreSQL. It is not available with the SQLite or Memory backends. Calling `enqueue(..., connection=conn)` on a non-PostgreSQL backend raises a `ValueError`.

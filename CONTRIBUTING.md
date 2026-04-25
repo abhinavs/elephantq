@@ -1,18 +1,18 @@
-# Contributing to ElephantQ
+# Contributing to Soniq
 
-Thanks for contributing. ElephantQ is a **single package** with optional extras for advanced features.
+Thanks for contributing. Soniq is a **single package** with optional extras for advanced features.
 
 ## Project Structure
 
-- `elephantq/` — core runtime
-- `elephantq/dashboard/` — web UI (optional, opt-in)
-- `elephantq/features/` — scheduling, recurring, metrics, logging, webhooks, dead-letter, security (optional, opt-in)
+- `soniq/` — core runtime
+- `soniq/dashboard/` — web UI (optional, opt-in)
+- `soniq/features/` — scheduling, recurring, metrics, logging, webhooks, dead-letter, security (optional, opt-in)
 
 ## Getting Started
 
 ```bash
-git clone https://github.com/abhinavs/elephantq.git
-cd elephantq
+git clone https://github.com/abhinavs/soniq.git
+cd soniq
 
 python -m venv venv
 source venv/bin/activate
@@ -32,8 +32,8 @@ pip install -e ".[dev,monitoring]"
 Create a test database and set the connection string:
 
 ```bash
-createdb elephantq_test
-export ELEPHANTQ_DATABASE_URL="postgresql://localhost/elephantq_test"
+createdb soniq_test
+export SONIQ_DATABASE_URL="postgresql://localhost/soniq_test"
 ```
 
 Run migrations:
@@ -41,7 +41,7 @@ Run migrations:
 ```bash
 python -c "
 import asyncio
-from elephantq.db.migrations import run_migrations
+from soniq.db.migrations import run_migrations
 asyncio.run(run_migrations())
 "
 ```
@@ -89,7 +89,7 @@ python -m pytest tests/unit tests/backend tests/functional tests/smoke -v
 **Full suite with coverage:**
 
 ```bash
-python -m pytest tests/ --cov=elephantq --cov-report=term-missing -v
+python -m pytest tests/ --cov=soniq --cov-report=term-missing -v
 ```
 
 ## Coding Standards

@@ -1,6 +1,6 @@
-# ElephantQ Release Process
+# Soniq Release Process
 
-This document describes how to release ElephantQ to PyPI using the automated release script.
+This document describes how to release Soniq to PyPI using the automated release script.
 
 ## Prerequisites
 
@@ -79,8 +79,8 @@ find . -name "*.pyc" -delete
 rm -rf build/ dist/ *.egg-info/
 
 # Format
-black elephantq/ tests/
-isort elephantq/ tests/ --profile black
+black soniq/ tests/
+isort soniq/ tests/ --profile black
 
 # Test
 pytest tests/ -v
@@ -130,7 +130,7 @@ Before releasing, update the version in `pyproject.toml`:
 
 ```toml
 [project]
-name = "elephantq"
+name = "soniq"
 version = "0.2.0"  # Update this
 ```
 
@@ -149,8 +149,8 @@ version = "0.2.0"  # Update this
 - For first upload, ensure package name is available
 
 **Tests fail:**
-- Ensure test database exists: `createdb elephantq_test`
-- Set environment variable: `export ELEPHANTQ_DATABASE_URL="postgresql://postgres@localhost/elephantq_test"`
+- Ensure test database exists: `createdb soniq_test`
+- Set environment variable: `export SONIQ_DATABASE_URL="postgresql://postgres@localhost/soniq_test"`
 
 ### Manual Debugging
 

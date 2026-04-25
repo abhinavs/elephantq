@@ -1,17 +1,17 @@
 # FastAPI Integration
 
-ElephantQ's Instance API is the natural fit for FastAPI applications. You get explicit lifecycle control, clean dependency injection, and easy testing.
+Soniq's Instance API is the natural fit for FastAPI applications. You get explicit lifecycle control, clean dependency injection, and easy testing.
 
 ## Setup
 
-Create an `ElephantQ` instance and wire it into FastAPI's lifespan:
+Create an `Soniq` instance and wire it into FastAPI's lifespan:
 
 ```python
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from elephantq import ElephantQ
+from soniq import Soniq
 
-eq = ElephantQ(database_url="postgresql://localhost/myapp")
+eq = Soniq(database_url="postgresql://localhost/myapp")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -24,7 +24,7 @@ app = FastAPI(lifespan=lifespan)
 The connection pool initializes lazily on first use (first `enqueue()` call). `close()` shuts it down cleanly when the process exits.
 
 !!! warning "Run migrations at deploy time, not app startup"
-    Use `elephantq setup` in your deploy pipeline (CI step, Dockerfile entrypoint, k8s init container) — not in the lifespan. Running migrations on every app boot creates race conditions when multiple replicas start simultaneously.
+    Use `soniq setup` in your deploy pipeline (CI step, Dockerfile entrypoint, k8s init container) — not in the lifespan. Running migrations on every app boot creates race conditions when multiple replicas start simultaneously.
 
 ## Defining jobs
 
@@ -54,17 +54,17 @@ async def create_user(name: str, email: str):
 Workers run as a separate process. Point them at the module where your jobs are defined:
 
 ```bash
-ELEPHANTQ_DATABASE_URL="postgresql://localhost/myapp" \
-ELEPHANTQ_JOBS_MODULES="app.jobs" \
-elephantq start --concurrency 4
+SONIQ_DATABASE_URL="postgresql://localhost/myapp" \
+SONIQ_JOBS_MODULES="app.jobs" \
+soniq start --concurrency 4
 ```
 
-`ELEPHANTQ_JOBS_MODULES` is a comma-separated list of Python modules. The worker imports them on startup so it discovers all `@eq.job()` decorators.
+`SONIQ_JOBS_MODULES` is a comma-separated list of Python modules. The worker imports them on startup so it discovers all `@eq.job()` decorators.
 
 You can also limit a worker to specific queues:
 
 ```bash
-elephantq start --concurrency 2 --queues emails,notifications
+soniq start --concurrency 2 --queues emails,notifications
 ```
 
 ## Complete example
@@ -73,9 +73,9 @@ elephantq start --concurrency 2 --queues emails,notifications
 # app/main.py
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from elephantq import ElephantQ
+from soniq import Soniq
 
-eq = ElephantQ(database_url="postgresql://localhost/myapp")
+eq = Soniq(database_url="postgresql://localhost/myapp")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -118,9 +118,9 @@ Run the API and worker separately:
 uvicorn app.main:app --reload
 
 # Terminal 2: Worker
-ELEPHANTQ_DATABASE_URL="postgresql://localhost/myapp" \
-ELEPHANTQ_JOBS_MODULES="app.main" \
-elephantq start --concurrency 4
+SONIQ_DATABASE_URL="postgresql://localhost/myapp" \
+SONIQ_JOBS_MODULES="app.main" \
+soniq start --concurrency 4
 ```
 
 ## Global API vs Instance API
@@ -139,11 +139,11 @@ In FastAPI apps, always use the Instance API. It integrates cleanly with the lif
 
 ## Multiple instances
 
-Each `ElephantQ` instance is fully isolated with its own connection pool and job registry. This is useful for multi-tenant setups:
+Each `Soniq` instance is fully isolated with its own connection pool and job registry. This is useful for multi-tenant setups:
 
 ```python
-tenant_a = ElephantQ(database_url="postgresql://localhost/tenant_a")
-tenant_b = ElephantQ(database_url="postgresql://localhost/tenant_b")
+tenant_a = Soniq(database_url="postgresql://localhost/tenant_a")
+tenant_b = Soniq(database_url="postgresql://localhost/tenant_b")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

@@ -1,6 +1,6 @@
 # Dashboard
 
-The ElephantQ dashboard is an optional web UI for real-time visibility into your
+The Soniq dashboard is an optional web UI for real-time visibility into your
 job queues, workers, and job history. It replaces the need to query the database
 directly for operational monitoring.
 
@@ -19,7 +19,7 @@ directly for operational monitoring.
 ### 1. Install the dashboard extra
 
 ```bash
-pip install elephantq[dashboard]
+pip install soniq[dashboard]
 ```
 
 This pulls in FastAPI and Uvicorn.
@@ -27,13 +27,13 @@ This pulls in FastAPI and Uvicorn.
 ### 2. Enable the feature flag
 
 ```bash
-export ELEPHANTQ_DASHBOARD_ENABLED=true
+export SONIQ_DASHBOARD_ENABLED=true
 ```
 
 ### 3. Start the dashboard
 
 ```bash
-elephantq dashboard --host 0.0.0.0 --port 6161
+soniq dashboard --host 0.0.0.0 --port 6161
 ```
 
 Open `http://localhost:6161`.
@@ -47,7 +47,7 @@ are disabled in the UI.
 To enable write actions:
 
 ```bash
-export ELEPHANTQ_DASHBOARD_WRITE_ENABLED=true
+export SONIQ_DASHBOARD_WRITE_ENABLED=true
 ```
 
 Keep write mode disabled in production unless the dashboard is behind authentication.
@@ -60,7 +60,7 @@ sub-application inside your existing FastAPI app:
 
 ```python
 from fastapi import FastAPI
-from elephantq.dashboard import create_dashboard_app
+from soniq.dashboard import create_dashboard_app
 
 app = FastAPI()
 
@@ -77,13 +77,13 @@ or reverse proxy.
 
 | Task | CLI command | Dashboard |
 |---|---|---|
-| Queue stats | `elephantq status --verbose` | Queue overview page |
-| Worker list | `elephantq workers` | Workers panel |
-| Recent jobs | `elephantq status --jobs` | Jobs page with search |
-| Dead-letter list | `elephantq dead-letter list` | DLQ tab |
-| Retry a job | `elephantq dead-letter resurrect <id>` | Retry button (write mode) |
-| Delete a job | `elephantq dead-letter delete <id>` | Delete button (write mode) |
-| Metrics | `elephantq metrics --hours 24` | Metrics charts |
+| Queue stats | `soniq status --verbose` | Queue overview page |
+| Worker list | `soniq workers` | Workers panel |
+| Recent jobs | `soniq status --jobs` | Jobs page with search |
+| Dead-letter list | `soniq dead-letter list` | DLQ tab |
+| Retry a job | `soniq dead-letter resurrect <id>` | Retry button (write mode) |
+| Delete a job | `soniq dead-letter delete <id>` | Delete button (write mode) |
+| Metrics | `soniq metrics --hours 24` | Metrics charts |
 | Job details | not available | Click any job row |
 
 The CLI is better for scripting and automation. The dashboard is better for
@@ -113,7 +113,7 @@ relative to the dashboard mount path.
 
 ### Write endpoints
 
-These return `403 Forbidden` unless `ELEPHANTQ_DASHBOARD_WRITE_ENABLED=true`.
+These return `403 Forbidden` unless `SONIQ_DASHBOARD_WRITE_ENABLED=true`.
 
 | Method | Path | Description |
 |---|---|---|
@@ -125,11 +125,11 @@ These return `403 Forbidden` unless `ELEPHANTQ_DASHBOARD_WRITE_ENABLED=true`.
 
 | Env var | Default | Description |
 |---|---|---|
-| `ELEPHANTQ_DASHBOARD_ENABLED` | `false` | Must be `true` for the dashboard to start. |
-| `ELEPHANTQ_DASHBOARD_WRITE_ENABLED` | `false` | Enable retry/cancel/delete buttons. |
-| `ELEPHANTQ_DATABASE_URL` | `postgresql://postgres@localhost/elephantq` | Database the dashboard reads from. |
+| `SONIQ_DASHBOARD_ENABLED` | `false` | Must be `true` for the dashboard to start. |
+| `SONIQ_DASHBOARD_WRITE_ENABLED` | `false` | Enable retry/cancel/delete buttons. |
+| `SONIQ_DATABASE_URL` | `postgresql://postgres@localhost/soniq` | Database the dashboard reads from. |
 
-CLI flags for `elephantq dashboard`:
+CLI flags for `soniq dashboard`:
 
 | Flag | Default | Description |
 |---|---|---|

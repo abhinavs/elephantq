@@ -52,10 +52,10 @@ By default, a worker processes all queues. To limit a worker to specific queues,
 
 ```bash
 # Process only email and billing jobs
-elephantq start --queues emails,billing
+soniq start --queues emails,billing
 
 # Dedicated urgent worker with higher concurrency
-elephantq start --queues urgent --concurrency 8
+soniq start --queues urgent --concurrency 8
 ```
 
 Programmatically:
@@ -77,7 +77,7 @@ for queue in stats:
 From the CLI:
 
 ```bash
-elephantq status
+soniq status
 ```
 
 ## Design advice

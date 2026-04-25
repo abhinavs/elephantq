@@ -6,9 +6,9 @@ A pattern for processing uploaded files (images, PDFs, videos) with long timeout
 
 ```python
 import asyncio
-from elephantq import ElephantQ
+from soniq import Soniq
 
-eq = ElephantQ(database_url="postgresql://localhost/myapp")
+eq = Soniq(database_url="postgresql://localhost/myapp")
 
 
 @eq.job(queue="media", timeout=600, max_retries=2)
@@ -46,7 +46,7 @@ async def upload_file(file: UploadFile):
 ## Running the worker
 
 ```bash
-elephantq start --queues media --concurrency 1
+soniq start --queues media --concurrency 1
 ```
 
 Keep concurrency low for media workers. Each job may consume significant memory and CPU. Scale by adding more worker processes rather than increasing concurrency per process.

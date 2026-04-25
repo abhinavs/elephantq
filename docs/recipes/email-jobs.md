@@ -5,10 +5,10 @@ A production pattern for sending transactional emails with retries, idempotency,
 ## The job
 
 ```python
-from elephantq import ElephantQ
-from elephantq.job import JobContext
+from soniq import Soniq
+from soniq.job import JobContext
 
-eq = ElephantQ(database_url="postgresql://localhost/myapp")
+eq = Soniq(database_url="postgresql://localhost/myapp")
 
 
 @eq.job(queue="emails", max_retries=3, retry_delay=[5, 30, 300])
@@ -46,7 +46,7 @@ async def create_user(name: str, email: str):
 ## Running the worker
 
 ```bash
-elephantq start --queues emails --concurrency 2
+soniq start --queues emails --concurrency 2
 ```
 
 Keep email worker concurrency low to respect rate limits. If your provider allows 10 requests/second, two concurrent workers with a small batch size is plenty.

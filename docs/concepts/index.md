@@ -1,6 +1,6 @@
 # Concepts
 
-The building blocks of ElephantQ.
+The building blocks of Soniq.
 
 - [Jobs](jobs.md) — define async functions as background jobs, configure retries, priorities, and timeouts
 - [Queues](queues.md) — route jobs to named queues, control priority ordering, inspect queue stats

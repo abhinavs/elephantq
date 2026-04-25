@@ -1,6 +1,6 @@
 # Retries
 
-ElephantQ retries failed jobs automatically. Every job gets 3 retries by default (4 total attempts). You control the retry count, delay strategy, and backoff at the decorator level.
+Soniq retries failed jobs automatically. Every job gets 3 retries by default (4 total attempts). You control the retry count, delay strategy, and backoff at the decorator level.
 
 ## Configuration
 
@@ -76,7 +76,7 @@ Retries at: 5s, 10s, 20s, 40s, 80s, 160s, 300s, 300s. The delay never exceeds `r
 
 When a job exhausts all retries, one of two things happens:
 
-- **DLQ enabled** (`ELEPHANTQ_DEAD_LETTER_QUEUE_ENABLED=true`): The job moves to the dead-letter queue with status `dead_letter`. See [Dead Letter Queue](dead-letter.md).
+- **DLQ enabled** (`SONIQ_DEAD_LETTER_QUEUE_ENABLED=true`): The job moves to the dead-letter queue with status `dead_letter`. See [Dead Letter Queue](dead-letter.md).
 - **DLQ disabled** (default): The job stays in `failed` status permanently.
 
 ## Examples
@@ -119,7 +119,7 @@ async def import_csv(file_path: str):
 
 ## Idempotency
 
-ElephantQ provides at-least-once delivery. Retries (and crash recovery) can cause a job to run more than once. Write your jobs to be idempotent:
+Soniq provides at-least-once delivery. Retries (and crash recovery) can cause a job to run more than once. Write your jobs to be idempotent:
 
 - Use `INSERT ... ON CONFLICT DO UPDATE` instead of plain inserts.
 - Store an idempotency key and check it before performing side effects.
@@ -139,4 +139,4 @@ async def long_running_migration():
     ...
 ```
 
-Change the global default with `ELEPHANTQ_JOB_TIMEOUT` or `await elephantq.configure(job_timeout=600)`. Set to `0` to disable timeouts globally.
+Change the global default with `SONIQ_JOB_TIMEOUT` or `await soniq.configure(job_timeout=600)`. Set to `0` to disable timeouts globally.

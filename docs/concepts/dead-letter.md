@@ -5,10 +5,10 @@ The dead-letter queue (DLQ) captures jobs that have exhausted all retries. Inste
 ## Enabling the DLQ
 
 ```bash
-export ELEPHANTQ_DEAD_LETTER_QUEUE_ENABLED=true
+export SONIQ_DEAD_LETTER_QUEUE_ENABLED=true
 ```
 
-When enabled, any job that fails after its final retry attempt is moved to the `elephantq_dead_letter_jobs` table with status `dead_letter`. Without the DLQ, failed jobs stay in `failed` status in the main table.
+When enabled, any job that fails after its final retry attempt is moved to the `soniq_dead_letter_jobs` table with status `dead_letter`. Without the DLQ, failed jobs stay in `failed` status in the main table.
 
 ## How jobs get there
 
@@ -27,9 +27,9 @@ Each dead-letter record preserves the original job name, arguments, queue, prior
 ### List dead-letter jobs
 
 ```bash
-elephantq dead-letter list
-elephantq dead-letter list --limit 20
-elephantq dead-letter list --filter "send_welcome_email"
+soniq dead-letter list
+soniq dead-letter list --limit 20
+soniq dead-letter list --filter "send_welcome_email"
 ```
 
 ### Resurrect a job
@@ -37,33 +37,33 @@ elephantq dead-letter list --filter "send_welcome_email"
 Resurrect creates a new job with the same function and arguments, reset to `queued` status:
 
 ```bash
-elephantq dead-letter resurrect abc123-def456
+soniq dead-letter resurrect abc123-def456
 ```
 
 ### Delete a dead-letter job
 
 ```bash
-elephantq dead-letter delete abc123-def456
+soniq dead-letter delete abc123-def456
 ```
 
 ### Clean up old entries
 
 ```bash
-elephantq dead-letter cleanup --days 30        # remove entries older than 30 days
-elephantq dead-letter cleanup --days 7 --dry-run  # preview what would be removed
+soniq dead-letter cleanup --days 30        # remove entries older than 30 days
+soniq dead-letter cleanup --days 7 --dry-run  # preview what would be removed
 ```
 
 ### Export for analysis
 
 ```bash
-elephantq dead-letter export --format json --output dead_jobs.json
-elephantq dead-letter export --format csv --output dead_jobs.csv
+soniq dead-letter export --format json --output dead_jobs.json
+soniq dead-letter export --format csv --output dead_jobs.csv
 ```
 
 ## Programmatic API
 
 ```python
-from elephantq.features.dead_letter import (
+from soniq.features.dead_letter import (
     list_dead_letter_jobs,
     get_dead_letter_job,
     resurrect_job,
@@ -111,7 +111,7 @@ jobs = await list_dead_letter_jobs(f)
 ### Bulk operations
 
 ```python
-from elephantq.features.dead_letter import bulk_resurrect_jobs
+from soniq.features.dead_letter import bulk_resurrect_jobs
 
 f = create_filter()
 f.job_names = ["myapp.tasks.sync_inventory"]
