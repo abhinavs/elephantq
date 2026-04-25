@@ -42,6 +42,8 @@ services:
       SONIQ_LOG_LEVEL: INFO
       SONIQ_DASHBOARD_ENABLED: "true"
       SONIQ_JOBS_MODULES: myapp.jobs
+      # The dedicated soniq_scheduler service below handles @periodic jobs.
+      SONIQ_SCHEDULER_SUPPRESS_WARNING: "1"
     volumes:
       - ./logs:/app/logs
       - ./app:/app/myapp # Mount your application code
@@ -61,6 +63,38 @@ services:
         reservations:
           memory: 256M
           cpus: "0.5"
+
+  # Soniq Scheduler (required if you use @periodic jobs).
+  # Run as a single sidecar process; multiple instances coordinate via the
+  # `soniq.maintenance` advisory lock so duplicates are safe but redundant.
+  soniq_scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    container_name: soniq_scheduler
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SONIQ_DATABASE_URL: postgresql://soniq:${POSTGRES_PASSWORD:-your_secure_password}@postgres:5432/soniq_prod
+      SONIQ_LOG_LEVEL: INFO
+      SONIQ_SCHEDULING_ENABLED: "true"
+      SONIQ_JOBS_MODULES: myapp.jobs
+    volumes:
+      - ./logs:/app/logs
+      - ./app:/app/myapp
+    command: ["soniq", "scheduler"]
+    networks:
+      - soniq_network
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+        reservations:
+          memory: 128M
+          cpus: "0.25"
 
   # Soniq Dashboard (optional)
   soniq_dashboard:

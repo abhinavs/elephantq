@@ -38,9 +38,26 @@ sudo chown soniq:soniq /opt/soniq /var/log/soniq
 
 ---
 
+## Recurring jobs require a scheduler sidecar
+
+If your application uses `@app.periodic(...)` (or `@soniq.periodic(...)`) jobs, deploy a separate `soniq scheduler` process alongside `soniq start`. The worker process **does not** evaluate due recurring jobs in 0.0.2; doing so was removed so that worker scaling does not duplicate scheduler work.
+
+If `soniq start` finds `@periodic` decorators registered and no scheduler-sidecar process holds the leadership lock, it prints a one-time WARN at startup. To silence the WARN once you have configured the sidecar (or if you intentionally do not run recurring jobs), set `SONIQ_SCHEDULER_SUPPRESS_WARNING=1` in the worker environment.
+
+The scheduler is a standard subcommand (`soniq scheduler`); it is not a separate package and shares the same `soniq` CLI entry point. Multiple instances coordinate via the `soniq.maintenance` Postgres advisory lock - duplicates are safe but only one is needed.
+
+The shipped deployment templates include the sidecar:
+
+- Systemd: `deployment/soniq-scheduler.service`
+- Docker Compose: the `soniq_scheduler` service in `deployment/docker-compose.yml`
+- Kubernetes: the `soniq-scheduler` Deployment in `deployment/kubernetes.yaml`
+- Supervisor: the `[program:soniq_scheduler]` block in `deployment/supervisor.conf`
+
+---
+
 ## Systemd
 
-Best for modern Linux servers with direct process control. Files: `deployment/soniq-worker.service` and `deployment/soniq-dashboard.service`.
+Best for modern Linux servers with direct process control. Files: `deployment/soniq-worker.service`, `deployment/soniq-scheduler.service`, and `deployment/soniq-dashboard.service`.
 
 ### Worker service
 

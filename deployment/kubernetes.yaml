@@ -49,7 +49,7 @@ spec:
       - name: soniq-worker
         image: soniq/worker:latest
         imagePullPolicy: Always
-        args: 
+        args:
           - "soniq"
           - "start"
           - "--concurrency=4"
@@ -59,6 +59,10 @@ spec:
             secretKeyRef:
               name: soniq-secrets
               key: SONIQ_DATABASE_URL
+        # The soniq-scheduler Deployment below handles @periodic jobs;
+        # silence the WARN that would otherwise appear in worker logs.
+        - name: SONIQ_SCHEDULER_SUPPRESS_WARNING
+          value: "1"
         envFrom:
         - configMapRef:
             name: soniq-config
@@ -93,6 +97,54 @@ spec:
       volumes:
       - name: logs
         emptyDir: {}
+      restartPolicy: Always
+
+---
+# Soniq Scheduler. Required for `@periodic` jobs. Run a single replica;
+# multiple replicas coordinate via the `soniq.maintenance` advisory lock
+# but only one is needed.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: soniq-scheduler
+  namespace: soniq
+  labels:
+    app: soniq-scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: soniq-scheduler
+  template:
+    metadata:
+      labels:
+        app: soniq-scheduler
+    spec:
+      containers:
+      - name: soniq-scheduler
+        image: soniq/worker:latest
+        imagePullPolicy: Always
+        args:
+          - "soniq"
+          - "scheduler"
+        env:
+        - name: SONIQ_DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: soniq-secrets
+              key: SONIQ_DATABASE_URL
+        - name: SONIQ_SCHEDULING_ENABLED
+          value: "true"
+        envFrom:
+        - configMapRef:
+            name: soniq-config
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "250m"
       restartPolicy: Always
 
 ---
