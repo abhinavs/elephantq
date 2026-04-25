@@ -6,7 +6,7 @@ environment variables, config files, and validation.
 """
 
 from pathlib import Path
-from typing import Any, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -131,6 +131,19 @@ class SoniqSettings(BaseSettings):
             "resolves to <hostname>:<pid>:<argv0> the first time a producer_id "
             "is needed. Set explicitly (e.g. 'billing-api') for cleaner "
             "dashboards in multi-deployment topologies."
+        ),
+    )
+
+    route_map: Dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Consumer-side prefix-to-queue routing. When a job is registered "
+            "without an explicit queue=, the longest matching prefix in this "
+            "dict determines the queue the consumer's worker polls for that "
+            "name. Producer queue= overrides ride on top of the row, not on "
+            "this map (the producer is unaware of consumer routing - this is "
+            "consumer-side only). Example: "
+            "{'billing.': 'billing-queue', 'reports.': 'reports-queue'}."
         ),
     )
 

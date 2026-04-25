@@ -396,8 +396,14 @@ class Soniq:
         _P = ParamSpec("_P")
         _R = TypeVar("_R")
 
+        # Hand the per-instance route_map to register_job so consumer-
+        # side prefix routing is resolved against this Soniq's settings,
+        # not the global cache (multiple Soniq instances may have
+        # different maps).
+        route_map = dict(self._settings.route_map or {})
+
         def decorator(func: Callable[_P, _R]) -> Callable[_P, _R]:
-            return self._job_registry.register_job(func, **kwargs)
+            return self._job_registry.register_job(func, _route_map=route_map, **kwargs)
 
         return decorator
 
