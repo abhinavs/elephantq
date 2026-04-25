@@ -493,41 +493,56 @@ class Soniq:
             hooks=self._hooks,
         )
 
-        scheduler_started = False
+        # `soniq start` only runs the worker. Recurring jobs require a
+        # separate `soniq scheduler` process. If the loaded job modules
+        # registered any `@periodic`-decorated functions and the operator
+        # has not opted out, emit a one-time WARN so a forgotten sidecar
+        # is visible at startup rather than at "my recurring job didn't
+        # fire" time.
         if not run_once:
-            try:
-                from .features.recurring import (
-                    _ensure_scheduler_running,
-                    stop_recurring_scheduler,
-                )
+            self._maybe_warn_periodic_without_scheduler()
 
-                await _ensure_scheduler_running()
-                scheduler_started = True
-            except Exception as e:
-                import logging
+        return await worker.run(
+            concurrency=concurrency,
+            run_once=run_once,
+            queues=queues,
+        )
 
-                logging.getLogger(__name__).warning(
-                    "Recurring scheduler not started: %s", e
-                )
+    def _maybe_warn_periodic_without_scheduler(self) -> None:
+        """One-time warning when @periodic jobs exist and no scheduler runs.
 
-        try:
-            return await worker.run(
-                concurrency=concurrency,
-                run_once=run_once,
-                queues=queues,
-            )
-        finally:
-            if scheduler_started:
-                try:
-                    await stop_recurring_scheduler()
-                except Exception:
-                    # Shutdown path: the scheduler will be reclaimed by the
-                    # stale-worker sweep; log for investigation but don't
-                    # mask the worker's own exit status.
-                    logger.debug(
-                        "stop_recurring_scheduler failed during shutdown",
-                        exc_info=True,
-                    )
+        Suppressible with `SONIQ_SCHEDULER_SUPPRESS_WARNING=1` for
+        deployments that intentionally split scheduler and worker but
+        don't want this WARN cluttering the worker's logs.
+        """
+        import os
+
+        if os.environ.get("SONIQ_SCHEDULER_SUPPRESS_WARNING", "").lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }:
+            return
+
+        all_jobs = self._job_registry.list_jobs()
+        periodic_jobs = [
+            name
+            for name, meta in all_jobs.items()
+            if getattr(meta.get("func"), "_soniq_periodic", None) is not None
+        ]
+        if not periodic_jobs:
+            return
+
+        logger.warning(
+            "Detected %d @periodic job(s) (%s) but `soniq start` no longer "
+            "runs the recurring scheduler. Start `soniq scheduler` as a "
+            "separate process or those jobs will never fire. Suppress "
+            "this warning with SONIQ_SCHEDULER_SUPPRESS_WARNING=1.",
+            len(periodic_jobs),
+            ", ".join(sorted(periodic_jobs)[:3])
+            + (", ..." if len(periodic_jobs) > 3 else ""),
+        )
 
     # Job Management API
 

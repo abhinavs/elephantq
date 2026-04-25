@@ -1,27 +1,26 @@
 """
-run_worker should start the recurring scheduler in continuous mode
-and leave it alone in run_once mode.
+0.0.2 contract: `Soniq.run_worker` does not start or stop the recurring
+scheduler. Recurring jobs require a separate `soniq scheduler` process.
+If `@periodic` jobs are registered, `run_worker` emits a one-time WARN
+on startup unless `SONIQ_SCHEDULER_SUPPRESS_WARNING=1`.
 """
+
+import logging
 
 import pytest
 
 from soniq.app import Soniq
-from soniq.features import recurring
 
 
-@pytest.mark.asyncio
-async def test_run_worker_starts_and_stops_recurring_scheduler(monkeypatch):
-    calls = {"ensure": 0, "stop": 0, "worker_run": 0}
+class _FakeWorker:
+    def __init__(self, **kwargs):
+        self.calls = 0
 
-    async def fake_ensure():
-        calls["ensure"] += 1
+    async def run(self, **kwargs):
+        return True
 
-    async def fake_stop():
-        calls["stop"] += 1
 
-    monkeypatch.setattr(recurring, "_ensure_scheduler_running", fake_ensure)
-    monkeypatch.setattr(recurring, "stop_recurring_scheduler", fake_stop)
-
+def _make_app(monkeypatch):
     app = Soniq(database_url="postgresql://user:pass@localhost/testdb")
 
     async def fake_init():
@@ -29,91 +28,97 @@ async def test_run_worker_starts_and_stops_recurring_scheduler(monkeypatch):
 
     monkeypatch.setattr(app, "_ensure_initialized", fake_init)
     monkeypatch.setattr(app, "_check_pool_sizing", lambda concurrency: None)
+    monkeypatch.setattr("soniq.worker.Worker", _FakeWorker)
+    return app
 
-    class FakeWorker:
-        def __init__(self, **kwargs):
-            pass
 
-        async def run(self, **kwargs):
-            calls["worker_run"] += 1
-            return True
+@pytest.mark.asyncio
+async def test_run_worker_does_not_touch_scheduler(monkeypatch):
+    """Neither continuous nor run-once mode should call into the recurring
+    scheduler module. The sidecar `soniq scheduler` is the only path that
+    starts/stops it."""
+    from soniq.features import recurring
 
-    monkeypatch.setattr("soniq.worker.Worker", FakeWorker)
+    async def fail(*_, **__):
+        pytest.fail("run_worker should not touch the recurring scheduler")
 
+    monkeypatch.setattr(recurring, "_ensure_scheduler_running", fail)
+    monkeypatch.setattr(recurring, "stop_recurring_scheduler", fail)
+
+    app = _make_app(monkeypatch)
     await app.run_worker(concurrency=1)
-
-    assert calls["ensure"] == 1
-    assert calls["stop"] == 1
-    assert calls["worker_run"] == 1
-
-
-@pytest.mark.asyncio
-async def test_run_worker_run_once_skips_scheduler(monkeypatch):
-    calls = {"ensure": 0, "stop": 0}
-
-    async def fake_ensure():
-        calls["ensure"] += 1
-
-    async def fake_stop():
-        calls["stop"] += 1
-
-    monkeypatch.setattr(recurring, "_ensure_scheduler_running", fake_ensure)
-    monkeypatch.setattr(recurring, "stop_recurring_scheduler", fake_stop)
-
-    app = Soniq(database_url="postgresql://user:pass@localhost/testdb")
-
-    async def fake_init():
-        return None
-
-    monkeypatch.setattr(app, "_ensure_initialized", fake_init)
-    monkeypatch.setattr(app, "_check_pool_sizing", lambda concurrency: None)
-
-    class FakeWorker:
-        def __init__(self, **kwargs):
-            pass
-
-        async def run(self, **kwargs):
-            return True
-
-    monkeypatch.setattr("soniq.worker.Worker", FakeWorker)
-
     await app.run_worker(concurrency=1, run_once=True)
 
-    assert calls["ensure"] == 0
-    assert calls["stop"] == 0
+
+@pytest.mark.asyncio
+async def test_run_worker_warns_when_periodic_jobs_registered(monkeypatch, caplog):
+    app = _make_app(monkeypatch)
+
+    @app.job()
+    async def regular_job():
+        pass
+
+    @app.job()
+    async def periodic_job():
+        pass
+
+    # Mark periodic_job as a @periodic-decorated function.
+    periodic_job._soniq_periodic = {"type": "interval", "value": 60}  # type: ignore[attr-defined]
+
+    caplog.set_level(logging.WARNING, logger="soniq.app")
+    await app.run_worker(concurrency=1)
+
+    warns = [r for r in caplog.records if "@periodic job" in r.getMessage()]
+    assert len(warns) == 1, "expected exactly one WARN about periodic-without-scheduler"
+    assert "soniq scheduler" in warns[0].getMessage()
 
 
 @pytest.mark.asyncio
-async def test_run_worker_tolerates_scheduler_start_failure(monkeypatch):
-    """If the scheduler can't start, the worker should still run."""
-    worker_ran = {"v": False}
+async def test_run_worker_warning_suppressible_via_env(monkeypatch, caplog):
+    app = _make_app(monkeypatch)
 
-    async def failing_ensure():
-        raise RuntimeError("scheduling feature disabled")
+    @app.job()
+    async def periodic_job():
+        pass
 
-    async def fake_stop():
-        pytest.fail("stop should not be called if start failed")
+    periodic_job._soniq_periodic = {"type": "interval", "value": 60}  # type: ignore[attr-defined]
 
-    monkeypatch.setattr(recurring, "_ensure_scheduler_running", failing_ensure)
-    monkeypatch.setattr(recurring, "stop_recurring_scheduler", fake_stop)
-
-    app = Soniq(database_url="postgresql://user:pass@localhost/testdb")
-
-    async def fake_init():
-        return None
-
-    monkeypatch.setattr(app, "_ensure_initialized", fake_init)
-    monkeypatch.setattr(app, "_check_pool_sizing", lambda concurrency: None)
-
-    class FakeWorker:
-        def __init__(self, **kwargs):
-            pass
-
-        async def run(self, **kwargs):
-            worker_ran["v"] = True
-            return True
-
-    monkeypatch.setattr("soniq.worker.Worker", FakeWorker)
-
+    monkeypatch.setenv("SONIQ_SCHEDULER_SUPPRESS_WARNING", "1")
+    caplog.set_level(logging.WARNING, logger="soniq.app")
     await app.run_worker(concurrency=1)
-    assert worker_ran["v"] is True
+
+    warns = [r for r in caplog.records if "@periodic job" in r.getMessage()]
+    assert warns == []
+
+
+@pytest.mark.asyncio
+async def test_run_worker_no_warning_when_no_periodic_jobs(monkeypatch, caplog):
+    app = _make_app(monkeypatch)
+
+    @app.job()
+    async def regular_job():
+        pass
+
+    caplog.set_level(logging.WARNING, logger="soniq.app")
+    await app.run_worker(concurrency=1)
+
+    warns = [r for r in caplog.records if "@periodic job" in r.getMessage()]
+    assert warns == []
+
+
+@pytest.mark.asyncio
+async def test_run_worker_no_warning_in_run_once_mode(monkeypatch, caplog):
+    app = _make_app(monkeypatch)
+
+    @app.job()
+    async def periodic_job():
+        pass
+
+    periodic_job._soniq_periodic = {"type": "interval", "value": 60}  # type: ignore[attr-defined]
+
+    caplog.set_level(logging.WARNING, logger="soniq.app")
+    await app.run_worker(concurrency=1, run_once=True)
+
+    # run_once is ad-hoc / test usage; no scheduler-sidecar warning needed.
+    warns = [r for r in caplog.records if "@periodic job" in r.getMessage()]
+    assert warns == []
