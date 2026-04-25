@@ -15,7 +15,15 @@ async def send_welcome_email(user_id: int, template: str = "default"):
     await send_email(user.email, template)
 ```
 
-The `@app.job` decorator registers the function. By default the task name is derived from `f"{module}.{qualname}"` (Celery-style), so the example above registers as `myapp.tasks.send_welcome_email`. Pass `name=` explicitly to override:
+The `@app.job` decorator registers the function. By default the task name is derived from `f"{module}.{qualname}"` (Celery-style), so the example above registers as `myapp.tasks.send_welcome_email`. The empty-parens form `@app.job()` works the same way (and is what you'll often see in code that started without kwargs and later grew them):
+
+```python
+@app.job()
+async def cleanup_session(session_id: str):
+    ...
+```
+
+Pass `name=` explicitly to override:
 
 ```python
 @app.job(name="users.send_welcome_email")

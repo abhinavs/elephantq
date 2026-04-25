@@ -24,9 +24,10 @@ await producer.enqueue(
 )
 ```
 
-**Consumer (service B)** registers and runs:
+**Consumer (service B)** registers the handler:
 
 ```python
+# myservice/tasks.py
 from soniq import Soniq
 from pydantic import BaseModel
 
@@ -39,8 +40,14 @@ class InvoiceArgs(BaseModel):
 @consumer.job(name="billing.invoices.send.v2", validate=InvoiceArgs)
 async def send_invoice(order_id: str, customer: str):
     ...
+```
 
-await consumer.run_worker()
+And starts the worker with the CLI:
+
+```bash
+export SONIQ_DATABASE_URL="postgresql://shared-pg/jobs"
+export SONIQ_JOBS_MODULES="myservice.tasks"
+soniq start
 ```
 
 Two repositories, one shared Postgres, one task name. The producer

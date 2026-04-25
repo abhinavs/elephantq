@@ -8,18 +8,22 @@ Everything about defining, enqueueing, scheduling, and inspecting jobs.
 Registers a function as a job. Works on both instance and global APIs. Both `@app.job` (no parens) and `@app.job(...)` (with kwargs) are accepted.
 
 ```python
-# Instance API
+# Instance API - `@app.job` and `@app.job()` are both accepted
 app = Soniq(database_url="postgresql://localhost/myapp")
 
 @app.job
 async def send_email(to: str, subject: str, body: str):
     ...
 
+@app.job()  # equivalent; useful if you might add kwargs later
+async def send_password_reset(to: str, token: str):
+    ...
+
 # Global API
 import soniq
 
 @soniq.job
-async def send_email(to: str, subject: str, body: str):
+async def send_welcome_email(user_id: int):
     ...
 ```
 

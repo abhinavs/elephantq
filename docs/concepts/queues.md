@@ -66,10 +66,11 @@ soniq start --queues emails,billing
 soniq start --queues urgent --concurrency 8
 ```
 
-Programmatically:
+Run two distinct worker processes, one per queue group:
 
-```python
-await app.run_worker(queues=["emails", "billing"], concurrency=4)
+```bash
+soniq start --queues emails,billing --concurrency 4
+soniq start --queues urgent --concurrency 8
 ```
 
 This lets you scale queue capacity independently. Run more email workers during peak hours, or dedicate a fast machine to your billing queue.

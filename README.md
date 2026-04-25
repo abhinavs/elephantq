@@ -71,13 +71,18 @@ await producer.enqueue("billing.invoices.send.v2", args={"order_id": "o1"})
 ```
 
 ```python
-# Consumer (service B) - registers and runs
+# Consumer (service B) - registers the handler
+# myservice/tasks.py
 consumer = Soniq(database_url="postgresql://shared-pg/jobs")
 
 @consumer.job(name="billing.invoices.send.v2", validate=InvoiceArgs)
 async def send_invoice(order_id: str): ...
+```
 
-await consumer.run_worker()
+```bash
+# Run the worker via the CLI (run from your process manager)
+export SONIQ_JOBS_MODULES="myservice.tasks"
+soniq start
 ```
 
 Soniq is at-least-once, not exactly-once: handlers should be idempotent. See [docs/guides/cross-service-jobs.md](docs/guides/cross-service-jobs.md) and the [migration guide](docs/migration/0.0.x-to-cross-service.md) for the full story.

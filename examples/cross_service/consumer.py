@@ -1,9 +1,16 @@
 """
 Consumer service - registers the handler under the same task name the
-producer uses, and runs the worker.
+producer uses.
 
-Run with `SONIQ_DATABASE_URL` pointing at the same Postgres database the
-producer writes to.
+In production you start the worker via the CLI:
+
+    export SONIQ_DATABASE_URL="postgresql://shared-pg/jobs"
+    export SONIQ_JOBS_MODULES="examples.cross_service.consumer"
+    soniq start
+
+This script can also be run directly as a quick smoke check; the
+in-process `app.run_worker()` call at the bottom is the embedded /
+test-time entry point, not the recommended deploy path.
 """
 
 from __future__ import annotations

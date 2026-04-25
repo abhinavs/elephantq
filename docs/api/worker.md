@@ -1,13 +1,22 @@
 # Worker
 
-Workers fetch jobs from the database, execute them, and update their status.
-Most users start workers through the CLI (`soniq start`) or `app.run_worker()`.
-The `Worker` class itself is documented here for advanced use cases.
+Workers fetch jobs from the database, execute them, and update their status. **The primary way to run a worker is the `soniq start` CLI** -- run it from your process manager (systemd, Kubernetes, supervisord) and let the manager handle restarts and scaling. The `Worker` class and `app.run_worker()` are documented here for advanced use cases (tests, embedding, custom orchestration).
+
+
+## soniq start
+
+```bash
+soniq start
+soniq start --concurrency 8 --queues emails,billing
+soniq start --run-once  # process available jobs once and exit
+```
+
+Reads `SONIQ_DATABASE_URL` (and other `SONIQ_*` settings) from the environment. See the CLI reference for the full flag list.
 
 
 ## run_worker()
 
-The recommended way to start processing jobs from application code.
+The in-process entry point. Use this for tests or when embedding Soniq inside a larger Python application that owns the lifecycle.
 
 ```python
 app = Soniq(database_url="postgresql://localhost/myapp")
