@@ -277,28 +277,50 @@ def periodic(
     return decorator
 
 
-async def enqueue(job_func, connection=None, **kwargs):
-    """Enqueue a job, honoring an active `Soniq` instance if present.
+async def enqueue(
+    name_or_ref,
+    *,
+    args: Optional[dict] = None,
+    queue: Optional[str] = None,
+    priority: Optional[int] = None,
+    scheduled_at=None,
+    unique: Optional[bool] = None,
+    dedup_key: Optional[str] = None,
+    connection=None,
+):
+    """Enqueue a task by name (or, from phase 2, a TaskRef).
 
-    When called from inside an `Soniq(...)` instance method the active
-    instance is used; otherwise the global app handles the call.
+    Thin wrapper over ``Soniq.enqueue`` honoring an active instance via
+    the contextvar; otherwise routes through the global app. See
+    ``Soniq.enqueue`` for the full contract.
     """
     app = _resolve_app()
-    return await app.enqueue(job_func, connection=connection, **kwargs)
+    return await app.enqueue(
+        name_or_ref,
+        args=args,
+        queue=queue,
+        priority=priority,
+        scheduled_at=scheduled_at,
+        unique=unique,
+        dedup_key=dedup_key,
+        connection=connection,
+    )
 
 
 async def schedule(
-    job_func,
+    name_or_ref,
     *,
     run_at: Optional[datetime] = None,
     run_in: Optional[Union[int, float, timedelta]] = None,
+    args: Optional[dict] = None,
     connection=None,
     **kwargs,
 ):
     """
-    Schedule a job for future execution using the global Soniq instance.
+    Schedule a task for future execution using the global Soniq instance.
 
-    Use `run_at` for absolute datetime or `run_in` for relative delay.
+    Use ``run_at`` for absolute datetime or ``run_in`` for relative delay.
+    ``name_or_ref`` and ``args`` follow the same shape as ``enqueue``.
     """
     if run_at is None and run_in is None:
         raise ValueError("Must specify either run_at (absolute) or run_in (relative)")
@@ -313,7 +335,13 @@ async def schedule(
         else:
             raise ValueError("run_in must be int, float (seconds), or timedelta")
 
-    return await enqueue(job_func, connection=connection, scheduled_at=run_at, **kwargs)
+    return await enqueue(
+        name_or_ref,
+        args=args,
+        connection=connection,
+        scheduled_at=run_at,
+        **kwargs,
+    )
 
 
 async def run_worker(

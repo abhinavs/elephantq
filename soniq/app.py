@@ -393,64 +393,160 @@ class Soniq:
         return fn
 
     @_with_active_app
-    async def enqueue(self, job_func, connection=None, **kwargs) -> str:
+    async def enqueue(
+        self,
+        name_or_ref,
+        *,
+        args: Optional[dict] = None,
+        queue: Optional[str] = None,
+        priority: Optional[int] = None,
+        scheduled_at=None,
+        unique: Optional[bool] = None,
+        dedup_key: Optional[str] = None,
+        connection=None,
+    ) -> str:
         """
-        Enqueue a job for processing.
+        Enqueue a task for processing.
+
+        The cross-service producer primitive. Takes a string task name (or,
+        from phase 2, a ``TaskRef``) and an explicit ``args`` dict. The old
+        callable form ``enqueue(my_func, x=1, y=2)`` was removed; see the
+        migration guide and the ``soniq migrate-enqueue`` codemod.
+
+        When ``name_or_ref`` is a string:
+
+        - The name is validated against ``SONIQ_TASK_NAME_PATTERN``.
+        - Behaviour for an unregistered name is governed by
+          ``SONIQ_ENQUEUE_VALIDATION``: ``"strict"`` (default) raises
+          ``SONIQ_UNKNOWN_TASK_NAME`` and writes nothing; ``"warn"`` logs
+          and proceeds; ``"none"`` is silent. Producer services that have
+          no local registry by design should set ``=warn`` or ``=none``
+          explicitly in their environment.
 
         Args:
-            job_func: Job function to enqueue
-            connection: Optional existing asyncpg connection for transactional enqueue
-            **kwargs: Job arguments and options (priority, queue, scheduled_at, unique, dedup_key)
+            name_or_ref: Dotted task name string. (``TaskRef`` support
+                lands in phase 2.)
+            args: Task arguments as a dict. Defaults to ``{}``.
+            queue: Optional queue override. Advisory; the consumer owns
+                routing. Falls back to the registered queue, then
+                ``"default"``.
+            priority: Optional priority override. Falls back to the
+                registered priority, then ``100``.
+            scheduled_at: datetime / timedelta / seconds-from-now for
+                future scheduling.
+            unique: Whether this task should be deduplicated.
+            dedup_key: Explicit dedup key (overrides args-hash dedup).
+            connection: Asyncpg connection for transactional enqueue
+                (Postgres only).
 
         Returns:
-            Job UUID (always a non-empty string; either the newly inserted
-            row's id, or an existing row's id when deduplication matches).
+            Job UUID (non-empty string).
+
+        Raises:
+            SoniqError(SONIQ_INVALID_TASK_NAME): name violates the
+                configured pattern, or `name_or_ref` is the wrong type.
+            SoniqError(SONIQ_UNKNOWN_TASK_NAME):
+                ``SONIQ_ENQUEUE_VALIDATION="strict"`` and the name is not
+                registered locally.
+            SoniqError(SONIQ_TASK_ARGS_INVALID): args fail the
+                registered ``args_model`` validation.
         """
+        from .core.naming import validate_task_name
+        from .core.queue import _normalize_scheduled_time
+        from .errors import (
+            SONIQ_TASK_ARGS_INVALID,
+            SONIQ_UNKNOWN_TASK_NAME,
+            SoniqError,
+        )
+
         await self._ensure_initialized()
         assert self._backend is not None  # narrow type after init
 
         import uuid
 
-        from .core.queue import _normalize_scheduled_time, _validate_job_arguments
+        from pydantic import ValidationError
+
         from .utils.hashing import compute_args_hash
 
-        # Extract enqueue options from kwargs
-        priority = kwargs.pop("priority", None)
-        queue = kwargs.pop("queue", None)
-        scheduled_at = kwargs.pop("scheduled_at", None)
-        unique = kwargs.pop("unique", None)
-        dedup_key = kwargs.pop("dedup_key", None)
+        # Phase 1: only string names. TaskRef arm is added in phase 2 / PR 13.
+        # Other types fall through to validate_task_name which raises
+        # SONIQ_INVALID_TASK_NAME with received_type in context.
+        job_name = validate_task_name(name_or_ref)
 
-        # Resolve job metadata from registry
-        job_name = f"{job_func.__module__}.{job_func.__name__}"
+        if args is None:
+            args = {}
+        elif not isinstance(args, dict):
+            raise TypeError(f"enqueue() args must be a dict, got {type(args).__name__}")
+
         job_meta = self._job_registry.get_job(job_name)
 
-        if not job_meta:
-            raise ValueError(
-                f"Job '{job_name}' is not registered. "
-                "Did you forget @app.job() on the function?"
-            )
+        # Registry-based validation. Per plan section 15.6 strict-mode
+        # boundary: this consults *only* the in-process registry, never the
+        # soniq_task_registry DB table that phase 3 introduces. Do not add
+        # a fallback path that reads from the DB - that would turn the
+        # registry table into distributed coordination.
+        if job_meta is None:
+            mode = self._settings.enqueue_validation
+            if mode == "strict":
+                raise SoniqError(
+                    f"Task '{job_name}' is not registered locally and "
+                    f"SONIQ_ENQUEUE_VALIDATION is 'strict'.",
+                    SONIQ_UNKNOWN_TASK_NAME,
+                    context={"task_name": job_name, "mode": mode},
+                    suggestions=[
+                        "Register the task with @app.job(name=...) before enqueueing.",
+                        "Or set SONIQ_ENQUEUE_VALIDATION=warn / =none if this "
+                        "service is a pure producer with no local registry.",
+                    ],
+                )
+            if mode == "warn":
+                # Phase 1 emits a plain warning; PR 7 wires the rate limiter.
+                logger.warning(
+                    "enqueue: task %r is not registered locally "
+                    "(SONIQ_ENQUEUE_VALIDATION=warn); enqueueing anyway",
+                    job_name,
+                )
+            # mode == "none" -> silent
 
-        _validate_job_arguments(job_name, job_meta, kwargs)
+        # When the task is registered, validate args against the model and
+        # use registered defaults for unset enqueue options.
+        if job_meta is not None:
+            args_model = job_meta.get("args_model")
+            if args_model is not None:
+                try:
+                    args_model(**args)
+                except ValidationError as e:
+                    raise SoniqError(
+                        f"Invalid arguments for task {job_name!r}: {e}",
+                        SONIQ_TASK_ARGS_INVALID,
+                        context={"task_name": job_name},
+                    ) from e
+            final_priority = priority if priority is not None else job_meta["priority"]
+            final_queue = queue if queue is not None else job_meta["queue"]
+            final_unique = unique if unique is not None else job_meta["unique"]
+            max_attempts = job_meta["max_retries"] + 1
+        else:
+            # Pure-producer path. Pin defaults here so a future refactor
+            # cannot silently change the on-the-wire shape for unregistered
+            # names.
+            final_priority = priority if priority is not None else 100
+            final_queue = queue if queue is not None else "default"
+            final_unique = unique if unique is not None else False
+            max_attempts = self._settings.max_retries + 1
 
-        final_priority = priority if priority is not None else job_meta["priority"]
-        final_queue = queue if queue is not None else job_meta["queue"]
-        final_unique = unique if unique is not None else job_meta["unique"]
         scheduled_at = _normalize_scheduled_time(scheduled_at)
-
-        args_hash = compute_args_hash(kwargs) if final_unique else None
+        args_hash = compute_args_hash(args) if final_unique else None
         job_id = str(uuid.uuid4())
 
-        # Transactional enqueue via caller-provided connection (Postgres only)
         if connection is not None:
             if self._backend.supports_transactional_enqueue:
                 txn_id: str = await self._backend.create_job_transactional(
                     connection=connection,
                     job_id=job_id,
                     job_name=job_name,
-                    args=kwargs,
+                    args=args,
                     args_hash=args_hash,
-                    max_attempts=job_meta["max_retries"] + 1,
+                    max_attempts=max_attempts,
                     priority=final_priority,
                     queue=final_queue,
                     unique=final_unique,
@@ -466,9 +562,9 @@ class Soniq:
         result_id = await self._backend.create_job(
             job_id=job_id,
             job_name=job_name,
-            args=kwargs,
+            args=args,
             args_hash=args_hash,
-            max_attempts=job_meta["max_retries"] + 1,
+            max_attempts=max_attempts,
             priority=final_priority,
             queue=final_queue,
             unique=final_unique,
@@ -476,9 +572,6 @@ class Soniq:
             scheduled_at=scheduled_at,
         )
 
-        # Notify workers if backend supports push notifications. Workers
-        # also poll on a timer, so a failed notify degrades latency but does
-        # not drop the job. Log at debug so it's visible when investigating.
         if self._backend.supports_push_notify:
             try:
                 await self._backend.notify_new_job(final_queue)
@@ -492,19 +585,13 @@ class Soniq:
         return result_id or job_id
 
     @_with_active_app
-    async def schedule(self, job_func, run_at, **kwargs):
-        """
-        Schedule a job for future execution.
+    async def schedule(self, name_or_ref, run_at, *, args=None, **kwargs):
+        """Schedule a task for future execution.
 
-        Args:
-            job_func: Job function to schedule
-            run_at: When to run the job (datetime)
-            **kwargs: Job arguments and options
-
-        Returns:
-            Job UUID
+        Thin wrapper over ``enqueue`` that sets ``scheduled_at=run_at``.
+        ``name_or_ref`` and ``args`` follow the same shape as ``enqueue``.
         """
-        return await self.enqueue(job_func, scheduled_at=run_at, **kwargs)
+        return await self.enqueue(name_or_ref, args=args, scheduled_at=run_at, **kwargs)
 
     async def get_pool(self) -> Any:
         """Get database connection pool."""

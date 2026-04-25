@@ -696,7 +696,13 @@ class EnhancedRecurringScheduler:
 
                     # Claim succeeded. Enqueue inside the same transaction
                     # so a failed enqueue rolls the claim back.
-                    actual_job_id = await enqueue(
+                    # NOTE: this call site is the old enqueue(callable, **kwargs)
+                    # shape and will be migrated to the new
+                    # enqueue("name", args={...}) shape in PR 6 (call-site
+                    # migration). Suppressed at the type level here so PR 5
+                    # can land without scope creep into the recurring
+                    # scheduler's storage model.
+                    actual_job_id = await enqueue(  # type: ignore[call-arg]
                         job["job_func"],
                         connection=conn,
                         priority=job["priority"],
