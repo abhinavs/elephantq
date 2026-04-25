@@ -44,6 +44,8 @@ nav = [
     { "File processing" = "recipes/file-processing.md" },
     { "Scheduled reports" = "recipes/scheduled-reports.md" },
     { "Webhook delivery" = "recipes/webhook-delivery.md" },
+    { "Custom retry policy" = "recipes/custom-retry-policy.md" },
+    { "Custom serializer" = "recipes/custom-serializer.md" },
   ] },
 ]
 

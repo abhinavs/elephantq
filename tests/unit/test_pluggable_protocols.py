@@ -78,6 +78,64 @@ def test_soniq_accepts_custom_serializer():
 
 
 @pytest.mark.asyncio
+async def test_get_result_with_pydantic_result_model():
+    """`get_result(..., result_model=Model)` validates the stored dict
+    through `model_validate` and returns the constructed instance."""
+    from pydantic import BaseModel
+
+    class JobResult(BaseModel):
+        ok: bool
+        message: str
+
+    app = Soniq(backend="memory")
+    await app._ensure_initialized()
+
+    @app.job()
+    async def returns_dict():
+        return {"ok": True, "message": "hi"}
+
+    job_id = await app.enqueue(returns_dict)
+    await app.run_worker(run_once=True)
+
+    typed = await app.get_result(job_id, result_model=JobResult)
+    assert isinstance(typed, JobResult)
+    assert typed.ok is True
+    assert typed.message == "hi"
+
+    raw = await app.get_result(job_id)
+    assert raw == {"ok": True, "message": "hi"}
+
+    await app.close()
+
+
+@pytest.mark.asyncio
+async def test_get_result_with_dataclass_result_model():
+    """A non-Pydantic class is constructed via `**dict` when the stored
+    value is a dict, mirroring the normal dataclass call."""
+    from dataclasses import dataclass
+
+    @dataclass
+    class Pair:
+        a: int
+        b: int
+
+    app = Soniq(backend="memory")
+    await app._ensure_initialized()
+
+    @app.job()
+    async def returns_pair():
+        return {"a": 1, "b": 2}
+
+    job_id = await app.enqueue(returns_pair)
+    await app.run_worker(run_once=True)
+
+    typed = await app.get_result(job_id, result_model=Pair)
+    assert typed == Pair(a=1, b=2)
+
+    await app.close()
+
+
+@pytest.mark.asyncio
 async def test_retry_policy_can_short_circuit_to_dead_letter():
     """A RetryPolicy that returns None should dead-letter the job
     immediately, even if there's still retry budget remaining."""

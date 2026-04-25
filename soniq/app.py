@@ -340,10 +340,17 @@ class Soniq:
             **kwargs: Job configuration options
 
         Returns:
-            Job decorator function
+            Job decorator function. The decorated callable preserves its
+            original signature (typecheckers see `f(...)` after `@app.job()`
+            with the same parameters as the underlying function), via
+            ParamSpec on the inner type annotation.
         """
+        from typing import Callable, ParamSpec, TypeVar
 
-        def decorator(func):
+        _P = ParamSpec("_P")
+        _R = TypeVar("_R")
+
+        def decorator(func: Callable[_P, _R]) -> Callable[_P, _R]:
             return self._job_registry.register_job(func, **kwargs)
 
         return decorator
@@ -587,13 +594,37 @@ class Soniq:
         return await self._backend.get_job(job_id)  # type: ignore[union-attr]
 
     @_with_active_app
-    async def get_result(self, job_id: str):
-        """Get the return value of a completed job, or None."""
+    async def get_result(
+        self,
+        job_id: str,
+        *,
+        result_model: Optional[Any] = None,
+    ):
+        """Get the return value of a completed job, or None.
+
+        When `result_model` is provided, the stored value is constructed
+        through it before being returned. The model can be any callable
+        that accepts the stored value: a Pydantic `BaseModel` (uses
+        `model_validate` when present), a dataclass, or any class whose
+        `__init__` accepts the dict.
+
+        Returns `None` if the job is not done, has no return value, or
+        does not exist. Raises whatever the model raises on validation
+        failure.
+        """
         await self._ensure_initialized()
         job = await self._backend.get_job(job_id)  # type: ignore[union-attr]
-        if job and job.get("status") == "done":
-            return job.get("result")
-        return None
+        if not job or job.get("status") != "done":
+            return None
+        result = job.get("result")
+        if result is None or result_model is None:
+            return result
+        validate = getattr(result_model, "model_validate", None)
+        if callable(validate):
+            return validate(result)
+        if isinstance(result, dict):
+            return result_model(**result)
+        return result_model(result)
 
     @_with_active_app
     async def cancel_job(self, job_id: str):
