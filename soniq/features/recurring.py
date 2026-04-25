@@ -256,7 +256,15 @@ class EnhancedRecurringManager:
         self._loaded = False
 
     async def load_jobs(self) -> None:
-        """Load recurring jobs from the database."""
+        """Load recurring jobs from the database.
+
+        Fail-closed: every step (the SELECT, the per-row parsing, the
+        per-row `_persist_next_run` for newly-bootstrapped schedules) runs
+        before any state is published to `self.jobs`. If anything raises,
+        the existing in-memory dict is untouched and `self._loaded` stays
+        False so the next `_ensure_loaded()` call retries from scratch.
+        Callers see the exception and decide whether to back off.
+        """
         if self._loaded:
             return
 
@@ -271,6 +279,8 @@ class EnhancedRecurringManager:
                 """
             )
 
+        # Build the new state in a local dict; only swap on success.
+        loaded: Dict[str, Dict[str, Any]] = {}
         for row in rows:
             schedule_value = row["schedule_value"]
             if row["schedule_type"] == "interval":
@@ -311,8 +321,10 @@ class EnhancedRecurringManager:
                         job_record["id"], job_record["next_run"]
                     )
 
-            self.jobs[job_record["id"]] = job_record
+            loaded[job_record["id"]] = job_record
 
+        # All rows parsed and persisted: publish atomically.
+        self.jobs = loaded
         self._loaded = True
 
     async def add_recurring_job(
