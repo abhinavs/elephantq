@@ -16,7 +16,7 @@ from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 from soniq.db.connection import get_pool
 
@@ -152,61 +152,91 @@ class JSONFormatter(logging.Formatter):
         return json.dumps(asdict(log_data), default=str)
 
 
-class DatabaseLogHandler(logging.Handler):
-    """Log handler that stores logs in PostgreSQL"""
+_STOP_SENTINEL = object()
 
-    def __init__(self, table_name: str = "soniq_logs", batch_size: int = 100):
+
+class DatabaseLogHandler(logging.Handler):
+    """Log handler that stores logs in PostgreSQL.
+
+    Uses a bounded asyncio.Queue plus a single consumer task. `emit()` is
+    cheap (queue.put_nowait) and never spawns a fresh task per record;
+    a queue-full condition degrades to a one-shot stderr warning rather
+    than orphan tasks accumulating under high log volume.
+    """
+
+    def __init__(
+        self,
+        table_name: str = "soniq_logs",
+        batch_size: int = 100,
+        queue_max: int = 10_000,
+    ):
         super().__init__()
         if not _VALID_TABLE_NAME.match(table_name):
             raise ValueError(f"Invalid table name: {table_name!r}")
         self.table_name = table_name
         self.batch_size = batch_size
-        self.log_buffer: List[Dict[str, Any]] = []
-        self._lock = asyncio.Lock()
-        self._pending_tasks: Set[asyncio.Task] = set()
-        self._background_task = None
+        self._queue: asyncio.Queue = asyncio.Queue(maxsize=queue_max)
+        self._consumer_task: Optional[asyncio.Task] = None
+        self._dropped_warned = False
 
     async def setup_database(self):
         """Tables are created by migrations. No-op."""
         pass
 
     def emit(self, record: logging.LogRecord):
-        """Add log record to buffer"""
+        """Format the record and enqueue it for the consumer task."""
         try:
-            # Convert to structured format
             log_entry = self._format_log_entry(record)
-
-            # Track the task so it can be awaited on close
-            task = asyncio.create_task(self._add_to_buffer(log_entry))
-            self._pending_tasks.add(task)
-            task.add_done_callback(self._pending_tasks.discard)
-
         except Exception:
             self.handleError(record)
-
-    async def _add_to_buffer(self, log_entry: Dict[str, Any]):
-        """Add log entry to buffer and flush if needed"""
-        flush_batch = None
-        async with self._lock:
-            self.log_buffer.append(log_entry)
-
-            if len(self.log_buffer) >= self.batch_size:
-                flush_batch = list(self.log_buffer)
-                self.log_buffer.clear()
-
-        if flush_batch:
-            await self._flush_batch(flush_batch)
-
-    async def _flush_buffer(self):
-        """Flush log buffer to database (called under lock during close)."""
-        if not self.log_buffer:
             return
-        batch = list(self.log_buffer)
-        self.log_buffer.clear()
-        await self._flush_batch(batch)
+
+        self._ensure_consumer()
+        try:
+            self._queue.put_nowait(log_entry)
+        except asyncio.QueueFull:
+            if not self._dropped_warned:
+                self._dropped_warned = True
+                sys.stderr.write(
+                    "Soniq: log queue is full; dropping records "
+                    "(message shown once per handler instance)\n"
+                )
+
+    def _ensure_consumer(self) -> None:
+        """Lazily start the consumer task on the running event loop."""
+        if self._consumer_task is not None and not self._consumer_task.done():
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            # No running loop. emit() will keep enqueuing; the consumer
+            # starts on the next emit() that runs inside a loop.
+            return
+        self._consumer_task = loop.create_task(self._consume())
+
+    async def _consume(self) -> None:
+        """Drain the queue in batches until the stop sentinel arrives."""
+        batch: List[Dict[str, Any]] = []
+        while True:
+            item = await self._queue.get()
+            if item is _STOP_SENTINEL:
+                if batch:
+                    await self._flush_batch(batch)
+                return
+            batch.append(item)
+            # Greedy drain up to batch_size without blocking.
+            while len(batch) < self.batch_size and not self._queue.empty():
+                next_item = self._queue.get_nowait()
+                if next_item is _STOP_SENTINEL:
+                    await self._flush_batch(batch)
+                    return
+                batch.append(next_item)
+            if len(batch) >= self.batch_size:
+                await self._flush_batch(batch)
+                batch = []
 
     async def _flush_batch(self, batch):
-        """Write a batch of log entries to the database (called outside lock)."""
+        """Write a batch of log entries to the database."""
         if not batch:
             return
 
@@ -215,6 +245,8 @@ class DatabaseLogHandler(logging.Handler):
             async with pool.acquire() as conn:
                 values = []
                 for entry in batch:
+                    # JSONB columns: pass dict directly, the pool codec
+                    # serializes (no manual json.dumps needed).
                     values.append(
                         (
                             entry["timestamp"],
@@ -228,21 +260,9 @@ class DatabaseLogHandler(logging.Handler):
                             entry.get("job_id"),
                             entry.get("job_name"),
                             entry.get("queue"),
-                            (
-                                json.dumps(entry.get("extra_data"))
-                                if entry.get("extra_data")
-                                else None
-                            ),
-                            (
-                                json.dumps(entry.get("exception_data"))
-                                if entry.get("exception_data")
-                                else None
-                            ),
-                            (
-                                json.dumps(entry.get("performance_data"))
-                                if entry.get("performance_data")
-                                else None
-                            ),
+                            entry.get("extra_data"),
+                            entry.get("exception_data"),
+                            entry.get("performance_data"),
                         )
                     )
 
@@ -339,12 +359,16 @@ class DatabaseLogHandler(logging.Handler):
         return entry
 
     async def close(self):
-        """Close handler, await pending tasks, and flush remaining logs"""
-        if self._pending_tasks:
-            await asyncio.gather(*self._pending_tasks, return_exceptions=True)
-            self._pending_tasks.clear()
-        async with self._lock:
-            await self._flush_buffer()
+        """Stop the consumer task and flush any remaining records."""
+        if self._consumer_task is None:
+            return
+        await self._queue.put(_STOP_SENTINEL)
+        try:
+            await self._consumer_task
+        except asyncio.CancelledError:
+            pass
+        finally:
+            self._consumer_task = None
 
 
 class JobLogger:
