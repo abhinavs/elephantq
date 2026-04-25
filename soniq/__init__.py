@@ -69,7 +69,7 @@ __all__ = [
     "_setup",
     "_reset",
     "configure",
-    "get_job_status",
+    "get_job",
     "cancel_job",
     "retry_job",
     "delete_job",
@@ -339,11 +339,7 @@ async def _reset() -> None:
 async def get_job(job_id: str):
     """Get information for a specific job."""
     app = _resolve_app()
-    return await app.get_job_status(job_id)
-
-
-# Backward-compatible alias
-get_job_status = get_job
+    return await app.get_job(job_id)
 
 
 async def get_result(job_id: str):

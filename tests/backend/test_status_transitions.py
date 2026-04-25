@@ -8,7 +8,7 @@ async def test_full_lifecycle_success(backend):
     await backend.create_job(
         job_id="j1",
         job_name="mod.func",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -32,7 +32,7 @@ async def test_failure_and_retry(backend):
     await backend.create_job(
         job_id="j1",
         job_name="mod.func",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=2,
         priority=100,
@@ -60,7 +60,7 @@ async def test_cancel_only_works_on_queued(backend):
     await backend.create_job(
         job_id="j1",
         job_name="mod.func",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -83,7 +83,7 @@ async def test_result_ttl_zero_deletes_immediately(backend):
     await backend.create_job(
         job_id="j1",
         job_name="mod.func",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -101,7 +101,7 @@ async def test_retry_job_requeues_dead_letter(backend):
     await backend.create_job(
         job_id="j1",
         job_name="mod.func",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=1,
         priority=100,
@@ -122,7 +122,7 @@ async def test_retry_queued_job_returns_false(backend):
     await backend.create_job(
         job_id="j1",
         job_name="mod.func",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,

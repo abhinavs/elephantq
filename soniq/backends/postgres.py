@@ -7,7 +7,6 @@ Uses asyncpg for all database operations. Supports:
 - Transactional enqueue via caller-provided connection
 """
 
-import json
 import logging
 import uuid
 from contextlib import asynccontextmanager
@@ -45,22 +44,16 @@ def _row_to_dict(row: asyncpg.Record) -> dict:
 
 
 def _job_row_to_dict(row: asyncpg.Record) -> dict:
-    """Convert a job row to the standard dict format."""
-    raw_result = row["result"] if "result" in row.keys() else None
-    if isinstance(raw_result, str):
-        try:
-            parsed_result = json.loads(raw_result)
-        except (TypeError, ValueError):
-            parsed_result = raw_result
-    else:
-        parsed_result = raw_result
+    """Convert a job row to the standard dict format.
 
+    The JSONB codec registered in `_init_connection` already decodes
+    `args` and `result` into Python dicts/values, so no manual json.loads
+    is needed here.
+    """
     return {
         "id": str(row["id"]),
         "job_name": row["job_name"],
-        "args": (
-            json.loads(row["args"]) if isinstance(row["args"], str) else row["args"]
-        ),
+        "args": row["args"],
         "status": row["status"],
         "attempts": row["attempts"],
         "max_attempts": row["max_attempts"],
@@ -70,7 +63,7 @@ def _job_row_to_dict(row: asyncpg.Record) -> dict:
             row["scheduled_at"].isoformat() if row["scheduled_at"] else None
         ),
         "last_error": row["last_error"],
-        "result": parsed_result,
+        "result": row["result"] if "result" in row.keys() else None,
         "created_at": row["created_at"].isoformat() if row["created_at"] else None,
         "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
     }
@@ -120,6 +113,18 @@ class PostgresBackend:
     def supports_transactional_enqueue(self) -> bool:
         return True
 
+    @property
+    def supports_connection_pool(self) -> bool:
+        return True
+
+    @property
+    def supports_advisory_locks(self) -> bool:
+        return True
+
+    @property
+    def supports_migrations(self) -> bool:
+        return True
+
     # --- Lifecycle ---
 
     async def initialize(self) -> None:
@@ -152,7 +157,7 @@ class PostgresBackend:
         *,
         job_id: str,
         job_name: str,
-        args: str,
+        args: dict,
         args_hash: Optional[str],
         max_attempts: int,
         priority: int,
@@ -182,7 +187,7 @@ class PostgresBackend:
         connection: asyncpg.Connection,
         job_id: str,
         job_name: str,
-        args: str,
+        args: dict,
         args_hash: Optional[str],
         max_attempts: int,
         priority: int,
@@ -212,7 +217,7 @@ class PostgresBackend:
         *,
         job_id: str,
         job_name: str,
-        args: str,
+        args: dict,
         args_hash: Optional[str],
         max_attempts: int,
         priority: int,
@@ -431,7 +436,7 @@ class PostgresBackend:
         result: Any = None,
     ) -> None:
         uid = uuid.UUID(job_id)
-        result_json = json.dumps(result, default=str) if result is not None else None
+        # JSONB codec auto-serializes; pass the raw value.
         async with self.pool.acquire() as conn:
             async with conn.transaction():
                 if result_ttl is not None and result_ttl == 0:
@@ -445,14 +450,14 @@ class PostgresBackend:
                         """
                         UPDATE soniq_jobs
                         SET status = 'done',
-                            result = $3::jsonb,
+                            result = $3,
                             expires_at = NOW() + ($2 || ' seconds')::INTERVAL,
                             updated_at = NOW()
                         WHERE id = $1
                         """,
                         uid,
                         str(ttl),
-                        result_json,
+                        result,
                     )
 
     async def mark_job_failed(
@@ -706,7 +711,7 @@ class PostgresBackend:
                 pid,
                 queues,
                 concurrency,
-                json.dumps(metadata) if metadata else None,
+                metadata,
             )
 
     async def update_heartbeat(
@@ -723,7 +728,7 @@ class PostgresBackend:
                 WHERE id = $1
                 """,
                 uid,
-                json.dumps(metadata) if metadata else None,
+                metadata,
             )
 
     async def mark_worker_stopped(self, worker_id: str) -> None:

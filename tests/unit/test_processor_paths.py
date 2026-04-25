@@ -12,7 +12,7 @@ from soniq.core.processor import process_job_via_backend
 from soniq.core.registry import JobRegistry
 
 
-async def _setup(job_func, args="{}", max_attempts=3, attempts_override=None):
+async def _setup(job_func, args={}, max_attempts=3, attempts_override=None):
     """Helper: create backend, registry, job, return (backend, registry)."""
     backend = MemoryBackend()
     await backend.initialize()
@@ -69,8 +69,10 @@ async def test_corrupted_args_type_dead_letters():
 
 
 @pytest.mark.asyncio
-async def test_corrupted_json_string_dead_letters():
-    """Invalid JSON string should dead-letter the job."""
+async def test_string_args_are_contract_violation():
+    """The backend contract is `args: dict`; a string value is a
+    violation and the processor should dead-letter rather than attempt
+    JSON parsing. String-args tolerance was removed in 0.0.2."""
 
     async def my_task():
         pass
@@ -78,9 +80,8 @@ async def test_corrupted_json_string_dead_letters():
     backend, registry = await _setup(my_task, args="not valid json{{{")
     result = await process_job_via_backend(backend, registry, queues=["default"])
     assert result is True
-    # Access internal store directly because get_job() also tries to parse the
-    # corrupt args string for formatting, which would raise again.
-    assert backend._jobs["job-1"]["status"] == "dead_letter"
+    job = await backend.get_job("job-1")
+    assert job["status"] == "dead_letter"
 
 
 @pytest.mark.asyncio
@@ -91,7 +92,7 @@ async def test_no_timeout_path_executes_directly():
     async def simple_task(x: int):
         executed.append(x)
 
-    backend, registry = await _setup(simple_task, args='{"x": 42}')
+    backend, registry = await _setup(simple_task, args={"x": 42})
     await process_job_via_backend(backend, registry, queues=["default"])
     assert executed == [42]
 
@@ -124,7 +125,7 @@ async def test_unregistered_job_dead_letters():
     await backend.create_job(
         job_id="job-orphan",
         job_name="nonexistent.module.task",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,

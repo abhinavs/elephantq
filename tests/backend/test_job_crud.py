@@ -7,7 +7,7 @@ async def test_create_and_get_job(backend):
     job_id = await backend.create_job(
         job_id="test-1",
         job_name="mod.func",
-        args='{"x": 1}',
+        args={"x": 1},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -38,7 +38,7 @@ async def test_list_jobs_with_data(backend):
     await backend.create_job(
         job_id="j1",
         job_name="mod.a",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -48,7 +48,7 @@ async def test_list_jobs_with_data(backend):
     await backend.create_job(
         job_id="j2",
         job_name="mod.b",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -68,7 +68,7 @@ async def test_list_jobs_filtered_by_status(backend):
     await backend.create_job(
         job_id="j1",
         job_name="mod.a",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -88,7 +88,7 @@ async def test_delete_job(backend):
     await backend.create_job(
         job_id="j1",
         job_name="mod.func",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,

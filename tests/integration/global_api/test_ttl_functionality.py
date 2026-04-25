@@ -42,7 +42,7 @@ async def test_ttl_zero_deletes_immediately():
         assert processed
 
         # Job should be deleted immediately
-        await soniq.get_job_status(job_id)
+        await soniq.get_job(job_id)
         # With TTL=0, job should be deleted after completion
         # The exact behavior depends on implementation
 

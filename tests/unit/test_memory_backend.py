@@ -34,7 +34,7 @@ async def test_create_and_get_job():
     result = await backend.create_job(
         job_id=job_id,
         job_name="test.my_job",
-        args='{"x": 1}',
+        args={"x": 1},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -62,7 +62,7 @@ async def test_fetch_and_lock_job():
     await backend.create_job(
         job_id=job_id,
         job_name="test.fetch",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -97,7 +97,7 @@ async def test_mark_done_and_failed():
     await backend.create_job(
         job_id=j1,
         job_name="t",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -115,7 +115,7 @@ async def test_mark_done_and_failed():
     await backend.create_job(
         job_id=j2,
         job_name="t",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -140,7 +140,7 @@ async def test_dead_letter():
     await backend.create_job(
         job_id=j,
         job_name="t",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -165,7 +165,7 @@ async def test_cancel_and_retry():
     await backend.create_job(
         job_id=j,
         job_name="t",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -191,7 +191,7 @@ async def test_reset():
     await backend.create_job(
         job_id=str(uuid.uuid4()),
         job_name="t",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -229,7 +229,7 @@ async def test_result_persisted_and_retrieved_memory():
     await backend.create_job(
         job_id=job_id,
         job_name="test.result",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,

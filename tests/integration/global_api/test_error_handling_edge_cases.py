@@ -91,7 +91,7 @@ class TestDatabaseConnectionFailures:
         assert processed  # Job was processed (failed gracefully)
 
         # Verify job failed
-        status = await soniq.get_job_status(job_id)
+        status = await soniq.get_job(job_id)
         assert status["status"] in ["failed", "dead_letter"]
 
 
@@ -107,7 +107,7 @@ class TestMemoryPressureScenarios:
         assert processed  # Job should complete successfully
 
         # Verify job succeeded
-        status = await soniq.get_job_status(job_id)
+        status = await soniq.get_job(job_id)
         assert status["status"] == "done"
 
     @pytest.mark.asyncio
@@ -119,7 +119,7 @@ class TestMemoryPressureScenarios:
         assert processed  # Should handle memory error gracefully
 
         # Verify job failed
-        status = await soniq.get_job_status(job_id)
+        status = await soniq.get_job(job_id)
         assert status["status"] in ["failed", "dead_letter"]
 
 
@@ -138,7 +138,7 @@ class TestHighVolumeErrorScenarios:
                 break
 
         # Verify job eventually failed
-        status = await soniq.get_job_status(job_id)
+        status = await soniq.get_job(job_id)
         assert status["status"] in ["failed", "dead_letter"]
 
     @pytest.mark.asyncio
@@ -175,7 +175,7 @@ class TestSystemResourceFailures:
         assert processed  # Should handle system error gracefully
 
         # Verify job failed
-        status = await soniq.get_job_status(job_id)
+        status = await soniq.get_job(job_id)
         assert status["status"] in ["failed", "dead_letter"]
 
     @pytest.mark.asyncio
@@ -187,7 +187,7 @@ class TestSystemResourceFailures:
         assert processed  # Should handle FD error gracefully
 
         # Verify job failed
-        status = await soniq.get_job_status(job_id)
+        status = await soniq.get_job(job_id)
         assert status["status"] in ["failed", "dead_letter"]
 
 
@@ -206,7 +206,7 @@ class TestGracefulDegradation:
                 break
 
         # Job should eventually succeed or fail gracefully
-        status = await soniq.get_job_status(job_id)
+        status = await soniq.get_job(job_id)
         assert status["status"] in ["done", "failed", "dead_letter"]
 
     @pytest.mark.asyncio
@@ -222,8 +222,8 @@ class TestGracefulDegradation:
                 break
 
         # Verify good job succeeded and bad job failed
-        good_status = await soniq.get_job_status(good_job_id)
-        bad_status = await soniq.get_job_status(bad_job_id)
+        good_status = await soniq.get_job(good_job_id)
+        bad_status = await soniq.get_job(bad_job_id)
 
         assert good_status["status"] == "done"
         assert bad_status["status"] in ["failed", "dead_letter"]

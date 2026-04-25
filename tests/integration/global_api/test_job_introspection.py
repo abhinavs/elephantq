@@ -48,7 +48,7 @@ class TestJobIntrospection:
     # Database setup handled by conftest.py
 
     @pytest.mark.asyncio
-    async def test_get_job_status_existing_job(self):
+    async def test_get_job_existing_job(self):
         """Getting status for a job that exists should work as expected"""
 
         # Table clearing handled by conftest.py
@@ -57,7 +57,7 @@ class TestJobIntrospection:
         job_id = await soniq.enqueue(simple_task, message="test")
 
         # Now check its status
-        status = await soniq.get_job_status(job_id)
+        status = await soniq.get_job(job_id)
 
         # Should get back all the details we expect
         assert status is not None
@@ -77,9 +77,9 @@ class TestJobIntrospection:
         assert "updated_at" in status
 
     @pytest.mark.asyncio
-    async def test_get_job_status_nonexistent_job(self):
+    async def test_get_job_nonexistent_job(self):
         """Test getting status of non-existent job"""
-        status = await soniq.get_job_status("00000000-0000-0000-0000-000000000000")
+        status = await soniq.get_job("00000000-0000-0000-0000-000000000000")
         assert status is None
 
     @pytest.mark.asyncio
@@ -93,7 +93,7 @@ class TestJobIntrospection:
         assert success is True
 
         # Verify job is cancelled
-        status = await soniq.get_job_status(job_id)
+        status = await soniq.get_job(job_id)
         assert status["status"] == "cancelled"
 
     @pytest.mark.asyncio
@@ -115,7 +115,7 @@ class TestJobIntrospection:
         assert success is False, "Should not be able to cancel completed job"
 
         # Verify job is still done
-        status = await soniq.get_job_status(job_id)
+        status = await soniq.get_job(job_id)
         assert status["status"] == "done"
 
     @pytest.mark.asyncio
@@ -134,7 +134,7 @@ class TestJobIntrospection:
         await process_test_jobs()  # Second attempt (fails, goes to dead_letter)
 
         # Verify it failed
-        status = await soniq.get_job_status(job_id)
+        status = await soniq.get_job(job_id)
         assert status["status"] in ["failed", "dead_letter"]
 
         # Retry the job
@@ -142,7 +142,7 @@ class TestJobIntrospection:
         assert success is True
 
         # Verify job is queued again
-        status = await soniq.get_job_status(job_id)
+        status = await soniq.get_job(job_id)
         assert status["status"] == "queued"
         assert status["attempts"] == 0
         assert status["last_error"] is None
@@ -165,7 +165,7 @@ class TestJobIntrospection:
         assert success is True
 
         # Verify job is gone
-        status = await soniq.get_job_status(job_id)
+        status = await soniq.get_job(job_id)
         assert status is None
 
     @pytest.mark.asyncio
@@ -312,7 +312,7 @@ class TestUniqueJobs:
         await process_test_jobs()
 
         # Verify job is done
-        status = await soniq.get_job_status(job1)
+        status = await soniq.get_job(job1)
         assert status["status"] == "done"
 
         # Enqueue same unique job again
@@ -322,7 +322,7 @@ class TestUniqueJobs:
         assert job1 != job2
 
         # Verify new job is queued
-        status = await soniq.get_job_status(job2)
+        status = await soniq.get_job(job2)
         assert status["status"] == "queued"
 
     @pytest.mark.asyncio

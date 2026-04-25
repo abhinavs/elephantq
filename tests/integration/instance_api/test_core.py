@@ -2,7 +2,6 @@
 Test suite for Soniq core functionality
 """
 
-import json
 import logging
 import os
 import uuid
@@ -64,7 +63,7 @@ async def test_enqueue_and_run_job():
             job_record["job_name"]
             == "tests.integration.instance_api.test_core.instance_sample_job"
         )
-        assert json.loads(job_record["args"]) == {"x": 1, "y": 2}
+        assert job_record["args"] == {"x": 1, "y": 2}
         assert job_record["max_attempts"] == 6  # retries=5 -> max_attempts=6
         assert job_record["status"] == "done"
 

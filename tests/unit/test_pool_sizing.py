@@ -81,15 +81,18 @@ async def test_run_worker_ok_with_adequate_pool(monkeypatch):
 class _FakePoolBackend:
     """Minimal stand-in for PostgresBackend used to trigger the pool-size check.
 
-    The `pool` attribute presence is the signal that this backend is backed by
-    an asyncpg pool, i.e. the check is meaningful. No real pool is needed for
-    the sizing calculation.
+    `supports_connection_pool = True` is the signal that this backend is
+    backed by an asyncpg pool, i.e. the sizing check is meaningful. No real
+    pool is needed for the arithmetic.
     """
 
     pool = object()  # truthy, but not actually used
 
     supports_push_notify = False
     supports_transactional_enqueue = False
+    supports_connection_pool = True
+    supports_advisory_locks = True
+    supports_migrations = True
 
     async def fetch_and_lock_job(self, **kwargs):
         return None

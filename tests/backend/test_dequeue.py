@@ -14,7 +14,7 @@ async def test_dequeue_returns_job(backend):
     await backend.create_job(
         job_id="j1",
         job_name="mod.func",
-        args='{"x": 1}',
+        args={"x": 1},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -31,7 +31,7 @@ async def test_no_double_dequeue(backend):
     await backend.create_job(
         job_id="j1",
         job_name="mod.func",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -48,7 +48,7 @@ async def test_priority_ordering(backend):
     await backend.create_job(
         job_id="low",
         job_name="mod.func",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -58,7 +58,7 @@ async def test_priority_ordering(backend):
     await backend.create_job(
         job_id="high",
         job_name="mod.func",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=1,
@@ -75,7 +75,7 @@ async def test_scheduled_job_not_dequeued_early(backend):
     await backend.create_job(
         job_id="j1",
         job_name="mod.func",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -92,7 +92,7 @@ async def test_queue_filtering(backend):
     await backend.create_job(
         job_id="j1",
         job_name="mod.func",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -102,7 +102,7 @@ async def test_queue_filtering(backend):
     await backend.create_job(
         job_id="j2",
         job_name="mod.func",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,

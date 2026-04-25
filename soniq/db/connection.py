@@ -20,8 +20,23 @@ _context_pool: contextvars.ContextVar[Optional[asyncpg.Pool]] = contextvars.Cont
 
 
 async def _init_connection(conn):
-    """Initialize connection with UTC timezone for consistent scheduled job handling."""
+    """Initialize connection: UTC timezone, and a JSONB <-> Python codec so
+    every layer above this one can treat `args`, `result`, `tags`, etc. as
+    native Python values without manual `json.dumps` / `json.loads` dances.
+
+    The encoder uses `default=str` to match the project's long-standing
+    tolerance for non-JSON-native types (datetimes, Decimal, UUID) in job
+    payloads and results.
+    """
+    import json
+
     await conn.execute("SET timezone = 'UTC'")
+    await conn.set_type_codec(
+        "jsonb",
+        encoder=lambda v: json.dumps(v, default=str),
+        decoder=json.loads,
+        schema="pg_catalog",
+    )
 
 
 async def get_pool() -> asyncpg.Pool:
@@ -40,8 +55,9 @@ async def get_pool() -> asyncpg.Pool:
     await app._ensure_initialized()
 
     backend = app._backend
-    if hasattr(backend, "pool"):
-        return backend.pool  # type: ignore[union-attr]
+    assert backend is not None  # app._ensure_initialized() above guarantees this
+    if backend.supports_connection_pool:
+        return backend.pool
 
     raise RuntimeError(
         "No connection pool available. " "This function requires a PostgreSQL backend."

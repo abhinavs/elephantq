@@ -55,6 +55,18 @@ class SQLiteBackend:
     def supports_transactional_enqueue(self) -> bool:
         return False
 
+    @property
+    def supports_connection_pool(self) -> bool:
+        return False
+
+    @property
+    def supports_advisory_locks(self) -> bool:
+        return False
+
+    @property
+    def supports_migrations(self) -> bool:
+        return False
+
     # --- Lifecycle ---
 
     async def initialize(self) -> None:
@@ -128,7 +140,7 @@ class SQLiteBackend:
         *,
         job_id: str,
         job_name: str,
-        args: str,
+        args: dict,
         args_hash: Optional[str],
         max_attempts: int,
         priority: int,
@@ -164,6 +176,8 @@ class SQLiteBackend:
                     return str(row["id"])
 
         sched = scheduled_at.isoformat() if scheduled_at else None
+        # SQLite stores args as TEXT; serialize at the backend boundary.
+        args_serialized = json.dumps(args, default=str)
         await self._conn.execute(
             """
             INSERT INTO soniq_jobs
@@ -174,7 +188,7 @@ class SQLiteBackend:
             (
                 job_id,
                 job_name,
-                args,
+                args_serialized,
                 args_hash,
                 max_attempts,
                 priority,
@@ -232,7 +246,7 @@ class SQLiteBackend:
                 (worker_id, _now_iso(), job_id),
             )
             await self._conn.commit()
-            result = dict(row)
+            result = _sqlite_row_to_dict(row)
             result["attempts"] = result["attempts"] + 1
             return result
 

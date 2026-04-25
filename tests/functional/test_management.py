@@ -18,23 +18,23 @@ async def app():
     await app.close()
 
 
-async def test_get_job_status(app):
-    """get_job_status should work on MemoryBackend."""
+async def test_get_job(app):
+    """get_job should work on MemoryBackend."""
 
     @app.job()
     async def noop():
         pass
 
     job_id = await app.enqueue(noop)
-    status = await app.get_job_status(job_id)
+    status = await app.get_job(job_id)
     assert status is not None
     assert status["status"] == "queued"
     assert status["id"] == job_id
 
 
-async def test_get_job_status_not_found(app):
-    """get_job_status returns None for nonexistent job."""
-    status = await app.get_job_status("nonexistent-id")
+async def test_get_job_not_found(app):
+    """get_job returns None for nonexistent job."""
+    status = await app.get_job("nonexistent-id")
     assert status is None
 
 
@@ -49,7 +49,7 @@ async def test_cancel_job(app):
     result = await app.cancel_job(job_id)
     assert result is True
 
-    status = await app.get_job_status(job_id)
+    status = await app.get_job(job_id)
     assert status["status"] == "cancelled"
 
 
@@ -70,7 +70,7 @@ async def test_delete_job(app):
     result = await app.delete_job(job_id)
     assert result is True
 
-    status = await app.get_job_status(job_id)
+    status = await app.get_job(job_id)
     assert status is None
 
 
@@ -134,11 +134,11 @@ async def test_retry_job(app):
     await app.run_worker(run_once=True)
     await app.run_worker(run_once=True)
 
-    status = await app.get_job_status(job_id)
+    status = await app.get_job(job_id)
     assert status["status"] == "dead_letter"
 
     result = await app.retry_job(job_id)
     assert result is True
 
-    status = await app.get_job_status(job_id)
+    status = await app.get_job(job_id)
     assert status["status"] == "queued"

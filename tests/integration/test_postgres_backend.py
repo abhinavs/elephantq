@@ -25,7 +25,7 @@ async def test_create_and_get_job(backend):
     result = await backend.create_job(
         job_id=job_id,
         job_name="test.my_job",
-        args='{"x": 1}',
+        args={"x": 1},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -49,7 +49,7 @@ async def test_fetch_and_lock_job(backend):
     await backend.create_job(
         job_id=job_id,
         job_name="test.fetch_job",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -78,7 +78,7 @@ async def test_mark_job_done(backend):
     await backend.create_job(
         job_id=job_id,
         job_name="test.done_job",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -100,7 +100,7 @@ async def test_mark_job_failed_and_retry(backend):
     await backend.create_job(
         job_id=job_id,
         job_name="test.fail_job",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -123,7 +123,7 @@ async def test_mark_job_dead_letter(backend):
     await backend.create_job(
         job_id=job_id,
         job_name="test.dead_job",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -145,7 +145,7 @@ async def test_cancel_job(backend):
     await backend.create_job(
         job_id=job_id,
         job_name="test.cancel_job",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -168,7 +168,7 @@ async def test_list_jobs_with_filters(backend):
         await backend.create_job(
             job_id=str(uuid.uuid4()),
             job_name=f"test.list_job_{i}",
-            args="{}",
+            args={},
             args_hash=None,
             max_attempts=3,
             priority=100,
@@ -193,7 +193,7 @@ async def test_queue_stats(backend):
     await backend.create_job(
         job_id=str(uuid.uuid4()),
         job_name="test.stats_job",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -214,7 +214,7 @@ async def test_reset_clears_everything(backend):
     await backend.create_job(
         job_id=str(uuid.uuid4()),
         job_name="test.reset_job",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,

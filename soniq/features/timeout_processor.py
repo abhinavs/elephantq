@@ -5,7 +5,6 @@ Extends base processor functionality with execution timeouts.
 
 import asyncio
 import importlib
-import json
 import logging
 import os
 import time
@@ -173,7 +172,8 @@ async def process_jobs_with_timeout(
 
         job_id = job_record["id"]
         job_name = job_record["job_name"]
-        args_data = json.loads(job_record["args"])
+        # JSONB codec on the pool already decodes args into a dict.
+        args_data = job_record["args"]
         attempts = job_record["attempts"]
         max_attempts = job_record["max_attempts"]
 

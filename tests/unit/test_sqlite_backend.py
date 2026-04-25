@@ -48,7 +48,7 @@ async def test_sqlite_create_and_get(tmp_path):
         result = await backend.create_job(
             job_id=job_id,
             job_name="test.sqlite_job",
-            args='{"x": 1}',
+            args={"x": 1},
             args_hash=None,
             max_attempts=3,
             priority=100,
@@ -80,7 +80,7 @@ async def test_sqlite_full_lifecycle(tmp_path):
         await backend.create_job(
             job_id=job_id,
             job_name="test.lifecycle",
-            args="{}",
+            args={},
             args_hash=None,
             max_attempts=3,
             priority=100,

@@ -49,6 +49,12 @@ class JobContext:
         @soniq.job()
         async def process_order(order_id: str, ctx: JobContext):
             print(f"Job {ctx.job_id}, attempt {ctx.attempt}")
+
+    `worker_id` is always a string (empty when the context is built outside
+    a worker claim, e.g. from the logging helper). `scheduled_at` and
+    `created_at` are genuinely optional: `scheduled_at` is None for
+    immediately-queued jobs, and the logging context may not carry
+    `created_at`.
     """
 
     job_id: str
@@ -56,6 +62,6 @@ class JobContext:
     attempt: int
     max_attempts: int
     queue: str
-    worker_id: Optional[str] = None
+    worker_id: str = ""
     scheduled_at: Optional[datetime] = None
     created_at: Optional[datetime] = None

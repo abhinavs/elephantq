@@ -178,8 +178,9 @@ async def get_context_pool() -> asyncpg.Pool:
 
     # Get pool from backend (PostgresBackend exposes .pool)
     backend = app._backend
-    if hasattr(backend, "pool"):
-        return backend.pool  # type: ignore[union-attr]
+    assert backend is not None  # app._ensure_initialized() above guarantees this
+    if backend.supports_connection_pool:
+        return backend.pool
 
     # Fallback for non-Postgres backends
     return await app.get_pool()

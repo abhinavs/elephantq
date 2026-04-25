@@ -61,7 +61,7 @@ async def test_malformed_job_data():
     assert processed
 
     # Get job status to verify it worked
-    status = await soniq.get_job_status(job_id)
+    status = await soniq.get_job(job_id)
     assert status["status"] == "done"
 
 
@@ -115,7 +115,7 @@ async def test_job_argument_validation_edge_cases():
     assert processed
 
     # Verify job completed
-    status = await soniq.get_job_status(valid_job_id)
+    status = await soniq.get_job(valid_job_id)
     assert status["status"] == "done"
 
 
@@ -133,8 +133,8 @@ async def test_exception_handling_in_jobs():
             break
 
     # Check that jobs failed with appropriate errors
-    value_status = await soniq.get_job_status(value_error_job)
-    type_status = await soniq.get_job_status(type_error_job)
+    value_status = await soniq.get_job(value_error_job)
+    type_status = await soniq.get_job(type_error_job)
 
     assert value_status["status"] in ["failed", "dead_letter"]
     assert type_status["status"] in ["failed", "dead_letter"]
@@ -160,7 +160,7 @@ async def test_large_job_payloads():
     assert processed
 
     # Verify job completed
-    status = await soniq.get_job_status(job_id)
+    status = await soniq.get_job(job_id)
     assert status["status"] == "done"
     assert len(status["args"]["data"]["large_list"]) == 50
 
@@ -219,7 +219,7 @@ async def test_timezone_and_datetime_handling():
     # Timezone-aware datetimes continue to work.
     tz_time = datetime.now(timezone.utc) + timedelta(minutes=30)
     tz_job = await soniq.enqueue(simple_job, message="timezone", scheduled_at=tz_time)
-    tz_status = await soniq.get_job_status(tz_job)
+    tz_status = await soniq.get_job(tz_job)
     assert tz_status["scheduled_at"] is not None
     assert tz_status["status"] == "queued"
 

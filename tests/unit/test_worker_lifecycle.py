@@ -5,7 +5,6 @@ Covers: run_once with max_jobs, run_once on empty queue, _maybe_cleanup
 interval gating and error handling, run() dispatching.
 """
 
-import json
 import time
 import uuid
 
@@ -23,7 +22,7 @@ async def _create_jobs(backend, registry, job_func, count, args_template=None):
     if registry.get_job(job_name) is None:
         registry.register_job(job_func)
     for i in range(count):
-        args = json.dumps(args_template or {"n": i})
+        args = args_template or {"n": i}
         await backend.create_job(
             job_id=str(uuid.uuid4()),
             job_name=job_name,

@@ -34,7 +34,7 @@ async def test_timed_out_job_retried_then_dead_lettered():
     assert processed is True
 
     # Check: job should be back in 'queued' (retries=1 means max_attempts=2)
-    status = await app.get_job_status(job_id)
+    status = await app.get_job(job_id)
     assert status["status"] == "queued"
     assert status["attempts"] == 1
     assert "timed out" in status["last_error"].lower()
@@ -44,6 +44,6 @@ async def test_timed_out_job_retried_then_dead_lettered():
     assert processed is True
 
     # Check: job should now be in dead_letter
-    status = await app.get_job_status(job_id)
+    status = await app.get_job(job_id)
     assert status["status"] == "dead_letter"
     assert status["attempts"] == 2

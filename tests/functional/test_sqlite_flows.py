@@ -5,7 +5,6 @@ Proves the same flows that work with MemoryBackend also work with SQLite.
 No PostgreSQL required.
 """
 
-import json
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -36,7 +35,7 @@ async def _create(backend, registry, func, args=None, **kw):
     await backend.create_job(
         job_id=job_id,
         job_name=job_name,
-        args=json.dumps(args or {}, default=str),
+        args=args or {},
         args_hash=None,
         max_attempts=max_attempts,
         priority=kw.get("priority", 100),

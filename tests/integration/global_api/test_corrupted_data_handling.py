@@ -5,7 +5,6 @@ Tests graceful handling of corrupted JSON, validation errors, and argument misma
 to ensure system robustness in production environments.
 """
 
-import json
 import os
 import uuid
 
@@ -75,7 +74,7 @@ async def test_corrupted_json_data(clean_db):
             """,
             job_id,
             "tests.integration.global_api.test_corrupted_data_handling.simple_test_job",
-            json.dumps({"message": "test"}),
+            {"message": "test"},
         )
 
     # Process via backend-aware path
@@ -110,7 +109,7 @@ async def test_corrupted_validation_data(clean_db):
             """,
             job_id,
             "tests.integration.global_api.test_corrupted_data_handling.validated_test_job",
-            json.dumps({"message": 123, "count": "not_a_number"}),  # Wrong types
+            {"message": 123, "count": "not_a_number"},  # Wrong types
         )
 
     # Process the job
@@ -144,7 +143,7 @@ async def test_missing_required_arguments(clean_db):
             """,
             job_id,
             "tests.integration.global_api.test_corrupted_data_handling.simple_test_job",
-            json.dumps({}),  # Missing required 'message' argument
+            {},  # Missing required 'message' argument
         )
 
     # Process the job
@@ -183,13 +182,11 @@ async def test_extra_unexpected_arguments(clean_db):
             """,
             job_id,
             "tests.integration.global_api.test_corrupted_data_handling.simple_test_job",
-            json.dumps(
-                {
-                    "message": "test",
-                    "unexpected_arg": "value",
-                    "another_unexpected": 123,
-                }
-            ),
+            {
+                "message": "test",
+                "unexpected_arg": "value",
+                "another_unexpected": 123,
+            },
         )
 
     # Process the job
@@ -217,17 +214,19 @@ async def test_invalid_json_structure(clean_db):
     global_app = soniq._get_global_app()
     app_pool = await global_app.get_pool()
 
-    # Insert job with valid JSON but that will cause parsing issues
+    # Insert job with a JSONB value that is valid JSON but not an object.
+    # The JSONB codec encodes via json.dumps; to land a non-object
+    # directly on the row we cast from TEXT and bypass the codec.
     job_id = uuid.uuid4()
     async with app_pool.acquire() as conn:
         await conn.execute(
             """
             INSERT INTO soniq_jobs (id, job_name, args, queue, status, max_attempts)
-            VALUES ($1, $2, $3, 'test', 'queued', 3)
+            VALUES ($1, $2, $3::text::jsonb, 'test', 'queued', 3)
             """,
             job_id,
             "tests.integration.global_api.test_corrupted_data_handling.simple_test_job",
-            '"just a string not an object"',  # Valid JSON but not an object
+            '"just a string not an object"',
         )
 
     # Process the job
@@ -240,8 +239,13 @@ async def test_invalid_json_structure(clean_db):
     async with app_pool.acquire() as conn:
         job = await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
         assert job["status"] == "dead_letter"
-        # This might show up as argument mismatch rather than JSON corruption
-        assert "Corrupted" in job["last_error"] or "argument" in job["last_error"]
+        # Under the 0.0.2 backend contract, non-dict args is a contract
+        # violation raised by the processor before the job function runs.
+        assert (
+            "contract violation" in job["last_error"]
+            or "Corrupted" in job["last_error"]
+            or "argument" in job["last_error"]
+        )
 
 
 @pytest.mark.asyncio
@@ -389,7 +393,7 @@ async def test_mixed_corrupted_and_valid_jobs(clean_db):
             """,
             corrupted_job_id,
             "tests.integration.global_api.test_corrupted_data_handling.validated_test_job",
-            json.dumps({"message": 123, "count": "not_a_number"}),  # Wrong types
+            {"message": 123, "count": "not_a_number"},  # Wrong types
         )
 
     # Enqueue valid job

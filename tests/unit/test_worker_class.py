@@ -45,7 +45,6 @@ def asyncio_iscoroutinefunction_safe(func):
 @pytest.mark.asyncio
 async def test_worker_run_once_processes_job():
     """Worker.run_once should process a job via MemoryBackend."""
-    import json
     import uuid
 
     from soniq.backends.memory import MemoryBackend
@@ -64,7 +63,7 @@ async def test_worker_run_once_processes_job():
     await backend.create_job(
         job_id=str(uuid.uuid4()),
         job_name=job_name,
-        args=json.dumps({"msg": "from worker"}),
+        args={"msg": "from worker"},
         args_hash=None,
         max_attempts=3,
         priority=100,

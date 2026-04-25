@@ -8,7 +8,7 @@ async def test_unique_job_returns_existing_id(backend):
     id1 = await backend.create_job(
         job_id="a",
         job_name="mod.func",
-        args='{"x": 1}',
+        args={"x": 1},
         args_hash="h1",
         max_attempts=3,
         priority=100,
@@ -18,7 +18,7 @@ async def test_unique_job_returns_existing_id(backend):
     id2 = await backend.create_job(
         job_id="b",
         job_name="mod.func",
-        args='{"x": 1}',
+        args={"x": 1},
         args_hash="h1",
         max_attempts=3,
         priority=100,
@@ -33,7 +33,7 @@ async def test_dedup_key_dedup(backend):
     id1 = await backend.create_job(
         job_id="a",
         job_name="mod.func",
-        args='{"x": 1}',
+        args={"x": 1},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -44,7 +44,7 @@ async def test_dedup_key_dedup(backend):
     id2 = await backend.create_job(
         job_id="b",
         job_name="mod.func",
-        args='{"x": 2}',
+        args={"x": 2},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -60,7 +60,7 @@ async def test_unique_allows_requeue_after_done(backend):
     await backend.create_job(
         job_id="a",
         job_name="mod.func",
-        args='{"x": 1}',
+        args={"x": 1},
         args_hash="h1",
         max_attempts=3,
         priority=100,
@@ -73,7 +73,7 @@ async def test_unique_allows_requeue_after_done(backend):
     id2 = await backend.create_job(
         job_id="b",
         job_name="mod.func",
-        args='{"x": 1}',
+        args={"x": 1},
         args_hash="h1",
         max_attempts=3,
         priority=100,

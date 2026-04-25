@@ -100,10 +100,13 @@ def test_structural_typing_works():
     without inheriting from StorageBackend."""
     from soniq.backends import StorageBackend
 
-    # Minimal stub — just enough to prove structural typing works
+    # Minimal stub - just enough to prove structural typing works
     class MinimalStub:
         supports_push_notify = False
         supports_transactional_enqueue = False
+        supports_connection_pool = False
+        supports_advisory_locks = False
+        supports_migrations = False
 
         async def initialize(self): ...
         async def close(self): ...

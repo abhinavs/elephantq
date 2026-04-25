@@ -226,8 +226,9 @@ class Soniq:
 
             await self._backend.initialize()
 
-            # Keep _pool reference for backward compat with code that uses it directly
-            if hasattr(self._backend, "pool"):
+            # Expose the backend's pool for code paths that need raw access
+            # (migration runner, dashboard data layer, listener cleanup).
+            if self._backend.supports_connection_pool:
                 self._pool = self._backend.pool
 
             self._initialized = True
@@ -249,7 +250,7 @@ class Soniq:
         production. Promoting to a hard error puts the misconfiguration in
         front of them at startup instead of at 3am.
         """
-        if not hasattr(self._backend, "pool"):
+        if not self._backend.supports_connection_pool:  # type: ignore[union-attr]
             return
         err = _pool_sizing_error(
             concurrency=concurrency,
@@ -338,7 +339,7 @@ class Soniq:
         return fn
 
     @_with_active_app
-    async def enqueue(self, job_func, connection=None, **kwargs):
+    async def enqueue(self, job_func, connection=None, **kwargs) -> str:
         """
         Enqueue a job for processing.
 
@@ -348,11 +349,12 @@ class Soniq:
             **kwargs: Job arguments and options (priority, queue, scheduled_at, unique, dedup_key)
 
         Returns:
-            Job UUID
+            Job UUID (always a non-empty string; either the newly inserted
+            row's id, or an existing row's id when deduplication matches).
         """
         await self._ensure_initialized()
+        assert self._backend is not None  # narrow type after init
 
-        import json
         import uuid
 
         from .core.queue import _normalize_scheduled_time, _validate_job_arguments
@@ -384,16 +386,15 @@ class Soniq:
 
         args_hash = compute_args_hash(kwargs) if final_unique else None
         job_id = str(uuid.uuid4())
-        args_json = json.dumps(kwargs, default=str)
 
         # Transactional enqueue via caller-provided connection (Postgres only)
         if connection is not None:
-            if hasattr(self._backend, "create_job_transactional"):
-                return await self._backend.create_job_transactional(
+            if self._backend.supports_transactional_enqueue:
+                txn_id: str = await self._backend.create_job_transactional(
                     connection=connection,
                     job_id=job_id,
                     job_name=job_name,
-                    args=args_json,
+                    args=kwargs,
                     args_hash=args_hash,
                     max_attempts=job_meta["max_retries"] + 1,
                     priority=final_priority,
@@ -402,6 +403,7 @@ class Soniq:
                     dedup_key=dedup_key,
                     scheduled_at=scheduled_at,
                 )
+                return txn_id
             raise ValueError(
                 f"Transactional enqueue (connection=) is not supported by "
                 f"{type(self._backend).__name__}. Use PostgresBackend for this feature."
@@ -410,7 +412,7 @@ class Soniq:
         result_id = await self._backend.create_job(
             job_id=job_id,
             job_name=job_name,
-            args=args_json,
+            args=kwargs,
             args_hash=args_hash,
             max_attempts=job_meta["max_retries"] + 1,
             priority=final_priority,
@@ -530,7 +532,7 @@ class Soniq:
     # Job Management API
 
     @_with_active_app
-    async def get_job_status(self, job_id: str):
+    async def get_job(self, job_id: str):
         """
         Get status information for a specific job.
 
@@ -678,9 +680,10 @@ class Soniq:
             Number of migrations applied (0 for SQLite/Memory)
         """
         await self._ensure_initialized()
+        assert self._backend is not None  # narrow type after init
 
-        # SQLite and Memory backends create tables on initialize() — nothing to migrate
-        if not hasattr(self._backend, "pool"):
+        # SQLite and Memory backends create tables on initialize() - nothing to migrate
+        if not self._backend.supports_migrations:
             return 0
 
         # PostgreSQL: attempt to create the database, then run migrations

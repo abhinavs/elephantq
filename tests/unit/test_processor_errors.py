@@ -35,7 +35,7 @@ async def test_last_error_includes_traceback():
     await backend.create_job(
         job_id="err-1",
         job_name=job_name,
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=1,
         priority=100,
@@ -73,7 +73,7 @@ async def test_last_error_truncated_to_reasonable_size():
     await backend.create_job(
         job_id="err-big",
         job_name=job_name,
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=1,
         priority=100,

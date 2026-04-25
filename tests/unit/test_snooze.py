@@ -28,7 +28,7 @@ async def _setup(job_func, max_attempts=5):
     await backend.create_job(
         job_id="snooze-job",
         job_name=job_name,
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=max_attempts,
         priority=100,

@@ -13,7 +13,7 @@ async def test_mark_done_sets_expires_at_with_ttl():
     await backend.create_job(
         job_id="j1",
         job_name="mod.func",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -39,7 +39,7 @@ async def test_mark_done_no_expires_at_without_ttl():
     await backend.create_job(
         job_id="j1",
         job_name="mod.func",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,

@@ -60,11 +60,7 @@ class DeadLetterJob:
         return cls(
             id=str(job_record["id"]),
             job_name=job_record["job_name"],
-            args=(
-                json.loads(job_record["args"])
-                if isinstance(job_record["args"], str)
-                else job_record["args"]
-            ),
+            args=job_record["args"],
             queue=job_record["queue"],
             priority=job_record["priority"],
             max_attempts=job_record["max_attempts"],
@@ -201,7 +197,7 @@ class DeadLetterManager:
                 """,
                     uuid.UUID(dead_letter_job.id),
                     dead_letter_job.job_name,
-                    json.dumps(dead_letter_job.args),
+                    dead_letter_job.args,
                     dead_letter_job.queue,
                     dead_letter_job.priority,
                     dead_letter_job.max_attempts,
@@ -210,7 +206,7 @@ class DeadLetterManager:
                     dead_letter_job.dead_letter_reason,
                     dead_letter_job.original_created_at,
                     dead_letter_job.moved_to_dead_letter_at,
-                    json.dumps(dead_letter_job.tags) if dead_letter_job.tags else None,
+                    dead_letter_job.tags,
                 )
 
                 # Update original job status
@@ -401,7 +397,7 @@ class DeadLetterManager:
                 dead_job = DeadLetterJob(
                     id=str(record["id"]),
                     job_name=record["job_name"],
-                    args=json.loads(record["args"]),
+                    args=record["args"],
                     queue=record["queue"],
                     priority=record["priority"],
                     max_attempts=record["max_attempts"],
@@ -412,7 +408,7 @@ class DeadLetterManager:
                     moved_to_dead_letter_at=record["moved_to_dead_letter_at"],
                     resurrection_count=record["resurrection_count"],
                     last_resurrection_at=record["last_resurrection_at"],
-                    tags=json.loads(record["tags"]) if record["tags"] else None,
+                    tags=record["tags"],
                 )
                 dead_jobs.append(dead_job)
 
@@ -438,7 +434,7 @@ class DeadLetterManager:
             return DeadLetterJob(
                 id=str(record["id"]),
                 job_name=record["job_name"],
-                args=json.loads(record["args"]),
+                args=record["args"],
                 queue=record["queue"],
                 priority=record["priority"],
                 max_attempts=record["max_attempts"],
@@ -449,7 +445,7 @@ class DeadLetterManager:
                 moved_to_dead_letter_at=record["moved_to_dead_letter_at"],
                 resurrection_count=record["resurrection_count"],
                 last_resurrection_at=record["last_resurrection_at"],
-                tags=json.loads(record["tags"]) if record["tags"] else None,
+                tags=record["tags"],
             )
 
     async def get_dead_letter_stats(
@@ -597,8 +593,8 @@ class DeadLetterManager:
                 uuid.UUID(dead_letter_id),
             )
 
+            # JSONB codec returns a dict/None directly.
             if current_tags:
-                current_tags = json.loads(current_tags)
                 current_tags.update(tags)
             else:
                 current_tags = tags
@@ -610,7 +606,7 @@ class DeadLetterManager:
                 SET tags = $1
                 WHERE id = $2
             """,
-                json.dumps(current_tags),
+                current_tags,
                 uuid.UUID(dead_letter_id),
             )
 
@@ -623,8 +619,6 @@ class DeadLetterManager:
         jobs = await self.list_dead_letter_jobs(filter_criteria)
 
         if format.lower() == "json":
-            import json
-
             data = [asdict(job) for job in jobs]
             filename = (
                 f"dead_letter_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"

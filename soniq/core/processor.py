@@ -8,7 +8,6 @@ the StorageBackend abstraction.
 
 import asyncio
 import inspect
-import json
 import logging
 import time
 import traceback
@@ -52,18 +51,14 @@ async def _execute_job_safely(
     Returns:
         tuple: (success: bool, error_message: Optional[str])
     """
-    # Parse job arguments with corruption handling
-    # Args may be a JSON string (Memory/SQLite) or already parsed dict (Postgres JSONB)
-    raw_args = job_record["args"]
-    if isinstance(raw_args, dict):
-        args_data = raw_args
-    elif isinstance(raw_args, str):
-        try:
-            args_data = json.loads(raw_args)
-        except (json.JSONDecodeError, TypeError, ValueError) as e:
-            raise ValueError(f"Corrupted JSON data: {str(e)}") from e
-    else:
-        raise ValueError(f"Corrupted JSON data: unexpected type {type(raw_args)}")
+    # Backends uniformly return `args` as a dict (Postgres JSONB codec,
+    # SQLite json.loads on read, Memory stores dict natively). A non-dict
+    # at this point means a backend contract violation; surface it loudly.
+    args_data = job_record["args"]
+    if not isinstance(args_data, dict):
+        raise ValueError(
+            f"Backend contract violation: job args must be dict, got {type(args_data).__name__}"
+        )
 
     # Validate arguments if model is specified
     args_model = job_meta.get("args_model")

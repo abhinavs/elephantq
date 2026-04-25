@@ -38,7 +38,7 @@ async def test_reset_clears_jobs_via_memory_backend():
     await app._backend.create_job(
         job_id=str(uuid.uuid4()),
         job_name=job_name,
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,

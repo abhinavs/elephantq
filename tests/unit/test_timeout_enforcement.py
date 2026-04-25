@@ -6,7 +6,6 @@ retried normally, and eventually dead-lettered.
 """
 
 import asyncio
-import json
 
 import pytest
 
@@ -19,7 +18,7 @@ def _make_job_record(args_dict=None):
     return {
         "id": "test-job-id",
         "job_name": "test.job",
-        "args": json.dumps(args_dict),
+        "args": args_dict,
         "attempts": 0,
         "max_attempts": 3,
     }

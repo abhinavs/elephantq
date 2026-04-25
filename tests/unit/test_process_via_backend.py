@@ -35,7 +35,7 @@ async def test_process_via_backend_runs_job():
     await backend.create_job(
         job_id="job-1",
         job_name=job_name,
-        args='{"msg": "hello"}',
+        args={"msg": "hello"},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -90,7 +90,7 @@ async def test_process_via_backend_handles_failure_with_retry():
     await backend.create_job(
         job_id="job-fail",
         job_name=job_name,
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -128,7 +128,7 @@ async def test_process_via_backend_dead_letters_after_max_attempts():
     await backend.create_job(
         job_id="job-dead",
         job_name=job_name,
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=2,  # Only 2 attempts total
         priority=100,

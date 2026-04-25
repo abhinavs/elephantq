@@ -6,7 +6,6 @@ Configure with: soniq.configure(backend="memory")
 """
 
 import asyncio
-import json
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -34,6 +33,18 @@ class MemoryBackend:
     def supports_transactional_enqueue(self) -> bool:
         return False
 
+    @property
+    def supports_connection_pool(self) -> bool:
+        return False
+
+    @property
+    def supports_advisory_locks(self) -> bool:
+        return False
+
+    @property
+    def supports_migrations(self) -> bool:
+        return False
+
     # --- Lifecycle ---
 
     async def initialize(self) -> None:
@@ -49,7 +60,7 @@ class MemoryBackend:
         *,
         job_id: str,
         job_name: str,
-        args: str,
+        args: dict,
         args_hash: Optional[str],
         max_attempts: int,
         priority: int,
@@ -404,14 +415,15 @@ class MemoryBackend:
 
     @staticmethod
     def _format_job(job: dict) -> dict:
-        """Format a job dict for external consumption."""
+        """Format a job dict for external consumption.
+
+        `args` is stored as a dict internally and returned as a dict (the
+        uniform backend contract). Datetimes are converted to ISO strings to
+        match what the Postgres backend returns for list/get paths.
+        """
         result = dict(job)
-        # Convert datetime to ISO string for consistency with Postgres backend
         for key in ("scheduled_at", "created_at", "updated_at", "expires_at"):
             val = result.get(key)
             if isinstance(val, datetime):
                 result[key] = val.isoformat()
-        # Parse args JSON if string
-        if isinstance(result.get("args"), str):
-            result["args"] = json.loads(result["args"])
         return result

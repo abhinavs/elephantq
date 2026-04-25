@@ -1,7 +1,7 @@
 """
 Tests for global API management functions not covered elsewhere.
 
-Covers: cancel_job, retry_job, delete_job, list_jobs, get_job_status,
+Covers: cancel_job, retry_job, delete_job, list_jobs, get_job,
 get_queue_stats, setup, reset via the global convenience API.
 """
 
@@ -20,12 +20,12 @@ def reset_global():
 
 
 @pytest.mark.asyncio
-async def test_global_get_job_status():
+async def test_global_get_job():
     await soniq.configure(database_url="postgresql://test@localhost/test")
     app = soniq._get_global_app()
-    with patch.object(app, "get_job_status", new_callable=AsyncMock) as mock:
+    with patch.object(app, "get_job", new_callable=AsyncMock) as mock:
         mock.return_value = {"status": "done", "id": "j1"}
-        result = await soniq.get_job_status("j1")
+        result = await soniq.get_job("j1")
         mock.assert_called_once_with("j1")
         assert result["status"] == "done"
 

@@ -28,25 +28,6 @@ class TestDeadLetterReason:
 
 
 class TestDeadLetterJob:
-    def test_from_job_record_with_string_args(self):
-        record = {
-            "id": "job-1",
-            "job_name": "my_module.my_task",
-            "args": '{"key": "value"}',
-            "queue": "default",
-            "priority": 100,
-            "max_attempts": 3,
-            "attempts": 3,
-            "last_error": "boom",
-            "created_at": datetime.now(timezone.utc),
-        }
-        job = DeadLetterJob.from_job_record(
-            record, DeadLetterReason.MAX_RETRIES_EXCEEDED
-        )
-        assert job.id == "job-1"
-        assert job.args == {"key": "value"}
-        assert job.dead_letter_reason == "max_retries_exceeded"
-
     def test_from_job_record_with_dict_args(self):
         record = {
             "id": "job-2",

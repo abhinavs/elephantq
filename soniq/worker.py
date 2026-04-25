@@ -247,7 +247,7 @@ class Worker:
                         "remove_listener failed during shutdown", exc_info=True
                     )
                 try:
-                    if hasattr(self._backend, "pool"):
+                    if self._backend.supports_connection_pool:
                         await self._backend.pool.release(listen_handle)
                 except Exception:
                     logger.debug(

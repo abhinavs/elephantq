@@ -8,7 +8,7 @@ async def test_reset_clears_everything(backend):
     await backend.create_job(
         job_id="j1",
         job_name="mod.func",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -34,7 +34,7 @@ async def test_get_queue_stats(backend):
     await backend.create_job(
         job_id="j1",
         job_name="mod.a",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -44,7 +44,7 @@ async def test_get_queue_stats(backend):
     await backend.create_job(
         job_id="j2",
         job_name="mod.b",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -63,7 +63,7 @@ async def test_expires_at_set_on_done(backend):
     await backend.create_job(
         job_id="j1",
         job_name="mod.func",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,

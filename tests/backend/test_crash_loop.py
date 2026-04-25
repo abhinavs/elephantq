@@ -13,7 +13,7 @@ async def test_fetch_increments_attempts(backend):
     await backend.create_job(
         job_id="j1",
         job_name="mod.func",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -33,7 +33,7 @@ async def test_crash_loop_increments_attempts(backend):
     await backend.create_job(
         job_id="j1",
         job_name="mod.func",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=2,
         priority=100,

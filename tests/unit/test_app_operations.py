@@ -21,7 +21,7 @@ async def test_app_with_memory_backend():
     job_id = await app.enqueue(my_task, x=10)
     assert job_id is not None
 
-    status = await app.get_job_status(job_id)
+    status = await app.get_job(job_id)
     assert status["status"] == "queued"
 
     await app.close()
@@ -73,7 +73,7 @@ async def test_schedule_delegates_to_enqueue():
     job_id = await app.schedule(my_task, run_at=run_at, msg="hello")
     assert job_id is not None
 
-    status = await app.get_job_status(job_id)
+    status = await app.get_job(job_id)
     assert status["status"] == "queued"
 
     await app.close()
@@ -91,7 +91,7 @@ async def test_cancel_job():
     result = await app.cancel_job(job_id)
     assert result is True
 
-    status = await app.get_job_status(job_id)
+    status = await app.get_job(job_id)
     assert status["status"] == "cancelled"
 
     await app.close()
@@ -109,7 +109,7 @@ async def test_delete_job():
     result = await app.delete_job(job_id)
     assert result is True
 
-    status = await app.get_job_status(job_id)
+    status = await app.get_job(job_id)
     assert status is None
 
     await app.close()

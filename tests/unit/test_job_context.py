@@ -2,7 +2,6 @@
 Tests for JobContext injection into job functions.
 """
 
-import json
 import uuid
 
 import pytest
@@ -16,7 +15,7 @@ def _make_job_record(args_dict=None):
     return {
         "id": uuid.UUID("12345678-1234-5678-1234-567812345678"),
         "job_name": "test_module.test_func",
-        "args": json.dumps(args_dict),
+        "args": args_dict,
         "attempts": 2,
         "max_attempts": 5,
         "queue": "emails",

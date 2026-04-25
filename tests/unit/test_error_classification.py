@@ -2,10 +2,8 @@
 Tests for error classification in _execute_job_safely.
 
 Ensures TypeError/AttributeError from job logic are retried (not dead-lettered),
-while actual data corruption (bad JSON, invalid Pydantic) is dead-lettered.
+while actual data corruption (non-dict args, invalid Pydantic) is dead-lettered.
 """
-
-import json
 
 import pytest
 
@@ -19,7 +17,7 @@ def _make_job_record(args_dict=None):
     return {
         "id": "test-job-id",
         "job_name": "test.job",
-        "args": json.dumps(args_dict),
+        "args": args_dict,
         "attempts": 0,
         "max_attempts": 3,
     }
@@ -93,12 +91,13 @@ async def test_regular_typeerror_from_job_is_retried():
 
 
 @pytest.mark.asyncio
-async def test_corrupted_json_args_raises_valueerror():
-    """Corrupted JSON in args should raise ValueError (dead-letter path)."""
+async def test_non_dict_args_raises_valueerror():
+    """Non-dict args is a backend contract violation and must raise
+    ValueError so the processor dead-letters the job."""
     job_record = {
         "id": "test-job-id",
         "job_name": "test.job",
-        "args": "not valid json {{{",
+        "args": "not a dict",
         "attempts": 0,
         "max_attempts": 3,
     }
@@ -108,7 +107,7 @@ async def test_corrupted_json_args_raises_valueerror():
 
     job_meta = _make_job_meta(good_job)
 
-    with pytest.raises(ValueError, match="Corrupted JSON"):
+    with pytest.raises(ValueError, match="Backend contract violation"):
         await _execute_job_safely(job_record, job_meta)
 
 

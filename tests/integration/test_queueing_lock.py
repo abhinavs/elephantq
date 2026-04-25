@@ -25,7 +25,7 @@ async def test_dedup_key_prevents_duplicate(backend):
     id1 = await backend.create_job(
         job_id=str(uuid.uuid4()),
         job_name="test.locked_job",
-        args='{"a": 1}',
+        args={"a": 1},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -38,7 +38,7 @@ async def test_dedup_key_prevents_duplicate(backend):
     id2 = await backend.create_job(
         job_id=str(uuid.uuid4()),
         job_name="test.locked_job",
-        args='{"a": 2}',  # Different args, same lock
+        args={"a": 2},  # Different args, same lock
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -57,7 +57,7 @@ async def test_dedup_key_allows_after_completion(backend):
     id1 = await backend.create_job(
         job_id=str(uuid.uuid4()),
         job_name="test.locked_job",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -75,7 +75,7 @@ async def test_dedup_key_allows_after_completion(backend):
     id2 = await backend.create_job(
         job_id=str(uuid.uuid4()),
         job_name="test.locked_job",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -94,7 +94,7 @@ async def test_no_lock_allows_duplicates(backend):
     id1 = await backend.create_job(
         job_id=str(uuid.uuid4()),
         job_name="test.unlocked",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -107,7 +107,7 @@ async def test_no_lock_allows_duplicates(backend):
     id2 = await backend.create_job(
         job_id=str(uuid.uuid4()),
         job_name="test.unlocked",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,

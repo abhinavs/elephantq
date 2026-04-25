@@ -45,7 +45,7 @@ async def test_free_features_compliance():
             job_record["job_name"]
             == "tests.integration.global_api.test_specification_compliance.basic_job"
         )
-        assert '"message": "test persistence"' in job_record["args"]
+        assert job_record["args"] == {"message": "test persistence"}
 
     # ✅ Job processing with retry mechanism
     processed = await soniq.run_worker(run_once=True)
@@ -105,7 +105,7 @@ async def test_dsl_usage_examples_compliance():
     )
 
     # Verify job was enqueued
-    status = await soniq.get_job_status(job_id)
+    status = await soniq.get_job(job_id)
     assert status is not None
     assert status["status"] == "queued"
 
@@ -123,7 +123,7 @@ async def test_dsl_usage_examples_compliance():
     )
 
     # Verify job was scheduled
-    scheduled_status = await soniq.get_job_status(scheduled_job_id)
+    scheduled_status = await soniq.get_job(scheduled_job_id)
     assert scheduled_status is not None
     assert scheduled_status["status"] == "queued"
     assert scheduled_status["scheduled_at"] is not None
@@ -230,7 +230,7 @@ async def test_project_structure_compliance():
     assert hasattr(soniq, "enqueue")
     assert hasattr(soniq, "schedule")
     assert hasattr(soniq, "run_worker")
-    assert hasattr(soniq, "get_job_status")
+    assert hasattr(soniq, "get_job")
     assert hasattr(soniq, "cancel_job")
     assert hasattr(soniq, "retry_job")
     assert hasattr(soniq, "delete_job")

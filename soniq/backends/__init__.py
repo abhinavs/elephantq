@@ -36,6 +36,34 @@ class StorageBackend(Protocol):
         """Whether this backend supports transactional enqueue via connection=."""
         ...
 
+    @property
+    def supports_connection_pool(self) -> bool:
+        """Whether this backend exposes an asyncpg-style connection pool.
+
+        True for Postgres; False for SQLite and Memory. Callers that need
+        raw pool access (worker shutdown listener release, advanced
+        integration paths) gate on this rather than `hasattr(backend, 'pool')`.
+        """
+        ...
+
+    @property
+    def supports_advisory_locks(self) -> bool:
+        """Whether this backend supports Postgres-style advisory locks.
+
+        True only for Postgres. Leadership election (`with_advisory_lock`)
+        falls back to always-leader when this is False.
+        """
+        ...
+
+    @property
+    def supports_migrations(self) -> bool:
+        """Whether this backend uses the file-based migration runner.
+
+        True for Postgres. SQLite creates its schema inside `initialize()`
+        with ad-hoc DDL. Memory has no schema at all.
+        """
+        ...
+
     # --- Lifecycle ---
 
     async def initialize(self) -> None:
@@ -53,7 +81,7 @@ class StorageBackend(Protocol):
         *,
         job_id: str,
         job_name: str,
-        args: str,
+        args: dict,
         args_hash: Optional[str],
         max_attempts: int,
         priority: int,
@@ -64,6 +92,9 @@ class StorageBackend(Protocol):
     ) -> Optional[str]:
         """
         Insert a job. Return job_id on success.
+
+        `args` is the unserialized job kwargs dict. Backends are responsible
+        for any on-wire serialization they need; callers work with dicts.
 
         If unique=True and a duplicate queued job exists, return existing ID.
         If dedup_key is set and a locked queued job exists, return existing ID.

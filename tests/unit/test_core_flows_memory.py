@@ -37,10 +37,8 @@ async def _enqueue(backend, registry, func, args=None, **overrides):
     )
     job_name = f"{func.__module__}.{func.__name__}"
     job_id = str(uuid.uuid4())
-    import json
 
     args_dict = args or {}
-    args_json = json.dumps(args_dict, default=str)
     job_meta = registry.get_job(job_name)
     max_attempts = (
         overrides.get("max_retries", job_meta["max_retries"]) if job_meta else 3
@@ -49,7 +47,7 @@ async def _enqueue(backend, registry, func, args=None, **overrides):
     await backend.create_job(
         job_id=job_id,
         job_name=job_name,
-        args=args_json,
+        args=args_dict,
         args_hash=None,
         max_attempts=max_attempts,
         priority=overrides.get("priority", 100),
@@ -179,7 +177,7 @@ async def test_unique_job_deduplication(backend, registry):
     id1 = await backend.create_job(
         job_id=str(uuid.uuid4()),
         job_name=job_name,
-        args='{"key": "value"}',
+        args={"key": "value"},
         args_hash=args_hash,
         max_attempts=3,
         priority=100,
@@ -192,7 +190,7 @@ async def test_unique_job_deduplication(backend, registry):
     id2 = await backend.create_job(
         job_id=str(uuid.uuid4()),
         job_name=job_name,
-        args='{"key": "value"}',
+        args={"key": "value"},
         args_hash=args_hash,
         max_attempts=3,
         priority=100,
@@ -219,7 +217,7 @@ async def test_priority_ordering(backend, registry):
     await backend.create_job(
         job_id="low",
         job_name=job_name,
-        args='{"name": "low"}',
+        args={"name": "low"},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -231,7 +229,7 @@ async def test_priority_ordering(backend, registry):
     await backend.create_job(
         job_id="high",
         job_name=job_name,
-        args='{"name": "high"}',
+        args={"name": "high"},
         args_hash=None,
         max_attempts=3,
         priority=1,

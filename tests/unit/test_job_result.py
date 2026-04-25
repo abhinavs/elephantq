@@ -39,7 +39,7 @@ async def test_job_result_in_get_job():
         job_id = await app.enqueue(compute)
         await app.run_worker(run_once=True)
 
-        job = await app.get_job_status(job_id)
+        job = await app.get_job(job_id)
         assert job["result"] == {"total": 42}
 
 

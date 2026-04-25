@@ -28,7 +28,7 @@ async def test_cleanup_stale_requeues_jobs(backend):
     await backend.create_job(
         job_id="j1",
         job_name="mod.func",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,

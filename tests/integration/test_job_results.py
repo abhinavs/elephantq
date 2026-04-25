@@ -34,7 +34,7 @@ async def test_result_persisted_and_retrieved_postgres(backend):
     await backend.create_job(
         job_id=job_id,
         job_name="test.result_job",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -61,7 +61,7 @@ async def test_result_none_when_handler_returns_nothing(backend):
     await backend.create_job(
         job_id=job_id,
         job_name="test.void_job",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
@@ -115,7 +115,7 @@ async def test_result_survives_json_roundtrip(backend):
     await backend.create_job(
         job_id=job_id,
         job_name="test.complex_result",
-        args="{}",
+        args={},
         args_hash=None,
         max_attempts=3,
         priority=100,
