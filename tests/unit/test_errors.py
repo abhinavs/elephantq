@@ -4,7 +4,15 @@ Test suite for errors.py — SoniqError and MigrationError.
 
 import pytest
 
-from soniq.errors import MigrationError, SoniqError
+from soniq import errors as errors_mod
+from soniq.errors import (
+    SONIQ_INVALID_TASK_NAME,
+    SONIQ_PRODUCER_ONLY,
+    SONIQ_TASK_ARGS_INVALID,
+    SONIQ_UNKNOWN_TASK_NAME,
+    MigrationError,
+    SoniqError,
+)
 
 
 class TestSoniqError:
@@ -72,3 +80,43 @@ class TestErrorInheritance:
     def test_error_can_be_caught_as_exception(self):
         with pytest.raises(Exception):
             raise MigrationError("step", "reason")
+
+
+class TestCrossServiceErrorCodes:
+    """Codes added for the cross-service enqueue work (plan section 15.6)."""
+
+    @pytest.mark.parametrize(
+        "code, expected",
+        [
+            (SONIQ_UNKNOWN_TASK_NAME, "SONIQ_UNKNOWN_TASK_NAME"),
+            (SONIQ_INVALID_TASK_NAME, "SONIQ_INVALID_TASK_NAME"),
+            (SONIQ_TASK_ARGS_INVALID, "SONIQ_TASK_ARGS_INVALID"),
+            (SONIQ_PRODUCER_ONLY, "SONIQ_PRODUCER_ONLY"),
+        ],
+    )
+    def test_constant_value_matches_identifier(self, code, expected):
+        assert code == expected
+
+    @pytest.mark.parametrize(
+        "code",
+        [
+            SONIQ_UNKNOWN_TASK_NAME,
+            SONIQ_INVALID_TASK_NAME,
+            SONIQ_TASK_ARGS_INVALID,
+            SONIQ_PRODUCER_ONLY,
+        ],
+    )
+    def test_constructible_with_each_code(self, code):
+        err = SoniqError("boom", code)
+        assert err.error_code == code
+        assert code in str(err)
+
+    def test_codes_are_module_level_strings(self):
+        for name in (
+            "SONIQ_UNKNOWN_TASK_NAME",
+            "SONIQ_INVALID_TASK_NAME",
+            "SONIQ_TASK_ARGS_INVALID",
+            "SONIQ_PRODUCER_ONLY",
+        ):
+            assert hasattr(errors_mod, name)
+            assert isinstance(getattr(errors_mod, name), str)
