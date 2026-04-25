@@ -2,30 +2,24 @@
 Tests for multi-scheduler safety.
 
 When multiple scheduler processes check the same recurring job simultaneously,
-only one should fire it per period.
+only one should fire it per period. The atomic claim is now bundled with the
+enqueue and bookkeeping inside a single Postgres transaction; this test only
+verifies the public-shape contract that `_execute_job` exists and is async.
+The actual claim/enqueue atomicity is exercised against a live database in
+the integration suite (`tests/integration/test_leader_election.py`).
 """
 
-import pytest
+import inspect
 
 
-@pytest.mark.asyncio
-async def test_claim_recurring_run_returns_true_on_first_claim(monkeypatch):
-    """First scheduler to claim a due job should succeed."""
-    from soniq.features.recurring import EnhancedRecurringManager
+def test_execute_job_is_async_method_on_scheduler():
+    from soniq.features.recurring import EnhancedRecurringScheduler
 
-    manager = EnhancedRecurringManager()
-
-    claimed = []
-
-    async def fake_claim(
-        job_id, expected_next_run, new_next_run, run_count, actual_job_id
-    ):
-        claimed.append(job_id)
-        return True
-
-    monkeypatch.setattr(manager, "_claim_and_advance_run", fake_claim)
-
-    assert hasattr(manager, "_claim_and_advance_run"), (
-        "EnhancedRecurringManager must have _claim_and_advance_run method "
-        "for atomic scheduling coordination"
+    scheduler = EnhancedRecurringScheduler()
+    assert hasattr(scheduler, "_execute_job"), (
+        "EnhancedRecurringScheduler must have _execute_job for the atomic "
+        "claim+enqueue+record path."
     )
+    assert inspect.iscoroutinefunction(
+        scheduler._execute_job
+    ), "_execute_job must be async."

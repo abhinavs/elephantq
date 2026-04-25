@@ -486,71 +486,6 @@ class EnhancedRecurringManager:
                 uuid.UUID(job_id),
             )
 
-    async def _record_run(
-        self,
-        job_id: str,
-        last_run: datetime,
-        next_run: datetime,
-        run_count: int,
-        last_job_id: Optional[str],
-    ) -> None:
-        pool = await get_context_pool()
-        async with pool.acquire() as conn:
-            await conn.execute(
-                """
-                UPDATE soniq_recurring_jobs
-                SET last_run = $1,
-                    next_run = $2,
-                    run_count = $3,
-                    last_job_id = $4,
-                    updated_at = NOW()
-                WHERE id = $5
-                """,
-                last_run,
-                next_run,
-                run_count,
-                uuid.UUID(last_job_id) if last_job_id else None,
-                uuid.UUID(job_id),
-            )
-
-    async def _claim_and_advance_run(
-        self,
-        job_id: str,
-        expected_next_run: datetime,
-        new_next_run: datetime,
-        run_count: int,
-        actual_job_id: Optional[str],
-    ) -> bool:
-        """
-        Atomically claim a recurring job run using optimistic locking.
-
-        Only updates if next_run still matches expected_next_run.
-        If another scheduler already advanced next_run, returns False.
-        This ensures multiple schedulers can run safely without coordination.
-        """
-        pool = await get_context_pool()
-        async with pool.acquire() as conn:
-            result = await conn.execute(
-                """
-                UPDATE soniq_recurring_jobs
-                SET last_run = NOW(),
-                    next_run = $1,
-                    run_count = $2,
-                    last_job_id = $3,
-                    updated_at = NOW()
-                WHERE id = $4
-                  AND next_run = $5
-                """,
-                new_next_run,
-                run_count,
-                uuid.UUID(actual_job_id) if actual_job_id else None,
-                uuid.UUID(job_id),
-                expected_next_run,
-            )
-            from soniq.db.helpers import rows_affected
-
-            return rows_affected(result) == 1
-
     def _calculate_next_run(
         self,
         schedule_type: str,
@@ -606,9 +541,10 @@ class EnhancedRecurringScheduler:
 
         Each tick runs under an advisory-lock leader guard so only one
         scheduler across a multi-worker fleet evaluates due recurring jobs
-        per interval. The per-job optimistic lock in `_claim_and_advance_run`
-        remains the correctness floor; leader election is an efficiency
-        optimization on top.
+        per interval. The per-job optimistic lock inside `_execute_job`
+        (claim + enqueue + record in one transaction) remains the
+        correctness floor; leader election is an efficiency optimization
+        on top.
         """
         from soniq.core.leadership import with_advisory_lock
 
@@ -687,17 +623,23 @@ class EnhancedRecurringScheduler:
     async def _execute_job(
         self, job_id: str, job: Dict[str, Any], current_time: datetime
     ):
-        """Execute a due job with multi-scheduler safety.
+        """Execute a due job atomically.
 
-        Uses optimistic locking: claim the next_run slot atomically.
-        If another scheduler already claimed it, skip silently.
+        The claim, the enqueue, and the bookkeeping all run inside a single
+        Postgres transaction. If any of them fails, none of them happen, so
+        the schedule cannot advance without producing an enqueued job and
+        a job cannot be enqueued without the schedule advancing.
+
+        Multi-scheduler safety still relies on the optimistic compare on
+        `next_run`: the UPDATE only matches if our cached `expected_next_run`
+        is still the live value. If another scheduler already advanced it,
+        rows_affected is 0, the transaction commits a no-op, and we skip.
         """
         try:
             expected_next_run = job.get("next_run")
             if not expected_next_run:
                 return
 
-            # Calculate what next_run WILL be after this execution
             next_run = _enhanced_manager._calculate_next_run(
                 job["schedule_type"], job["schedule_value"], current_time
             )
@@ -706,68 +648,72 @@ class EnhancedRecurringScheduler:
 
             new_run_count = job["run_count"] + 1
 
-            # Atomically claim this run — if another scheduler already advanced
-            # next_run, this returns False and we skip the enqueue.
-            claimed = await _enhanced_manager._claim_and_advance_run(
-                job_id=job_id,
-                expected_next_run=expected_next_run,
-                new_next_run=next_run,
-                run_count=new_run_count,
-                actual_job_id=None,  # Will update after enqueue
-            )
+            from soniq.db.helpers import rows_affected
 
-            if not claimed:
-                logger.debug(
-                    "Recurring job %s already claimed by another scheduler", job_id
-                )
-                # Reload the authoritative next_run from the DB instead of
-                # trusting the value this scheduler just computed.
-                try:
-                    pool = await get_context_pool()
-                    async with pool.acquire() as conn:
+            actual_job_id: Optional[str] = None
+            pool = await get_context_pool()
+            async with pool.acquire() as conn:
+                async with conn.transaction():
+                    # Atomically claim the next_run slot.
+                    claim = await conn.execute(
+                        """
+                        UPDATE soniq_recurring_jobs
+                        SET next_run = $1,
+                            updated_at = NOW()
+                        WHERE id = $2
+                          AND next_run = $3
+                        """,
+                        next_run,
+                        uuid.UUID(job_id),
+                        expected_next_run,
+                    )
+                    if rows_affected(claim) != 1:
+                        logger.debug(
+                            "Recurring job %s already claimed by another scheduler",
+                            job_id,
+                        )
+                        # Read back the authoritative next_run inside the same
+                        # connection so the in-memory cache catches up.
                         row = await conn.fetchrow(
                             "SELECT next_run FROM soniq_recurring_jobs WHERE id = $1",
                             uuid.UUID(job_id),
                         )
-                    if row and row["next_run"]:
-                        job["next_run"] = row["next_run"]
-                except Exception as reload_err:
-                    logger.debug(
-                        "Failed to reload next_run for %s: %s", job_id, reload_err
+                        if row and row["next_run"]:
+                            job["next_run"] = row["next_run"]
+                        return
+
+                    # Claim succeeded. Enqueue inside the same transaction
+                    # so a failed enqueue rolls the claim back.
+                    actual_job_id = await enqueue(
+                        job["job_func"],
+                        connection=conn,
+                        priority=job["priority"],
+                        queue=job["queue"],
+                        max_attempts=job["max_attempts"],
+                        **job["job_kwargs"],
                     )
+
+                    # Record run bookkeeping inside the same transaction.
+                    await conn.execute(
+                        """
+                        UPDATE soniq_recurring_jobs
+                        SET last_run = $1,
+                            run_count = $2,
+                            last_job_id = $3,
+                            updated_at = NOW()
+                        WHERE id = $4
+                        """,
+                        current_time,
+                        new_run_count,
+                        uuid.UUID(actual_job_id) if actual_job_id else None,
+                        uuid.UUID(job_id),
+                    )
+
+            # In-memory state is updated only after the transaction has
+            # committed. If we never reached this line, nothing landed in
+            # the DB either.
+            if actual_job_id is None:
                 return
-
-            # Claim succeeded — now enqueue the actual job
-            actual_job_id = await enqueue(
-                job["job_func"],
-                priority=job["priority"],
-                queue=job["queue"],
-                max_attempts=job["max_attempts"],
-                **job["job_kwargs"],
-            )
-
-            # Update last_job_id / run_count in DB. The claim already
-            # succeeded and the job is enqueued, so we cannot retry or roll
-            # back, but if this write fails our in-memory bookkeeping and the
-            # row in `soniq_recurring_jobs` silently drift apart. Log so
-            # operators notice; do not raise.
-            try:
-                await _enhanced_manager._record_run(
-                    job_id=job_id,
-                    last_run=current_time,
-                    next_run=next_run,
-                    run_count=new_run_count,
-                    last_job_id=actual_job_id,
-                )
-            except Exception:
-                logger.exception(
-                    "Failed to record recurring run for %s (job enqueued as %s, "
-                    "run_count/last_run may be stale until next successful tick)",
-                    job_id,
-                    actual_job_id,
-                )
-
-            # Update in-memory state
             _enhanced_manager.jobs[job_id].update(
                 {
                     "last_run": current_time,

@@ -231,27 +231,30 @@ class TestNoFireAndForget:
 
 
 class TestRecurringAtomicState:
-    """Verify in-memory state is updated only after DB write succeeds."""
+    """In-memory state must only be updated after the DB transaction commits."""
 
-    def test_record_run_called_before_in_memory_update(self):
-        """In the execute_recurring_job function, _record_run must be called
-        BEFORE in-memory state is updated with last_run/run_count/next_run."""
+    def test_in_memory_update_is_outside_transaction_block(self):
+        """`_execute_job` claims, enqueues, and records inside one
+        `conn.transaction()`. The in-memory `jobs[job_id].update(...)` must
+        sit *outside* that block: if the transaction rolls back (failed
+        enqueue, lost claim race), the in-memory cache should not advance."""
         import soniq.features.recurring as mod
 
         source = inspect.getsource(mod.EnhancedRecurringScheduler._execute_job)
 
-        # Find positions of key operations
-        record_run_pos = source.find("_record_run")
-        # Find in-memory update: jobs[job_id].update( or jobs[job_id]["
-        jobs_update_pos = source.find(".update(")
+        # The transaction block exits when async-with returns. The in-memory
+        # update must come after that. We approximate "after the transaction
+        # block" as: position of `.update(` minus position of last
+        # `conn.transaction()` is positive AND no other update sits inside.
+        update_pos = source.rfind(".update(")
+        txn_pos = source.rfind("conn.transaction()")
 
-        assert record_run_pos > 0, "_record_run not found in source"
-        assert jobs_update_pos > 0, ".update() not found in source"
-
-        # _record_run (DB write) must come BEFORE in-memory .update()
-        assert record_run_pos < jobs_update_pos, (
-            "In-memory state update (.update()) happens before _record_run(). "
-            "If _record_run() fails, in-memory state will be inconsistent with DB."
+        assert update_pos > 0, ".update() not found in _execute_job source"
+        assert txn_pos > 0, "conn.transaction() not found in _execute_job source"
+        assert update_pos > txn_pos, (
+            "In-memory `.update()` should appear after the transaction block; "
+            "if a failed enqueue or lost claim rolls back the DB, the cache "
+            "must not have already advanced."
         )
 
 
