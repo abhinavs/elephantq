@@ -500,12 +500,15 @@ class Soniq:
                     ],
                 )
             if mode == "warn":
-                # Phase 1 emits a plain warning; PR 7 wires the rate limiter.
-                logger.warning(
-                    "enqueue: task %r is not registered locally "
-                    "(SONIQ_ENQUEUE_VALIDATION=warn); enqueueing anyway",
-                    job_name,
-                )
+                from .utils.rate_limit import default_warner
+
+                if default_warner().should_warn(job_name):
+                    logger.warning(
+                        "enqueue: task %r is not registered locally "
+                        "(SONIQ_ENQUEUE_VALIDATION=warn); enqueueing anyway. "
+                        "Further warnings for this name are rate-limited.",
+                        job_name,
+                    )
             # mode == "none" -> silent
 
         # When the task is registered, validate args against the model and
