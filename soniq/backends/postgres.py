@@ -430,13 +430,29 @@ class PostgresBackend:
         result: Any = None,
     ) -> None:
         uid = uuid.UUID(job_id)
-        # JSONB codec auto-serializes; pass the raw value.
+        # JSONB codec auto-serializes; pass the raw value. Skip the
+        # `result` column write entirely when the job returned None: the
+        # vast majority of jobs are `-> None`, and storing JSON null on
+        # every row is wasted bytes plus a wasted write.
         async with self.pool.acquire() as conn:
             async with conn.transaction():
                 if result_ttl is not None and result_ttl == 0:
                     await conn.execute(
                         "DELETE FROM soniq_jobs WHERE id = $1",
                         uid,
+                    )
+                elif result is None:
+                    ttl = result_ttl if result_ttl is not None else 3600
+                    await conn.execute(
+                        """
+                        UPDATE soniq_jobs
+                        SET status = 'done',
+                            expires_at = NOW() + ($2 || ' seconds')::INTERVAL,
+                            updated_at = NOW()
+                        WHERE id = $1
+                        """,
+                        uid,
+                        str(ttl),
                     )
                 else:
                     ttl = result_ttl if result_ttl is not None else 3600

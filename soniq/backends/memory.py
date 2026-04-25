@@ -180,7 +180,9 @@ class MemoryBackend:
                 del self._jobs[job_id]
             else:
                 job["status"] = "done"
-                job["result"] = result
+                # Mirror Postgres/SQLite: only write `result` when non-None.
+                if result is not None:
+                    job["result"] = result
                 job["updated_at"] = datetime.now(timezone.utc)
                 if result_ttl is not None and result_ttl > 0:
                     from datetime import timedelta

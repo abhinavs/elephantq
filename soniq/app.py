@@ -99,6 +99,9 @@ class Soniq:
         database_url: Optional[str] = None,
         config_file: Optional[Path] = None,
         backend: Optional[Any] = None,
+        retry_policy: Optional[Any] = None,
+        serializer: Optional[Any] = None,
+        log_sink: Optional[Any] = None,
         **settings_overrides,
     ):
         """
@@ -109,6 +112,19 @@ class Soniq:
             config_file: Optional configuration file path
             backend: Optional StorageBackend instance. If not provided,
                 creates a PostgresBackend from the database_url.
+            retry_policy: Optional `soniq.core.retry.RetryPolicy` instance.
+                Defaults to `ExponentialBackoff()` which honors per-job
+                `retry_delay` / `retry_backoff` / `retry_max_delay` /
+                `retry_jitter` set via the `@app.job(...)` decorator.
+            serializer: Optional `soniq.utils.serialization.Serializer`
+                instance. Defaults to `JSONSerializer`. Custom serializers
+                are advisory only at present: backends store via JSONB /
+                JSON-text and read via the same path, so non-JSON formats
+                require a serializer-aware backend.
+            log_sink: Optional `soniq.features.logging.LogSink` instance.
+                When provided and `logging_enabled = true`, log records
+                flow into this sink instead of (or in addition to) the
+                built-in `DatabaseLogHandler`.
             **settings_overrides: Override any SoniqSettings field
         """
         # Core instance state
@@ -121,6 +137,15 @@ class Soniq:
         elif backend is None and database_url:
             backend = self._auto_detect_backend(database_url)
         self._backend = backend
+
+        # Pluggable extension points. Defaults are wired so callers that
+        # never touch these fields keep the existing behavior verbatim.
+        from .core.retry import DEFAULT_RETRY_POLICY
+        from .utils.serialization import DEFAULT_SERIALIZER
+
+        self._retry_policy = retry_policy or DEFAULT_RETRY_POLICY
+        self._serializer = serializer or DEFAULT_SERIALIZER
+        self._log_sink = log_sink  # None means "use the built-in handler"
 
         # Settings with overrides
         # Only pass database_url to settings for postgres backend
@@ -491,6 +516,7 @@ class Soniq:
             registry=self._job_registry,
             settings=self._settings,
             hooks=self._hooks,
+            retry_policy=self._retry_policy,
         )
 
         # `soniq start` only runs the worker. Recurring jobs require a

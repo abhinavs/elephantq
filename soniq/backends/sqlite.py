@@ -269,13 +269,19 @@ class SQLiteBackend:
         else:
             ttl = result_ttl if result_ttl is not None else 3600
             expires = (datetime.now(timezone.utc) + timedelta(seconds=ttl)).isoformat()
-            result_json = (
-                json.dumps(result, default=str) if result is not None else None
-            )
-            await self._conn.execute(
-                "UPDATE soniq_jobs SET status='done', result=?, expires_at=?, updated_at=? WHERE id=?",
-                (result_json, expires, _now_iso(), job_id),
-            )
+            # Skip the result column write when the job returned None;
+            # most jobs are `-> None` and storing 'null' is just bytes.
+            if result is None:
+                await self._conn.execute(
+                    "UPDATE soniq_jobs SET status='done', expires_at=?, updated_at=? WHERE id=?",
+                    (expires, _now_iso(), job_id),
+                )
+            else:
+                result_json = json.dumps(result, default=str)
+                await self._conn.execute(
+                    "UPDATE soniq_jobs SET status='done', result=?, expires_at=?, updated_at=? WHERE id=?",
+                    (result_json, expires, _now_iso(), job_id),
+                )
         await self._conn.commit()
 
     async def mark_job_failed(

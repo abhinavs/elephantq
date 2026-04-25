@@ -1,6 +1,13 @@
 """
 Structured Logging with Job Context.
 Structured JSON logging, job-specific loggers, performance context.
+
+The `LogSink` Protocol formalizes the contract Soniq's logging path
+expects of its destination. It is intentionally a subset of the standard
+`logging.Handler` API so any stdlib-compatible handler (file, stream,
+SysLog, third-party Sentry/Datadog handlers) can be passed to
+`Soniq(log_sink=...)` directly. The shipped default is `DatabaseLogHandler`,
+which writes structured records into `soniq_logs`.
 """
 
 import asyncio
@@ -16,9 +23,23 @@ from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
 from soniq.db.connection import get_pool
+
+
+@runtime_checkable
+class LogSink(Protocol):
+    """A `logging.Handler`-compatible destination for Soniq log records.
+
+    Any object that exposes `emit(record)` and an optional `close()`
+    satisfies the Protocol. That includes the stdlib's `StreamHandler`,
+    `RotatingFileHandler`, `SysLogHandler`, and the bundled
+    `DatabaseLogHandler`.
+    """
+
+    def emit(self, record: logging.LogRecord) -> None: ...
+
 
 _VALID_TABLE_NAME = re.compile(r"^[a-z_][a-z0-9_]*$")
 

@@ -32,12 +32,14 @@ class Worker:
         registry: JobRegistry,
         settings: Optional[SoniqSettings] = None,
         hooks: Optional[dict] = None,
+        retry_policy: Optional[Any] = None,
     ):
         self._backend = backend
         self._registry = registry
         self._settings = settings or get_settings()
         self._last_cleanup = 0.0
         self._hooks = hooks or {}
+        self._retry_policy = retry_policy
 
     async def run(
         self,
@@ -92,6 +94,7 @@ class Worker:
                 job_registry=self._registry,
                 queues=queues,
                 hooks=self._hooks,
+                retry_policy=self._retry_policy,
             )
 
             if processed:
@@ -154,6 +157,7 @@ class Worker:
                         queues=queues,
                         worker_id=worker_id,
                         hooks=self._hooks,
+                        retry_policy=self._retry_policy,
                     )
 
                     if not processed:

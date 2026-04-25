@@ -14,7 +14,6 @@ import traceback
 from typing import Any, List, Optional
 
 from soniq.core.registry import JobRegistry
-from soniq.core.retry import compute_retry_delay_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -131,6 +130,7 @@ async def process_job_via_backend(
     queues: Optional[List[str]] = None,
     worker_id: Optional[str] = None,
     hooks: Optional[dict] = None,
+    retry_policy: Optional[Any] = None,
 ) -> bool:
     """
     Process a single job using a StorageBackend.
@@ -150,6 +150,11 @@ async def process_job_via_backend(
     from soniq.settings import get_settings
 
     _hooks = hooks or {}
+
+    if retry_policy is None:
+        from .retry import DEFAULT_RETRY_POLICY
+
+        retry_policy = DEFAULT_RETRY_POLICY
 
     job_record = await backend.fetch_and_lock_job(
         queues=queues,
@@ -268,13 +273,30 @@ async def process_job_via_backend(
             )
             logger.error(f"Job {job_id} moved to dead letter after {attempts} attempts")
         else:
-            retry_delay = compute_retry_delay_seconds(
+            # The original exception was consumed inside _execute_job_safely
+            # (it's been formatted into job_error). Pass a synthetic
+            # RuntimeError that carries the rendered message so a custom
+            # RetryPolicy still has an `exc` to inspect; if a policy needs
+            # the original type, the right answer is for the handler to
+            # raise a typed error and the policy to look at its message.
+            surfaced_exc = RuntimeError(job_error)
+            retry_delay_value = retry_policy.delay_for(
                 attempt=attempts,
-                retry_delay=job_meta.get("retry_delay", 0),
-                retry_backoff=job_meta.get("retry_backoff", False),
-                retry_max_delay=job_meta.get("retry_max_delay"),
-                retry_jitter=job_meta.get("retry_jitter", True),
+                job_meta=job_meta,
+                exc=surfaced_exc,
             )
+            if retry_delay_value is None:
+                wrapped = f"Retry policy declined: {job_error}"
+                if len(wrapped) > _MAX_LAST_ERROR_CHARS:
+                    wrapped = wrapped[:_MAX_LAST_ERROR_CHARS]
+                await backend.mark_job_dead_letter(
+                    job_id, attempts=attempts, error=wrapped
+                )
+                logger.error(
+                    f"Job {job_id} dead-lettered by retry policy at attempt {attempts}"
+                )
+                return True
+            retry_delay = float(retry_delay_value)
             error_message = str(job_error)
             if len(error_message) > _MAX_LAST_ERROR_CHARS:
                 error_message = error_message[:_MAX_LAST_ERROR_CHARS]
