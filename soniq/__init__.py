@@ -299,7 +299,7 @@ def periodic(
 
 
 async def enqueue(
-    name_or_ref,
+    target,
     *,
     args: Optional[dict] = None,
     queue: Optional[str] = None,
@@ -308,16 +308,17 @@ async def enqueue(
     unique: Optional[bool] = None,
     dedup_key: Optional[str] = None,
     connection=None,
+    **func_kwargs,
 ):
-    """Enqueue a task by name (or, from phase 2, a TaskRef).
+    """Enqueue a task. Accepts a callable, a string name, or a TaskRef.
 
     Thin wrapper over ``Soniq.enqueue`` honoring an active instance via
     the contextvar; otherwise routes through the global app. See
-    ``Soniq.enqueue`` for the full contract.
+    ``Soniq.enqueue`` for the full contract and the three input shapes.
     """
     app = _resolve_app()
     return await app.enqueue(
-        name_or_ref,
+        target,
         args=args,
         queue=queue,
         priority=priority,
@@ -325,11 +326,12 @@ async def enqueue(
         unique=unique,
         dedup_key=dedup_key,
         connection=connection,
+        **func_kwargs,
     )
 
 
 async def schedule(
-    name_or_ref,
+    target,
     *,
     run_at: Optional[datetime] = None,
     run_in: Optional[Union[int, float, timedelta]] = None,
@@ -341,7 +343,8 @@ async def schedule(
     Schedule a task for future execution using the global Soniq instance.
 
     Use ``run_at`` for absolute datetime or ``run_in`` for relative delay.
-    ``name_or_ref`` and ``args`` follow the same shape as ``enqueue``.
+    ``target`` and ``args`` (or ``**kwargs`` for the callable form) follow
+    the same shape as ``enqueue``.
     """
     if run_at is None and run_in is None:
         raise ValueError("Must specify either run_at (absolute) or run_in (relative)")
@@ -357,7 +360,7 @@ async def schedule(
             raise ValueError("run_in must be int, float (seconds), or timedelta")
 
     return await enqueue(
-        name_or_ref,
+        target,
         args=args,
         connection=connection,
         scheduled_at=run_at,

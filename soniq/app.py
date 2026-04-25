@@ -437,7 +437,7 @@ class Soniq:
     @_with_active_app
     async def enqueue(
         self,
-        name_or_ref,
+        target,
         *,
         args: Optional[dict] = None,
         queue: Optional[str] = None,
@@ -446,29 +446,49 @@ class Soniq:
         unique: Optional[bool] = None,
         dedup_key: Optional[str] = None,
         connection=None,
+        **func_kwargs,
     ) -> str:
         """
-        Enqueue a task for processing.
+        Enqueue a task for processing. Three input shapes:
 
-        The cross-service producer primitive. Takes a string task name (or,
-        from phase 2, a ``TaskRef``) and an explicit ``args`` dict. The old
-        callable form ``enqueue(my_func, x=1, y=2)`` was removed; see the
-        migration guide and the ``soniq migrate-enqueue`` codemod.
+        1. **Callable** (single-repo, Celery-style)::
 
-        When ``name_or_ref`` is a string:
+               await app.enqueue(send_welcome, user_id=42)
 
-        - The name is validated against ``SONIQ_TASK_NAME_PATTERN``.
-        - Behaviour for an unregistered name is governed by
-          ``SONIQ_ENQUEUE_VALIDATION``: ``"strict"`` (default) raises
-          ``SONIQ_UNKNOWN_TASK_NAME`` and writes nothing; ``"warn"`` logs
-          and proceeds; ``"none"`` is silent. Producer services that have
-          no local registry by design should set ``=warn`` or ``=none``
-          explicitly in their environment.
+           The task name is read from ``func._soniq_name`` (set by
+           ``@app.job``) or derived as ``f"{module}.{qualname}"``.
+           Function arguments travel as ``**func_kwargs``. ``args=`` must
+           NOT be passed in this form.
+
+        2. **String task name** (cross-service, by-name)::
+
+               await app.enqueue("users.send_welcome", args={"user_id": 42})
+
+           The name is validated against ``SONIQ_TASK_NAME_PATTERN``.
+           Function arguments travel in the explicit ``args=`` dict.
+           Behaviour for an unregistered name is governed by
+           ``SONIQ_ENQUEUE_VALIDATION``: ``"strict"`` (default) raises
+           ``SONIQ_UNKNOWN_TASK_NAME``; ``"warn"`` logs and proceeds;
+           ``"none"`` is silent.
+
+        3. **TaskRef** (typed cross-service stub)::
+
+               await app.enqueue(send_welcome_ref, args={"user_id": 42})
+
+           Validates ``args`` against ``ref.args_model`` and uses
+           ``ref.default_queue`` if no explicit ``queue=``.
+
+        The shape is disambiguated by the type of ``target``: callable,
+        ``str``, or ``TaskRef``. Mixing ``args=`` with ``**func_kwargs``
+        raises ``TypeError``; mixing a string ``target`` with
+        ``**func_kwargs`` raises ``TypeError`` (kwargs would collide with
+        enqueue options - use ``args=dict``).
 
         Args:
-            name_or_ref: Dotted task name string. (``TaskRef`` support
-                lands in phase 2.)
-            args: Task arguments as a dict. Defaults to ``{}``.
+            target: Callable, string task name, or ``TaskRef``.
+            args: Task arguments as a dict. For string / TaskRef shapes.
+                Defaults to ``{}``. Cannot be combined with
+                ``**func_kwargs``.
             queue: Optional queue override. Advisory; the consumer owns
                 routing. Falls back to the registered queue, then
                 ``"default"``.
@@ -480,18 +500,25 @@ class Soniq:
             dedup_key: Explicit dedup key (overrides args-hash dedup).
             connection: Asyncpg connection for transactional enqueue
                 (Postgres only).
+            **func_kwargs: Function arguments when ``target`` is a
+                callable. If your function has parameters that collide
+                with the enqueue options above, pass them via
+                ``args=dict`` instead.
 
         Returns:
             Job UUID (non-empty string).
 
         Raises:
-            SoniqError(SONIQ_INVALID_TASK_NAME): name violates the
-                configured pattern, or `name_or_ref` is the wrong type.
+            SoniqError(SONIQ_INVALID_TASK_NAME): string name violates
+                the configured pattern.
             SoniqError(SONIQ_UNKNOWN_TASK_NAME):
                 ``SONIQ_ENQUEUE_VALIDATION="strict"`` and the name is not
                 registered locally.
             SoniqError(SONIQ_TASK_ARGS_INVALID): args fail the
-                registered ``args_model`` validation.
+                registered or TaskRef ``args_model`` validation.
+            TypeError: ``args=`` mixed with ``**func_kwargs``, or
+                string ``target`` with ``**func_kwargs``, or ``target``
+                is not a callable / str / TaskRef.
         """
         from .core.naming import validate_task_name
         from .core.queue import _normalize_scheduled_time
@@ -508,19 +535,49 @@ class Soniq:
 
         from pydantic import ValidationError
 
-        # Resolve the task name and any TaskRef-supplied defaults. The
-        # TaskRef arm short-circuits the registry-validation step entirely:
-        # the ref *is* the local declaration of the name, so registry-based
-        # validation is replaced by the ref's own args_model check.
+        # Three-way dispatch on the type of `target`. The TaskRef arm
+        # short-circuits the registry-validation step (the ref *is* the
+        # local declaration of the name); the callable arm derives the
+        # name and uses **func_kwargs as the function args; the string
+        # arm requires args=dict.
         from .task_ref import TaskRef
         from .utils.hashing import compute_args_hash
 
         ref: Optional[TaskRef] = None
-        if isinstance(name_or_ref, TaskRef):
-            ref = name_or_ref
+        if isinstance(target, TaskRef):
+            ref = target
             job_name = ref.name
+            if func_kwargs:
+                raise TypeError(
+                    "enqueue(TaskRef, ...) cannot accept **kwargs as function "
+                    "arguments; pass args=dict instead."
+                )
+        elif isinstance(target, str):
+            job_name = validate_task_name(target)
+            if func_kwargs:
+                raise TypeError(
+                    "enqueue('name', ...) cannot accept **kwargs as function "
+                    "arguments (they would collide with enqueue options "
+                    "like queue=, priority=); pass args=dict instead."
+                )
+        elif callable(target):
+            # Callable form: derive name from the registration metadata,
+            # use **func_kwargs as function args.
+            if args is not None:
+                raise TypeError(
+                    "enqueue(callable, ...) cannot mix args=dict with "
+                    "**kwargs; use one or the other."
+                )
+            job_name = (
+                getattr(target, "_soniq_name", None)
+                or f"{target.__module__}.{target.__name__}"
+            )
+            args = func_kwargs
         else:
-            job_name = validate_task_name(name_or_ref)
+            raise TypeError(
+                f"enqueue() target must be a callable, string, or TaskRef; "
+                f"got {type(target).__name__}"
+            )
 
         if args is None:
             args = {}
@@ -676,13 +733,14 @@ class Soniq:
         return result_id or job_id
 
     @_with_active_app
-    async def schedule(self, name_or_ref, run_at, *, args=None, **kwargs):
+    async def schedule(self, target, run_at, *, args=None, **kwargs):
         """Schedule a task for future execution.
 
         Thin wrapper over ``enqueue`` that sets ``scheduled_at=run_at``.
-        ``name_or_ref`` and ``args`` follow the same shape as ``enqueue``.
+        ``target`` and ``args`` (or ``**kwargs`` for the callable form)
+        follow the same shape as ``enqueue``.
         """
-        return await self.enqueue(name_or_ref, args=args, scheduled_at=run_at, **kwargs)
+        return await self.enqueue(target, args=args, scheduled_at=run_at, **kwargs)
 
     async def get_pool(self) -> Any:
         """Get database connection pool."""

@@ -59,34 +59,46 @@ async def process_payment(order_id: int, amount: float):
 
 ## enqueue()
 
-Dispatches a registered job for processing.
+Dispatches a registered job for processing. Three input shapes:
 
 ```python
+# 1. Callable (single-repo)
+job_id = await app.enqueue(send_email, to="a@b.com", subject="Hi", body="Hello")
+
+# 2. String task name (cross-service / by-name)
 job_id = await app.enqueue(
-    "myapp.tasks.send_email",
+    "users.send_email",
     args={"to": "a@b.com", "subject": "Hi", "body": "Hello"},
 )
+
+# 3. TaskRef (typed cross-repo stub)
+job_id = await app.enqueue(send_email_ref, args={"to": "a@b.com", "subject": "Hi", "body": "Hello"})
 ```
 
 ### Signature
 
 ```python
 async def enqueue(
-    name_or_ref,        # Task name string, or a TaskRef (see below)
+    target,             # Callable, string task name, or TaskRef
     *,
-    args: dict | None = None,  # Arguments passed to the job function
+    args: dict | None = None,  # Function args (string / TaskRef shapes)
     priority: int = None,      # Override the job's default priority
     queue: str = None,         # Override the job's default queue
     scheduled_at: datetime = None,  # Run at a specific time (UTC)
     unique: bool = None,       # Override the job's default uniqueness
     dedup_key: str = None,     # Custom deduplication key (instead of args hash)
     connection = None,         # Asyncpg connection for transactional enqueue
+    **func_kwargs,             # Function args (callable shape)
 ) -> str                       # Returns job UUID
 ```
 
-`args` defaults to `{}`. All option parameters are optional. When omitted, the values from the `@app.job` registration apply (or system defaults if no local registration).
+`target` is the first positional argument and selects the input shape:
 
-`name_or_ref` accepts a string task name or a `TaskRef` (typed cross-service stub). When a `TaskRef` is passed, its `args_model` validates `args` and its `default_queue` is used if `queue=` is not passed explicitly.
+- **Callable**: function args travel as `**func_kwargs`. Don't pass `args=`.
+- **String task name**: function args travel in `args=dict`. Don't pass `**func_kwargs` (they would collide with enqueue options).
+- **`TaskRef`**: function args travel in `args=dict` and are validated against `ref.args_model` if set.
+
+All option parameters are optional. When omitted, the values from the `@app.job` registration apply (or system defaults if no local registration).
 
 ### Transactional enqueue
 
@@ -98,11 +110,7 @@ pool = await app.get_pool()
 async with pool.acquire() as conn:
     async with conn.transaction():
         await conn.execute("INSERT INTO orders (id) VALUES ($1)", order_id)
-        await app.enqueue(
-            "myapp.tasks.fulfill_order",
-            args={"order_id": order_id},
-            connection=conn,
-        )
+        await app.enqueue(fulfill_order, connection=conn, order_id=order_id)
 ```
 
 Transactional enqueue requires the PostgreSQL backend.

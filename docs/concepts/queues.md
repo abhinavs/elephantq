@@ -23,11 +23,7 @@ async def process_thumbnail(image_id: str):
 You can also override the queue at enqueue time:
 
 ```python
-await app.enqueue(
-    "myapp.tasks.send_welcome_email",
-    args={"user_id": 42},
-    queue="urgent",
-)
+await app.enqueue(send_welcome_email, user_id=42, queue="urgent")
 ```
 
 ## Priority ordering
@@ -47,11 +43,7 @@ async def charge_subscription(account_id: str, amount: int):
     ...
 
 # One-off priority override
-await app.enqueue(
-    "myapp.tasks.charge_subscription",
-    args={"account_id": "acct_123", "amount": 999},
-    priority=1,
-)
+await app.enqueue(charge_subscription, account_id="acct_123", amount=999, priority=1)
 ```
 
 ## Running workers on specific queues

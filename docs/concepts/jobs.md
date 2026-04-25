@@ -73,8 +73,7 @@ import soniq
 async def send_welcome_email(user_id: int):
     ...
 
-# Derived name: f"{module}.{qualname}".
-await soniq.enqueue("myapp.tasks.send_welcome_email", args={"user_id": 42})
+await soniq.enqueue(send_welcome_email, user_id=42)
 ```
 
 **Instance API** -- explicit app object, recommended for FastAPI and multi-instance setups:
@@ -86,26 +85,32 @@ app = Soniq(database_url="postgresql://localhost/myapp")
 async def send_welcome_email(user_id: int):
     ...
 
-await app.enqueue("myapp.tasks.send_welcome_email", args={"user_id": 42})
+await app.enqueue(send_welcome_email, user_id=42)
 ```
 
 > **Tip:** Use the instance API for production applications. It gives you explicit control over database connections, configuration, and lifecycle. The global API is convenient for scripts and prototypes.
 
 ## Enqueuing jobs
 
+`enqueue` accepts three input shapes:
+
 ```python
-job_id = await app.enqueue(
-    "myapp.tasks.send_welcome_email",
-    args={"user_id": 42},
-)
+# 1. Pass the function directly (most common, single-repo)
+job_id = await app.enqueue(send_welcome_email, user_id=42)
+
+# 2. Pass the task name as a string (cross-service / by-name)
+job_id = await app.enqueue("users.send_welcome_email", args={"user_id": 42})
+
+# 3. Pass a TaskRef (typed cross-repo stub - see the cross-service guide)
+job_id = await app.enqueue(send_welcome_ref, args={"user_id": 42})
 ```
 
 You can override decorator defaults at enqueue time:
 
 ```python
 job_id = await app.enqueue(
-    "myapp.tasks.send_welcome_email",
-    args={"user_id": 42},
+    send_welcome_email,
+    user_id=42,
     priority=1,          # override priority for this run
     queue="urgent",      # route to a different queue
     unique=True,         # deduplicate this specific enqueue
@@ -121,11 +126,7 @@ pool = await app.get_pool()
 async with pool.acquire() as conn:
     async with conn.transaction():
         await conn.execute("INSERT INTO orders ...")
-        await app.enqueue(
-            "myapp.tasks.send_welcome_email",
-            args={"user_id": 42},
-            connection=conn,
-        )
+        await app.enqueue(send_welcome_email, connection=conn, user_id=42)
 ```
 
 ## JobContext injection
@@ -170,10 +171,7 @@ async def send_welcome_email(user_id: int, template: str = "default"):
     ...
 
 # This raises a validation error immediately, not when the worker runs
-await app.enqueue(
-    "myapp.tasks.send_welcome_email",
-    args={"user_id": "not_an_int"},
-)
+await app.enqueue(send_welcome_email, user_id="not_an_int")
 ```
 
 ## Job status lifecycle

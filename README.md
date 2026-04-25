@@ -26,9 +26,7 @@ async def send_welcome(to: str):
 
 ```python
 # enqueue from anywhere in your app
-# (the task name is derived as f"{module}.{qualname}", Celery-style;
-# pass an explicit @app.job(name=...) for cross-service deployments)
-await app.enqueue("jobs.send_welcome", args={"to": "dev@example.com"})
+await app.enqueue(send_welcome, to="dev@example.com")
 ```
 
 ```bash
@@ -50,7 +48,7 @@ Enqueue a job inside your database transaction. If the transaction rolls back, t
 async with pool.acquire() as conn:
     async with conn.transaction():
         await conn.execute("INSERT INTO orders ...")
-        await app.enqueue("jobs.send_invoice", args={"order_id": order_id}, connection=conn)
+        await app.enqueue(send_invoice, connection=conn, order_id=order_id)
         # Both commit together, or neither does
 ```
 

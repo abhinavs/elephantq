@@ -117,10 +117,123 @@ async def test_invalid_name_format_raises_invalid_task_name(lenient_app, bad_nam
 
 
 @pytest.mark.asyncio
-async def test_non_string_first_arg_raises_invalid_task_name(lenient_app):
-    with pytest.raises(SoniqError) as exc_info:
+async def test_non_callable_non_string_non_ref_target_raises_typeerror(lenient_app):
+    """target must be a callable, string, or TaskRef. Anything else (an int,
+    a list, a random object) raises TypeError - not SoniqError, since the
+    caller isn't even in the cross-service / by-name shape."""
+    with pytest.raises(TypeError):
         await lenient_app.enqueue(123, args={})  # type: ignore[arg-type]
-    assert exc_info.value.error_code == SONIQ_INVALID_TASK_NAME
+    with pytest.raises(TypeError):
+        await lenient_app.enqueue([1, 2, 3], args={})  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# Callable target form (Celery-style)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_enqueue_callable_with_kwargs():
+    """`enqueue(callable, **kwargs)` - the Celery-equivalent shape. The
+    name is read from `_soniq_name` (set by @app.job) or derived as
+    f'{module}.{qualname}'; **kwargs are the function args."""
+    app = make_app(enqueue_validation="strict")
+
+    @app.job
+    async def send_welcome(user_id: int, template: str = "default"):
+        pass
+
+    job_id = await app.enqueue(send_welcome, user_id=42, template="signup")
+    rows = await app.list_jobs()
+    row = next(r for r in rows if r["id"] == job_id)
+    assert row["job_name"] == send_welcome._soniq_name
+    assert row["args"] == {"user_id": 42, "template": "signup"}
+
+
+@pytest.mark.asyncio
+async def test_enqueue_callable_explicit_name_used():
+    """When @app.job(name=...) sets an explicit name, enqueue(callable)
+    uses that name, not the derived one."""
+    app = make_app(enqueue_validation="strict")
+
+    @app.job(name="users.welcome")
+    async def send_welcome(user_id: int):
+        pass
+
+    job_id = await app.enqueue(send_welcome, user_id=42)
+    rows = await app.list_jobs()
+    row = next(r for r in rows if r["id"] == job_id)
+    assert row["job_name"] == "users.welcome"
+
+
+@pytest.mark.asyncio
+async def test_enqueue_callable_with_options():
+    """Enqueue options (queue, priority) bind by name; remaining kwargs
+    go into args."""
+    app = make_app(enqueue_validation="none")
+
+    @app.job
+    async def my_task(x: int, y: int):
+        pass
+
+    job_id = await app.enqueue(my_task, x=1, y=2, queue="urgent", priority=5)
+    rows = await app.list_jobs()
+    row = next(r for r in rows if r["id"] == job_id)
+    assert row["args"] == {"x": 1, "y": 2}
+    assert row["queue"] == "urgent"
+    assert row["priority"] == 5
+
+
+@pytest.mark.asyncio
+async def test_enqueue_callable_rejects_args_dict():
+    """Cannot mix args=dict with **func_kwargs in the callable form."""
+    app = make_app(enqueue_validation="none")
+
+    @app.job
+    async def my_task(x: int):
+        pass
+
+    with pytest.raises(TypeError):
+        await app.enqueue(my_task, args={"x": 1}, x=2)
+
+
+@pytest.mark.asyncio
+async def test_enqueue_string_rejects_func_kwargs():
+    """Cannot mix string target with **kwargs (they would collide with
+    enqueue options like queue=/priority=)."""
+    app = make_app(enqueue_validation="none")
+
+    with pytest.raises(TypeError):
+        await app.enqueue("some.task", x=1)  # type: ignore[call-arg]
+
+
+@pytest.mark.asyncio
+async def test_enqueue_taskref_rejects_func_kwargs():
+    """Cannot mix TaskRef target with **kwargs; pass args=dict."""
+    from soniq import task_ref
+
+    app = make_app(enqueue_validation="none")
+    ref = task_ref(name="billing.foo")
+
+    with pytest.raises(TypeError):
+        await app.enqueue(ref, x=1)  # type: ignore[call-arg]
+
+
+@pytest.mark.asyncio
+async def test_enqueue_callable_unregistered_derives_module_qualname():
+    """A callable that wasn't registered via @app.job still has a name
+    derived from f'{module}.{qualname}'. With enqueue_validation='none'
+    it lands a row; with 'strict' it raises SONIQ_UNKNOWN_TASK_NAME."""
+    lenient = make_app(enqueue_validation="none")
+
+    async def naked_func(x: int):
+        pass
+
+    job_id = await lenient.enqueue(naked_func, x=1)
+    rows = await lenient.list_jobs()
+    row = next(r for r in rows if r["id"] == job_id)
+    expected = f"{naked_func.__module__}.{naked_func.__name__}"
+    assert row["job_name"] == expected
 
 
 # ---------------------------------------------------------------------------

@@ -15,11 +15,7 @@ pool = await eq.get_pool()
 async with pool.acquire() as conn:
     async with conn.transaction():
         await conn.execute("INSERT INTO orders (id, total) VALUES ($1, $2)", order_id, total)
-        await eq.enqueue(
-            "myapp.tasks.send_invoice",
-            args={"order_id": order_id},
-            connection=conn,
-        )
+        await eq.enqueue(send_invoice, connection=conn, order_id=order_id)
 ```
 
 The `connection=conn` parameter is the only thing that changes from a normal enqueue call. Everything else works the same -- job options, priority, scheduling.
@@ -58,11 +54,7 @@ async def create_order(product_id: int, quantity: int):
                 "INSERT INTO orders (product_id, quantity) VALUES ($1, $2) RETURNING id",
                 product_id, quantity,
             )
-            await eq.enqueue(
-            "myapp.tasks.send_invoice",
-            args={"order_id": order_id},
-            connection=conn,
-        )
+            await eq.enqueue(send_invoice, connection=conn, order_id=order_id)
 
     return {"order_id": order_id}
 ```
@@ -101,11 +93,7 @@ pool = await soniq.get_pool()
 async with pool.acquire() as conn:
     async with conn.transaction():
         await conn.execute("INSERT INTO orders ...")
-        await soniq.enqueue(
-            "myapp.tasks.send_invoice",
-            args={"order_id": order_id},
-            connection=conn,
-        )
+        await soniq.enqueue(send_invoice, connection=conn, order_id=order_id)
 ```
 
 > **Note:** Transactional enqueue requires PostgreSQL. It is not available with the SQLite or Memory backends. Calling `enqueue(..., connection=conn)` on a non-PostgreSQL backend raises a `ValueError`.

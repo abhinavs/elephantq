@@ -101,7 +101,7 @@ await app.close()
 
 ```python
 async with Soniq(database_url="postgresql://localhost/myapp") as app:
-    await app.enqueue("myapp.tasks.my_job", args={"message": "hello"})
+    await app.enqueue(my_job, message="hello")
 ```
 
 The connection pool initializes lazily on first use. No explicit init call is needed.
@@ -122,11 +122,7 @@ pool = await app.get_pool()
 async with pool.acquire() as conn:
     async with conn.transaction():
         await conn.execute("INSERT INTO orders ...")
-        await app.enqueue(
-            "myapp.tasks.send_receipt",
-            args={"order_id": 42},
-            connection=conn,
-        )
+        await app.enqueue(send_receipt, connection=conn, order_id=42)
 ```
 
 Returns `None` for SQLite and in-memory backends (they do not use asyncpg).
