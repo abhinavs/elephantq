@@ -46,6 +46,7 @@ nav = [
     { "Webhook delivery" = "recipes/webhook-delivery.md" },
     { "Custom retry policy" = "recipes/custom-retry-policy.md" },
     { "Custom serializer" = "recipes/custom-serializer.md" },
+    { "Custom metrics sink" = "recipes/custom-metrics-sink.md" },
   ] },
 ]
 

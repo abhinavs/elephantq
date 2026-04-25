@@ -102,6 +102,7 @@ class Soniq:
         retry_policy: Optional[Any] = None,
         serializer: Optional[Any] = None,
         log_sink: Optional[Any] = None,
+        metrics_sink: Optional[Any] = None,
         **settings_overrides,
     ):
         """
@@ -125,6 +126,11 @@ class Soniq:
                 When provided and `logging_enabled = true`, log records
                 flow into this sink instead of (or in addition to) the
                 built-in `DatabaseLogHandler`.
+            metrics_sink: Optional `soniq.observability.MetricsSink`
+                instance. Defaults to `NoopMetricsSink`. Pass
+                `PrometheusMetricsSink()` to expose per-job metrics
+                via `prometheus_client`. The sink is invoked by the
+                worker around each job's execution.
             **settings_overrides: Override any SoniqSettings field
         """
         # Core instance state
@@ -141,11 +147,13 @@ class Soniq:
         # Pluggable extension points. Defaults are wired so callers that
         # never touch these fields keep the existing behavior verbatim.
         from .core.retry import DEFAULT_RETRY_POLICY
+        from .observability.metrics import DEFAULT_METRICS_SINK
         from .utils.serialization import DEFAULT_SERIALIZER
 
         self._retry_policy = retry_policy or DEFAULT_RETRY_POLICY
         self._serializer = serializer or DEFAULT_SERIALIZER
         self._log_sink = log_sink  # None means "use the built-in handler"
+        self._metrics_sink = metrics_sink or DEFAULT_METRICS_SINK
 
         # Settings with overrides
         # Only pass database_url to settings for postgres backend
@@ -524,6 +532,7 @@ class Soniq:
             settings=self._settings,
             hooks=self._hooks,
             retry_policy=self._retry_policy,
+            metrics_sink=self._metrics_sink,
         )
 
         # `soniq start` only runs the worker. Recurring jobs require a

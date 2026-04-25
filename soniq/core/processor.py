@@ -131,6 +131,7 @@ async def process_job_via_backend(
     worker_id: Optional[str] = None,
     hooks: Optional[dict] = None,
     retry_policy: Optional[Any] = None,
+    metrics_sink: Optional[Any] = None,
 ) -> bool:
     """
     Process a single job using a StorageBackend.
@@ -155,6 +156,11 @@ async def process_job_via_backend(
         from .retry import DEFAULT_RETRY_POLICY
 
         retry_policy = DEFAULT_RETRY_POLICY
+
+    if metrics_sink is None:
+        from soniq.observability.metrics import DEFAULT_METRICS_SINK
+
+        metrics_sink = DEFAULT_METRICS_SINK
 
     job_record = await backend.fetch_and_lock_job(
         queues=queues,
@@ -193,6 +199,24 @@ async def process_job_via_backend(
         logger.error(f"Job {job_name} not registered - moved to dead letter queue")
         return True
 
+    queue_name = job_record.get("queue") or "default"
+    await metrics_sink.record_job_start(
+        job_id=job_id,
+        job_name=job_name,
+        queue=queue_name,
+        attempt=attempts,
+    )
+
+    async def _emit_end(status: str, error: Optional[str] = None) -> None:
+        await metrics_sink.record_job_end(
+            job_id=job_id,
+            job_name=job_name,
+            queue=queue_name,
+            status=status,
+            duration_s=time.time() - start_time,
+            error=error,
+        )
+
     await _call_hooks(_hooks, "before_job", job_name, job_id, attempts)
 
     try:
@@ -206,6 +230,7 @@ async def process_job_via_backend(
             attempts=max_attempts,
             error=str(corruption_error),
         )
+        await _emit_end("dead_letter", error=str(corruption_error))
         return True
 
     duration_ms = round((time.time() - start_time) * 1000, 2)
@@ -250,6 +275,7 @@ async def process_job_via_backend(
                 capped,
                 restored_attempts,
             )
+            await _emit_end("snoozed")
             return True
 
         settings = get_settings()
@@ -258,6 +284,7 @@ async def process_job_via_backend(
         )
         logger.info(f"Job {job_id} completed in {duration_ms}ms")
         await _call_hooks(_hooks, "after_job", job_name, job_id, duration_ms)
+        await _emit_end("done")
     else:
         await _call_hooks(
             _hooks, "on_error", job_name, job_id, str(job_error), attempts
@@ -272,6 +299,7 @@ async def process_job_via_backend(
                 error=wrapped,
             )
             logger.error(f"Job {job_id} moved to dead letter after {attempts} attempts")
+            await _emit_end("dead_letter", error=str(job_error))
         else:
             # The original exception was consumed inside _execute_job_safely
             # (it's been formatted into job_error). Pass a synthetic
@@ -295,6 +323,7 @@ async def process_job_via_backend(
                 logger.error(
                     f"Job {job_id} dead-lettered by retry policy at attempt {attempts}"
                 )
+                await _emit_end("dead_letter", error=str(job_error))
                 return True
             retry_delay = float(retry_delay_value)
             error_message = str(job_error)
@@ -314,5 +343,6 @@ async def process_job_via_backend(
                     else "retrying immediately"
                 )
             )
+            await _emit_end("failed", error=str(job_error))
 
     return True

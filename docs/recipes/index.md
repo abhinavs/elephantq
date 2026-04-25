@@ -13,3 +13,4 @@ Copy-paste patterns for common background job use cases.
 
 - [Custom retry policy](custom-retry-policy.md) - rate-limit-aware backoff, type-specific delays, no-retry mode
 - [Custom serializer](custom-serializer.md) - schema-versioned payloads, redaction, JSON wrappers
+- [Custom metrics sink](custom-metrics-sink.md) - Prometheus, statsd, OpenTelemetry, or anything else
