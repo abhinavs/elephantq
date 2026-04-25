@@ -12,7 +12,6 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 import soniq
-from soniq.core.heartbeat import cleanup_stale_workers
 from soniq.core.worker import Worker
 
 
@@ -57,7 +56,7 @@ async def test_stale_worker_resets_processing_jobs():
         )
 
     # Run stale worker cleanup (threshold = 60 seconds, worker is 10 min old)
-    cleaned = await cleanup_stale_workers(pool, stale_threshold_seconds=60)
+    cleaned = await app._backend.cleanup_stale_workers(60)
     assert cleaned >= 1
 
     # Verify the stuck job was reset to 'queued'
@@ -124,7 +123,7 @@ async def test_recovered_job_is_processed_by_new_worker():
         )
 
     # Run crash recovery
-    await cleanup_stale_workers(pool, stale_threshold_seconds=60)
+    await app._backend.cleanup_stale_workers(60)
 
     # Now a new worker should pick up and process the job
     processed = await worker.run_once(queues=None, max_jobs=1)
@@ -178,7 +177,7 @@ async def test_active_worker_jobs_not_reset():
         )
 
     # Run cleanup — threshold 60s, but worker heartbeat is NOW()
-    await cleanup_stale_workers(pool, stale_threshold_seconds=60)
+    await app._backend.cleanup_stale_workers(60)
 
     # Job should STILL be processing
     async with pool.acquire() as conn:

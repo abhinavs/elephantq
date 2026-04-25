@@ -352,30 +352,6 @@ async def test_args_model_valid_passes(app):
 
 
 # ---------------------------------------------------------------------------
-# Module-level soniq.enqueue routes through the active app
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_module_level_enqueue_routes_to_active_app():
-    """Module-level soniq.enqueue routes through the active-app
-    contextvar when one is set. Use the memory backend so this test
-    does not depend on the Postgres test database schema."""
-    import soniq
-    from soniq._active import _active_app
-
-    app = make_app(enqueue_validation="none")
-    token = _active_app.set(app)
-    try:
-        job_id = await soniq.enqueue("billing.modlevel", args={"x": 1})
-    finally:
-        _active_app.reset(token)
-    assert isinstance(job_id, str) and len(job_id) == 36
-    rows = await app.list_jobs()
-    assert any(r["id"] == job_id for r in rows)
-
-
-# ---------------------------------------------------------------------------
 # Transactional enqueue surface
 # ---------------------------------------------------------------------------
 

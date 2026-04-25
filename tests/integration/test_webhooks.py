@@ -3,7 +3,7 @@ import asyncio
 import pytest
 from aiohttp import web
 
-from soniq.db.connection import get_pool
+import soniq
 from soniq.features import webhooks
 
 
@@ -31,8 +31,9 @@ async def test_webhook_delivery_smoke():
     try:
         await webhooks.start_webhook_system()
 
-        pool = await get_pool()
-        async with pool.acquire() as conn:
+        app_for_pool = soniq._get_global_app()
+        await app_for_pool._ensure_initialized()
+        async with app_for_pool.backend.pool.acquire() as conn:
             await conn.execute(
                 "TRUNCATE TABLE soniq_webhook_deliveries, soniq_webhook_endpoints RESTART IDENTITY CASCADE"
             )

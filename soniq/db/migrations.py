@@ -31,9 +31,9 @@ class MigrationRunner:
     """Manages database schema migrations for Soniq.
 
     The runner is pool-agnostic: callers always pass a connection (or a
-    pool) explicitly. The previous global-pool fallback via
-    ``get_context_pool`` is gone - migrations run against the connection
-    that the caller already holds (Soniq's backend pool, in practice).
+    pool) explicitly. There is no global-pool fallback - migrations run
+    against the connection that the caller already holds (Soniq's
+    backend pool, in practice).
     """
 
     def __init__(

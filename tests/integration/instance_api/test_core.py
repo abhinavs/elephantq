@@ -11,7 +11,6 @@ from pydantic import BaseModel
 
 import soniq
 from soniq.core.registry import get_job
-from soniq.db.connection import close_pool
 from tests.db_utils import TEST_DATABASE_URL
 
 # Configure logging to see what's happening
@@ -263,4 +262,3 @@ async def test_task_discovery():
     # Restore original environment variables
     os.environ.clear()
     os.environ.update(original_env)
-    await close_pool()

@@ -5,38 +5,15 @@ Instance-based architecture to replace global state patterns.
 Enables multiple isolated Soniq instances with independent configurations.
 """
 
-import functools
 import logging
 from pathlib import Path
 from typing import Any, List, Optional
 
-from ._active import _active_app
 from .core.registry import JobRegistry
 from .errors import SoniqError
 from .settings import SoniqSettings
 
 logger = logging.getLogger(__name__)
-
-
-def _with_active_app(method):
-    """Decorator that attaches `self` to the active-app contextvar for the
-    duration of an async instance method. Feature helpers read this to honor
-    the caller's `Soniq` instead of silently using the global app.
-
-    Resets on exit so the var does not leak across tasks: because
-    `ContextVar` is task-local, restoration via `reset(token)` is safe even
-    when multiple calls happen concurrently on different instances.
-    """
-
-    @functools.wraps(method)
-    async def wrapper(self, *args, **kwargs):
-        token = _active_app.set(self)
-        try:
-            return await method(self, *args, **kwargs)
-        finally:
-            _active_app.reset(token)
-
-    return wrapper
 
 
 def _pool_sizing_error(
@@ -355,7 +332,6 @@ class Soniq:
             self._closed = True
             self._initialized = False
 
-    @_with_active_app
     async def _reset(self) -> None:
         """
         Delete all jobs and workers. Used in test fixtures.
@@ -446,7 +422,6 @@ class Soniq:
         self._hooks["on_error"].append(fn)
         return fn
 
-    @_with_active_app
     async def enqueue(
         self,
         target,
@@ -744,7 +719,6 @@ class Soniq:
 
         return result_id or job_id
 
-    @_with_active_app
     async def schedule(self, target, run_at, *, args=None, **kwargs):
         """Schedule a task for future execution.
 
@@ -763,7 +737,6 @@ class Soniq:
         """Get job registry."""
         return self._job_registry
 
-    @_with_active_app
     async def run_worker(
         self,
         concurrency: int = 4,
@@ -867,7 +840,6 @@ class Soniq:
 
     # Job Management API
 
-    @_with_active_app
     async def get_job(self, job_id: str):
         """
         Get status information for a specific job.
@@ -881,7 +853,6 @@ class Soniq:
         await self._ensure_initialized()
         return await self._backend.get_job(job_id)  # type: ignore[union-attr]
 
-    @_with_active_app
     async def get_result(
         self,
         job_id: str,
@@ -914,7 +885,6 @@ class Soniq:
             return result_model(**result)
         return result_model(result)
 
-    @_with_active_app
     async def cancel_job(self, job_id: str):
         """
         Cancel a queued job.
@@ -928,7 +898,6 @@ class Soniq:
         await self._ensure_initialized()
         return await self._backend.cancel_job(job_id)  # type: ignore[union-attr]
 
-    @_with_active_app
     async def retry_job(self, job_id: str):
         """
         Retry a failed job.
@@ -942,7 +911,6 @@ class Soniq:
         await self._ensure_initialized()
         return await self._backend.retry_job(job_id)  # type: ignore[union-attr]
 
-    @_with_active_app
     async def delete_job(self, job_id: str):
         """
         Delete a job from the queue.
@@ -956,7 +924,6 @@ class Soniq:
         await self._ensure_initialized()
         return await self._backend.delete_job(job_id)  # type: ignore[union-attr]
 
-    @_with_active_app
     async def list_jobs(
         self,
         queue: Optional[str] = None,
@@ -981,7 +948,6 @@ class Soniq:
             queue=queue, status=status, limit=limit, offset=offset
         )
 
-    @_with_active_app
     async def get_queue_stats(self):
         """
         Get statistics for all queues.
@@ -1027,7 +993,6 @@ class Soniq:
         async with self._pool.acquire() as conn:  # type: ignore[union-attr]
             return await migration_runner._run_migrations_with_connection(conn)
 
-    @_with_active_app
     async def _setup(self) -> int:
         """
         Set up Soniq — create database (if needed) and run migrations.

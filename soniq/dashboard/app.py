@@ -4,7 +4,7 @@ Dashboard data collection and API for Soniq.
 The HTTP layer (``fastapi_app``) constructs a single ``DashboardService``
 bound to the configured ``Soniq`` and calls methods on it. The class
 replaces the previous bag of module-level functions that all reached for
-the global app via ``get_context_pool``.
+the global app's pool through a shared context.
 """
 
 import uuid

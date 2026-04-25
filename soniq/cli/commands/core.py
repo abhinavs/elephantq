@@ -4,8 +4,6 @@ Consolidated Soniq CLI commands - refactored for extensibility
 
 import logging
 
-from soniq import list_jobs
-
 from ..colors import StatusIcon, print_status
 from ..registry import register_simple_command
 
@@ -272,100 +270,86 @@ async def handle_start_command(args):
 
 async def handle_status_command(args):
     """Handle status command (health + jobs + queues functionality)"""
-    from soniq.db.context import (
-        DatabaseContext,
-        clear_current_context,
-        set_current_context,
-    )
 
-    # Resolve Soniq instance from CLI arguments
     try:
         soniq_instance = await resolve_soniq_instance(args)
     except Exception as e:
         print_status(f"Configuration error: {e}", "error")
         return 1
 
-    # Set up database context
-    if soniq_instance:
-        context = DatabaseContext.from_instance(soniq_instance)
+    if soniq_instance is not None:
         print_status(
             f"Using instance-based configuration: {soniq_instance.settings.database_url}",
             "info",
         )
+        app = soniq_instance
+        owns_instance = True
     else:
-        context = DatabaseContext.from_global_api()
-        print_status("Using global API configuration", "info")
+        import soniq as _soniq
 
-    set_current_context(context)
+        print_status("Using global API configuration", "info")
+        app = _soniq._get_global_app()
+        owns_instance = False
 
     try:
+        await app._ensure_initialized()
         print(f"\n{StatusIcon.rocket()} Soniq System Status")
 
         # 1. Health Check
         try:
-            from soniq.db.context import get_context_pool
-
-            pool = await get_context_pool()
-            async with pool.acquire() as conn:
+            async with app.backend.pool.acquire() as conn:
                 result = await conn.fetchval("SELECT 1")
-                if result == 1:
-                    print_status("Database connection: OK", "success")
-                else:
-                    print_status("Database connection: FAILED", "error")
-                    return 1
-
+            if result == 1:
+                print_status("Database connection: OK", "success")
+            else:
+                print_status("Database connection: FAILED", "error")
+                return 1
         except Exception as e:
             print_status(f"Health check failed: {e}", "error")
             return 1
-    finally:
-        clear_current_context()
 
-    # 2. Queue Statistics
-    try:
-        import soniq
+        # 2. Queue Statistics
+        try:
+            queues = await app.get_queue_stats()
+            if queues:
+                total_jobs = sum(q["total_jobs"] for q in queues)
+                total_queued = sum(q["queued"] for q in queues)
+                total_failed = sum(q["failed"] + q["dead_letter"] for q in queues)
 
-        queues = await soniq.get_queue_stats()
-        if queues:
-            total_jobs = sum(q["total_jobs"] for q in queues)
-            total_queued = sum(q["queued"] for q in queues)
-            total_failed = sum(q["failed"] + q["dead_letter"] for q in queues)
+                print("\nQueue Statistics:")
+                print(f"  Total Jobs: {total_jobs}")
+                print(f"  Queued: {total_queued}")
+                print(f"  Failed/Dead Letter: {total_failed}")
+                print(f"  Active Queues: {len(queues)}")
 
-            print("\nQueue Statistics:")
-            print(f"  Total Jobs: {total_jobs}")
-            print(f"  Queued: {total_queued}")
-            print(f"  Failed/Dead Letter: {total_failed}")
-            print(f"  Active Queues: {len(queues)}")
-
-            if args.verbose:
-                print("\nPer-Queue Breakdown:")
-                print(
-                    f"{'Queue':<15} {'Total':<8} {'Queued':<8} {'Done':<8} {'Failed':<8}"
-                )
-                print("-" * 60)
-                for queue in queues:
+                if args.verbose:
+                    print("\nPer-Queue Breakdown:")
                     print(
-                        f"{queue['queue']:<15} {queue['total_jobs']:<8} {queue['queued']:<8} {queue['done']:<8} {queue['failed']:<8}"
+                        f"{'Queue':<15} {'Total':<8} {'Queued':<8} {'Done':<8} {'Failed':<8}"
                     )
+                    print("-" * 60)
+                    for queue in queues:
+                        print(
+                            f"{queue['queue']:<15} {queue['total_jobs']:<8} {queue['queued']:<8} {queue['done']:<8} {queue['failed']:<8}"
+                        )
 
-            if total_queued > 0:
-                print_status(f"{total_queued} jobs waiting to be processed", "warning")
-            elif total_failed > 0:
-                print_status(f"{total_failed} jobs need attention", "warning")
+                if total_queued > 0:
+                    print_status(
+                        f"{total_queued} jobs waiting to be processed", "warning"
+                    )
+                elif total_failed > 0:
+                    print_status(f"{total_failed} jobs need attention", "warning")
+                else:
+                    print_status("All jobs processed successfully", "success")
             else:
-                print_status("All jobs processed successfully", "success")
-        else:
-            print_status("No jobs found in any queue", "info")
+                print_status("No jobs found in any queue", "info")
+        except Exception as e:
+            print_status(f"Failed to get queue stats: {e}", "error")
+            return 1
 
-    except Exception as e:
-        print_status(f"Failed to get queue stats: {e}", "error")
-        return 1
-
-    # 3. Worker Summary
-    try:
-        from soniq.core.heartbeat import get_worker_status
-
-        worker_status = await get_worker_status(pool)
-        if "error" not in worker_status:
+        # 3. Worker Summary
+        try:
+            worker_status = await app.backend.get_worker_status()
             status_counts = worker_status.get("status_counts", {})
             active_count = status_counts.get("active", 0)
             stale_count = len(worker_status.get("stale_workers", []))
@@ -378,30 +362,32 @@ async def handle_status_command(args):
                 print(f"\nWorkers: {worker_summary}")
             else:
                 print("\nWorkers: None running (use 'soniq start' to begin)")
-    except Exception as e:
-        # Don't fail the entire status command if worker status fails
-        logger.debug(f"Could not get worker summary: {e}")
-
-    # 4. Recent Jobs (if --jobs flag)
-    if args.jobs:
-        try:
-            recent_jobs = await list_jobs(limit=10)
-            if recent_jobs:
-                print(f"\nRecent Jobs ({len(recent_jobs)}):")
-                print(f"{'ID'[:8]:<8} {'Name':<25} {'Status':<12} {'Queue':<10}")
-                print("-" * 60)
-                for job in recent_jobs:
-                    job_name = job["job_name"].split(".")[-1]  # Just function name
-                    print(
-                        f"{job['id'][:8]:<8} {job_name:<25} {job['status']:<12} {job['queue']:<10}"
-                    )
-            else:
-                print("  No recent jobs")
-
         except Exception as e:
-            print_status(f"Failed to get recent jobs: {e}", "error")
+            # Don't fail the entire status command if worker status fails
+            logger.debug(f"Could not get worker summary: {e}")
 
-    return 0
+        # 4. Recent Jobs (if --jobs flag)
+        if args.jobs:
+            try:
+                recent_jobs = await app.list_jobs(limit=10)
+                if recent_jobs:
+                    print(f"\nRecent Jobs ({len(recent_jobs)}):")
+                    print(f"{'ID'[:8]:<8} {'Name':<25} {'Status':<12} {'Queue':<10}")
+                    print("-" * 60)
+                    for job in recent_jobs:
+                        job_name = job["job_name"].split(".")[-1]
+                        print(
+                            f"{job['id'][:8]:<8} {job_name:<25} {job['status']:<12} {job['queue']:<10}"
+                        )
+                else:
+                    print("  No recent jobs")
+            except Exception as e:
+                print_status(f"Failed to get recent jobs: {e}", "error")
+
+        return 0
+    finally:
+        if owns_instance and app._is_initialized:
+            await app.close()
 
 
 async def handle_cli_debug_command(args):
@@ -438,59 +424,44 @@ async def handle_cli_debug_command(args):
 
 async def handle_workers_command(args):
     """Handle workers command (worker monitoring functionality)"""
-    from soniq.core.heartbeat import cleanup_stale_workers, get_worker_status
-    from soniq.db.context import (
-        DatabaseContext,
-        clear_current_context,
-        get_context_pool,
-        set_current_context,
-    )
 
-    # Resolve Soniq instance from CLI arguments
     try:
         soniq_instance = await resolve_soniq_instance(args)
     except Exception as e:
         print_status(f"Configuration error: {e}", "error")
         return 1
 
-    # Set up database context
-    if soniq_instance:
-        context = DatabaseContext.from_instance(soniq_instance)
+    if soniq_instance is not None:
         print_status(
             f"Using instance-based configuration: {soniq_instance.settings.database_url}",
             "info",
         )
+        app = soniq_instance
+        owns_instance = True
     else:
-        context = DatabaseContext.from_global_api()
-        print_status("Using global API configuration", "info")
+        import soniq as _soniq
 
-    set_current_context(context)
+        print_status("Using global API configuration", "info")
+        app = _soniq._get_global_app()
+        owns_instance = False
 
     try:
+        await app._ensure_initialized()
         print(f"\n{StatusIcon.workers()} Soniq Worker Status")
-
-        pool = await get_context_pool()
 
         # Clean up stale workers if requested
         if args.cleanup:
             print_status("Cleaning up stale worker records...", "info")
-            cleaned = await cleanup_stale_workers(pool)
+            stale_threshold = int(app.settings.heartbeat_timeout)
+            cleaned = await app.backend.cleanup_stale_workers(stale_threshold)
             if cleaned > 0:
                 print_status(f"Cleaned up {cleaned} stale worker records", "success")
             else:
                 print_status("No stale workers found", "info")
             print()
 
-        # Get worker status
-        worker_status = await get_worker_status(pool)
+        worker_status = await app.backend.get_worker_status()
 
-        if "error" in worker_status:
-            print_status(
-                f"Failed to get worker status: {worker_status['error']}", "error"
-            )
-            return 1
-
-        # Display status summary
         status_counts = worker_status.get("status_counts", {})
         active_count = status_counts.get("active", 0)
         stopped_count = status_counts.get("stopped", 0)
@@ -502,7 +473,6 @@ async def handle_workers_command(args):
         print(f"Stopped Workers: {stopped_count}")
         print(f"Total Concurrency: {total_concurrency}")
 
-        # Display active workers
         active_workers = worker_status.get("active_workers", [])
         if active_workers:
             print("\nActive Workers:")
@@ -521,7 +491,6 @@ async def handle_workers_command(args):
                 print(f"     Uptime: {uptime_str}")
                 print(f"     Last Heartbeat: {worker['last_heartbeat']}")
 
-                # Show metadata if available
                 metadata = worker.get("metadata", {})
                 if isinstance(metadata, dict) and metadata:
                     if "cpu_percent" in metadata:
@@ -530,16 +499,12 @@ async def handle_workers_command(args):
                         print(f"     Memory: {metadata['memory_mb']} MB")
                 print()
 
-        # Display stale workers if requested or if any exist
         stale_workers = worker_status.get("stale_workers", [])
         if stale_workers and (args.stale or health == "degraded"):
             print("\nStale Workers (no recent heartbeat):")
             for worker in stale_workers:
-                stale_time = int(worker["stale_seconds"])
-                stale_str = f"{stale_time // 60}m {stale_time % 60}s ago"
-
                 print(f"  🔴 {worker['hostname']}:{worker['pid']}")
-                print(f"     Last Heartbeat: {worker['last_heartbeat']} ({stale_str})")
+                print(f"     Last Heartbeat: {worker['last_heartbeat']}")
                 print()
 
             if not args.cleanup:
@@ -549,9 +514,9 @@ async def handle_workers_command(args):
             print("\nNo workers found. Start workers with: soniq start")
 
         return 0
-
     except Exception as e:
         print_status(f"Failed to get worker status: {e}", "error")
         return 1
     finally:
-        clear_current_context()
+        if owns_instance and app._is_initialized:
+            await app.close()

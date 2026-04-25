@@ -5,13 +5,13 @@ import pytest
 
 
 class TestCleanupStaleWorkersParameterized:
-    """Verify cleanup_stale_workers uses parameterized INTERVAL."""
+    """Verify PostgresBackend.cleanup_stale_workers uses parameterized INTERVAL."""
 
     @pytest.mark.asyncio
     async def test_interval_is_parameterized(self):
         from contextlib import asynccontextmanager
 
-        from soniq.core.heartbeat import cleanup_stale_workers
+        from soniq.backends.postgres import PostgresBackend
 
         mock_conn = AsyncMock()
         mock_conn.fetch = AsyncMock(return_value=[])
@@ -21,10 +21,19 @@ class TestCleanupStaleWorkersParameterized:
         async def _acquire():
             yield mock_conn
 
+        @asynccontextmanager
+        async def _txn():
+            yield
+
+        mock_conn.transaction = MagicMock(return_value=_txn())
+
         mock_pool = MagicMock()
         mock_pool.acquire = _acquire
 
-        await cleanup_stale_workers(mock_pool, stale_threshold_seconds=120)
+        backend = PostgresBackend.__new__(PostgresBackend)
+        backend._pool = mock_pool
+
+        await backend.cleanup_stale_workers(120)
 
         fetch_call = mock_conn.fetch.call_args
         sql = fetch_call.args[0]

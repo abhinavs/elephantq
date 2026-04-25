@@ -17,7 +17,6 @@ from tests.db_utils import TEST_DATABASE_URL
 os.environ["SONIQ_DATABASE_URL"] = TEST_DATABASE_URL
 
 import soniq  # noqa: E402
-from soniq.db.connection import get_pool  # noqa: E402
 
 
 class JobArgsModel(BaseModel):
@@ -43,7 +42,7 @@ async def clean_db():
     """Clean database before each test"""
     from tests.db_utils import clear_table
 
-    pool = await get_pool()
+    pool = await soniq._get_global_app().get_pool()
     await clear_table(pool)
     yield
     await clear_table(pool)

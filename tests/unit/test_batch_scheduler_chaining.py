@@ -89,9 +89,8 @@ def fake_pool(monkeypatch):
     """Stub the global Soniq app's backend pool with `_FakePool`.
 
     The post-S1 BatchScheduler reaches `soniq._get_global_app().backend.pool`
-    directly instead of calling the deleted `get_context_pool`. We replace
-    the global app with a tiny stand-in that satisfies the lookup chain
-    without spinning up Postgres.
+    directly. We replace the global app with a tiny stand-in that satisfies
+    the lookup chain without spinning up Postgres.
     """
     pool = _FakePool()
 

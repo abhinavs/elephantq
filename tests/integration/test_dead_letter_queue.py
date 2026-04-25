@@ -1,11 +1,6 @@
 import pytest
 
 import soniq
-from soniq.db.context import (
-    DatabaseContext,
-    get_context_pool,
-    set_current_context,
-)
 from soniq.features import dead_letter
 from soniq.features.dead_letter import DeadLetterReason
 from tests.db_utils import TEST_DATABASE_URL
@@ -17,9 +12,8 @@ async def test_dead_letter_move_creates_record():
         database_url=TEST_DATABASE_URL, dead_letter_queue_enabled=True
     )
 
-    # Ensure dead_letter operations use the same pool as enqueue (the global app's pool)
     global_app = soniq._get_global_app()
-    set_current_context(DatabaseContext.from_instance(global_app))
+    await global_app._ensure_initialized()
 
     await dead_letter.setup_dead_letter_queue()
 
@@ -36,8 +30,7 @@ async def test_dead_letter_move_creates_record():
     )
     assert moved is True
 
-    pool = await get_context_pool()
-    async with pool.acquire() as conn:
+    async with global_app.backend.pool.acquire() as conn:
         job_row = await conn.fetchrow(
             "SELECT status FROM soniq_jobs WHERE id = $1", job_id
         )

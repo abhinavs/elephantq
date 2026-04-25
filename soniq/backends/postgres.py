@@ -7,10 +7,11 @@ Uses asyncpg for all database operations. Supports:
 - Transactional enqueue via caller-provided connection
 """
 
+import json
 import logging
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Optional
 
 import asyncpg
@@ -18,9 +19,27 @@ import asyncpg
 from soniq.db.helpers import rows_affected as _rows_affected
 
 from ..core.leadership import advisory_key
-from ..db.connection import _init_connection
 
 logger = logging.getLogger(__name__)
+
+
+async def _init_connection(conn: asyncpg.Connection) -> None:
+    """Initialize a pooled asyncpg connection: UTC timezone and a JSONB
+    codec so layers above this one can treat ``args``, ``result``, ``tags``,
+    etc. as native Python values without manual ``json.dumps`` /
+    ``json.loads`` dances.
+
+    The encoder uses ``default=str`` to match the project's long-standing
+    tolerance for non-JSON-native types (datetimes, Decimal, UUID) in job
+    payloads and results.
+    """
+    await conn.execute("SET timezone = 'UTC'")
+    await conn.set_type_codec(
+        "jsonb",
+        encoder=lambda v: json.dumps(v, default=str),
+        decoder=json.loads,
+        schema="pg_catalog",
+    )
 
 
 def _row_to_dict(row: asyncpg.Record) -> dict:
@@ -806,6 +825,72 @@ class PostgresBackend:
                 """,
                 uid,
             )
+
+    async def get_worker_status(self) -> dict:
+        """Snapshot of registered workers for the CLI ``soniq workers``
+        command. Returns status counts, active workers with uptime, and
+        any workers whose heartbeat is older than 5 minutes.
+        """
+        async with self.pool.acquire() as conn:
+            status_counts = await conn.fetch(
+                "SELECT status, COUNT(*) as count FROM soniq_workers GROUP BY status"
+            )
+
+            active_workers = await conn.fetch(
+                """
+                SELECT id, hostname, pid, queues, concurrency, last_heartbeat,
+                       started_at, metadata
+                FROM soniq_workers
+                WHERE status = 'active'
+                ORDER BY last_heartbeat DESC
+                """
+            )
+
+            stale_workers = await conn.fetch(
+                """
+                SELECT id, hostname, pid, last_heartbeat
+                FROM soniq_workers
+                WHERE status = 'active'
+                  AND last_heartbeat < NOW() - INTERVAL '300 seconds'
+                """
+            )
+
+        now = datetime.now(timezone.utc)
+        return {
+            "status_counts": {row["status"]: row["count"] for row in status_counts},
+            "active_workers": [
+                {
+                    "id": str(row["id"]),
+                    "hostname": row["hostname"],
+                    "pid": row["pid"],
+                    "queues": row["queues"] or [],
+                    "concurrency": row["concurrency"],
+                    "last_heartbeat": row["last_heartbeat"].isoformat(),
+                    "started_at": row["started_at"].isoformat(),
+                    "uptime_seconds": (
+                        now
+                        - (
+                            row["started_at"].replace(tzinfo=timezone.utc)
+                            if row["started_at"].tzinfo is None
+                            else row["started_at"]
+                        )
+                    ).total_seconds(),
+                    "metadata": row["metadata"],
+                }
+                for row in active_workers
+            ],
+            "stale_workers": [
+                {
+                    "id": str(row["id"]),
+                    "hostname": row["hostname"],
+                    "pid": row["pid"],
+                    "last_heartbeat": row["last_heartbeat"].isoformat(),
+                }
+                for row in stale_workers
+            ],
+            "total_concurrency": sum(w["concurrency"] for w in active_workers),
+            "health": "healthy" if not stale_workers else "degraded",
+        }
 
     async def cleanup_stale_workers(
         self,

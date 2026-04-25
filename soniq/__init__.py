@@ -27,27 +27,10 @@ from datetime import datetime, timedelta, timezone
 from importlib.metadata import PackageNotFoundError, version
 from typing import Optional, Union
 
-from ._active import _active_app
 from .app import Soniq
 from .job import JobContext, JobStatus, Snooze
 from .settings import configure as settings_configure
 from .task_ref import TaskRef, task_ref
-
-
-def _resolve_app() -> Soniq:
-    """Return the active Soniq if one is on the contextvar, else the global.
-
-    Top-level helpers (`soniq.enqueue`, `soniq.schedule`) used to
-    unconditionally reach for the global app. A caller using an explicit
-    `Soniq(...)` instance had their calls silently routed to the global
-    app's database. Checking the contextvar first honors the caller's
-    instance while preserving the zero-config global path.
-    """
-    active = _active_app.get()
-    if isinstance(active, Soniq):
-        return active
-    return _get_global_app()
-
 
 try:
     __version__ = version("soniq")
@@ -312,11 +295,12 @@ async def enqueue(
 ):
     """Enqueue a task. Accepts a callable, a string name, or a TaskRef.
 
-    Thin wrapper over ``Soniq.enqueue`` honoring an active instance via
-    the contextvar; otherwise routes through the global app. See
-    ``Soniq.enqueue`` for the full contract and the three input shapes.
+    Thin wrapper over ``Soniq.enqueue`` that routes through the global
+    app. Callers with their own ``Soniq(...)`` instance should call
+    ``app.enqueue(...)`` directly. See ``Soniq.enqueue`` for the full
+    contract and the three input shapes.
     """
-    app = _resolve_app()
+    app = _get_global_app()
     return await app.enqueue(
         target,
         args=args,
@@ -373,8 +357,8 @@ async def run_worker(
     run_once: bool = False,
     queues: Optional[list] = None,
 ):
-    """Run a worker using the active or global Soniq instance."""
-    app = _resolve_app()
+    """Run a worker using the global Soniq instance."""
+    app = _get_global_app()
     return await app.run_worker(
         concurrency=concurrency, run_once=run_once, queues=queues
     )
@@ -382,43 +366,43 @@ async def run_worker(
 
 async def _setup() -> int:
     """Set up Soniq — create database (if needed) and run migrations."""
-    app = _resolve_app()
+    app = _get_global_app()
     return await app._setup()  # type: ignore[no-any-return]
 
 
 async def _reset() -> None:
     """Delete all jobs and workers. Used in test fixtures."""
-    app = _resolve_app()
+    app = _get_global_app()
     await app._reset()
 
 
 async def get_job(job_id: str):
     """Get information for a specific job."""
-    app = _resolve_app()
+    app = _get_global_app()
     return await app.get_job(job_id)
 
 
 async def get_result(job_id: str):
     """Get the return value of a completed job, or None."""
-    app = _resolve_app()
+    app = _get_global_app()
     return await app.get_result(job_id)
 
 
 async def cancel_job(job_id: str):
     """Cancel a queued job."""
-    app = _resolve_app()
+    app = _get_global_app()
     return await app.cancel_job(job_id)
 
 
 async def retry_job(job_id: str):
     """Retry a failed job."""
-    app = _resolve_app()
+    app = _get_global_app()
     return await app.retry_job(job_id)
 
 
 async def delete_job(job_id: str):
     """Delete a job from the queue."""
-    app = _resolve_app()
+    app = _get_global_app()
     return await app.delete_job(job_id)
 
 
@@ -429,13 +413,13 @@ async def list_jobs(
     offset: int = 0,
 ):
     """List jobs with optional filtering."""
-    app = _resolve_app()
+    app = _get_global_app()
     return await app.list_jobs(queue=queue, status=status, limit=limit, offset=offset)
 
 
 async def get_queue_stats():
     """Get statistics for all queues."""
-    app = _resolve_app()
+    app = _get_global_app()
     return await app.get_queue_stats()
 
 

@@ -22,11 +22,6 @@ import uuid
 import pytest
 
 import soniq
-from soniq.db.context import (
-    DatabaseContext,
-    get_context_pool,
-    set_current_context,
-)
 from soniq.features.scheduling import JobScheduleBuilder
 
 CONCURRENCY = 10
@@ -45,13 +40,13 @@ async def _ready_app():
     and potentially exhaust Postgres max_connections.
     """
     global_app = soniq._get_global_app()
-    set_current_context(DatabaseContext.from_instance(global_app))
     await global_app._ensure_initialized()
+    return global_app
 
 
 @pytest.mark.asyncio
 async def test_concurrent_enqueue_with_same_dedup_key_produces_one_row():
-    await _ready_app()
+    app = await _ready_app()
     dedup = f"race:{uuid.uuid4()}"
 
     async def one_enqueue() -> str:
@@ -66,8 +61,7 @@ async def test_concurrent_enqueue_with_same_dedup_key_produces_one_row():
     assert len(results) == CONCURRENCY
     assert all(isinstance(jid, str) for jid in results)
 
-    pool = await get_context_pool()
-    async with pool.acquire() as conn:
+    async with app.backend.pool.acquire() as conn:
         rows = await conn.fetch(
             "SELECT id FROM soniq_jobs WHERE dedup_key = $1",
             dedup,
@@ -83,7 +77,7 @@ async def test_concurrent_enqueue_with_same_dedup_key_produces_one_row():
 @pytest.mark.asyncio
 async def test_concurrent_enqueue_with_unique_dedup_keys_produces_n_rows():
     """Baseline: N unique dedup keys should create N distinct rows."""
-    await _ready_app()
+    app = await _ready_app()
     prefix = f"race-unique-{uuid.uuid4()}"
 
     async def one_enqueue(i: int) -> str:
@@ -97,8 +91,7 @@ async def test_concurrent_enqueue_with_unique_dedup_keys_produces_n_rows():
 
     assert len(set(results)) == CONCURRENCY
 
-    pool = await get_context_pool()
-    async with pool.acquire() as conn:
+    async with app.backend.pool.acquire() as conn:
         count = await conn.fetchval(
             "SELECT COUNT(*) FROM soniq_jobs WHERE dedup_key LIKE $1",
             f"{prefix}:%",

@@ -11,34 +11,26 @@ from .core import resolve_soniq_instance
 
 
 async def _with_context(args, handler):
-    """Run a handler with a properly configured database context."""
-    from soniq.db.context import (
-        DatabaseContext,
-        clear_current_context,
-        set_current_context,
-    )
+    """Run a handler after resolving the Soniq instance from CLI args.
 
-    try:
-        soniq_instance = await resolve_soniq_instance(args)
+    Feature handlers reach for ``soniq._get_global_app()`` directly, so
+    nothing extra needs threading; this helper just emits the same
+    "instance vs. global" status line the older flow did and lets the
+    handler run.
+    """
+    soniq_instance = await resolve_soniq_instance(args)
+    if soniq_instance is not None:
+        print_status(
+            f"Using instance-based configuration: {soniq_instance.settings.database_url}",
+            "info",
+        )
+    else:
+        print_status("Using global API configuration", "info")
 
-        if soniq_instance:
-            context = DatabaseContext.from_instance(soniq_instance)
-            print_status(
-                f"Using instance-based configuration: {soniq_instance.settings.database_url}",
-                "info",
-            )
-        else:
-            context = DatabaseContext.from_global_api()
-            print_status("Using global API configuration", "info")
-
-        set_current_context(context)
-
-        result = handler(args)
-        if asyncio.iscoroutine(result):
-            result = await result
-        return result
-    finally:
-        clear_current_context()
+    result = handler(args)
+    if asyncio.iscoroutine(result):
+        result = await result
+    return result
 
 
 def with_soniq_context(handler: Callable):

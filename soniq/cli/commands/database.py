@@ -57,8 +57,7 @@ async def handle_setup_command(args):
         return 1
 
     # When no explicit instance is provided, fall back to the global Soniq.
-    # Migrations always run against an explicit instance now; the previous
-    # "global pool" path went away with the get_context_pool fallback.
+    # Migrations always run against an explicit instance now.
     _owns_instance = False
     if soniq_instance is None:
         import soniq as _soniq

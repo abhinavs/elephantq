@@ -16,11 +16,6 @@ import asyncio
 import pytest
 
 import soniq
-from soniq.db.context import (
-    DatabaseContext,
-    get_context_pool,
-    set_current_context,
-)
 from soniq.features import dead_letter
 from soniq.features.dead_letter import (
     DeadLetterFilter,
@@ -55,7 +50,7 @@ async def test_delete_dead_letter_job_returns_in_bounded_time():
         database_url=TEST_DATABASE_URL, dead_letter_queue_enabled=True
     )
     global_app = soniq._get_global_app()
-    set_current_context(DatabaseContext.from_instance(global_app))
+    await global_app._ensure_initialized()
     await dead_letter.setup_dead_letter_queue()
 
     job_id = await _move_sample_job_to_dlq("delete_bound")
@@ -66,7 +61,7 @@ async def test_delete_dead_letter_job_returns_in_bounded_time():
     )
     assert deleted is True
 
-    pool = await get_context_pool()
+    pool = global_app.backend.pool
     async with pool.acquire() as conn:
         remaining = await conn.fetchval(
             "SELECT COUNT(*) FROM soniq_dead_letter_jobs WHERE id = $1",
@@ -82,7 +77,7 @@ async def test_bulk_delete_returns_exact_count_in_bounded_time():
         database_url=TEST_DATABASE_URL, dead_letter_queue_enabled=True
     )
     global_app = soniq._get_global_app()
-    set_current_context(DatabaseContext.from_instance(global_app))
+    await global_app._ensure_initialized()
     await dead_letter.setup_dead_letter_queue()
 
     ids = []
@@ -98,7 +93,7 @@ async def test_bulk_delete_returns_exact_count_in_bounded_time():
     )
     assert count == 1
 
-    pool = await get_context_pool()
+    pool = global_app.backend.pool
     async with pool.acquire() as conn:
         total = await conn.fetchval(
             "SELECT COUNT(*) FROM soniq_dead_letter_jobs WHERE id = ANY($1)",
@@ -114,7 +109,7 @@ async def test_move_then_single_dlq_row_exists():
         database_url=TEST_DATABASE_URL, dead_letter_queue_enabled=True
     )
     global_app = soniq._get_global_app()
-    set_current_context(DatabaseContext.from_instance(global_app))
+    await global_app._ensure_initialized()
     await dead_letter.setup_dead_letter_queue()
 
     job_id = await asyncio.wait_for(
@@ -122,7 +117,7 @@ async def test_move_then_single_dlq_row_exists():
         timeout=TIME_BOUND_SECONDS,
     )
 
-    pool = await get_context_pool()
+    pool = global_app.backend.pool
     async with pool.acquire() as conn:
         count = await conn.fetchval(
             "SELECT COUNT(*) FROM soniq_dead_letter_jobs WHERE id = $1",

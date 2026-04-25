@@ -57,9 +57,7 @@ async def test_free_features_compliance():
         assert job_record["max_attempts"] == 4  # retries=3 -> max_attempts=4
 
     # ✅ Internal DB connection pooling
-    from soniq.db.connection import get_pool
-
-    pool = await get_pool()
+    pool = await soniq._get_global_app().get_pool()
     assert pool is not None
 
 
