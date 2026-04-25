@@ -10,11 +10,13 @@ import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 from soniq.core.registry import get_job
-from soniq.db.context import get_context_pool
 from soniq.db.helpers import rows_affected as _rows_affected
+
+if TYPE_CHECKING:
+    from soniq.app import Soniq
 
 logger = logging.getLogger(__name__)
 
@@ -145,13 +147,29 @@ class DeadLetterFilter:
         return conditions, params
 
 
-class DeadLetterManager:
-    """Manager for dead letter queue operations"""
+class DeadLetterService:
+    """Service for dead letter queue operations bound to a Soniq instance.
 
-    def __init__(self, table_name: str = "soniq_dead_letter_jobs"):
+    Pool access goes through ``self._app.backend.pool`` so a custom
+    ``Soniq(...)`` instance writes to its own database. The historical name
+    ``DeadLetterManager`` is preserved as an alias below for backwards
+    compatibility within this session; the public surface delegates here.
+    """
+
+    def __init__(
+        self,
+        app: "Soniq",
+        *,
+        table_name: str = "soniq_dead_letter_jobs",
+    ):
         if not _VALID_TABLE_NAME.match(table_name):
             raise ValueError(f"Invalid table name: {table_name!r}")
+        self._app = app
         self.table_name = table_name
+
+    async def _pool(self):
+        await self._app._ensure_initialized()
+        return self._app.backend.pool
 
     async def setup_database(self):
         """Verify dead letter table exists. Tables are created by migrations."""
@@ -164,7 +182,7 @@ class DeadLetterManager:
         tags: Optional[Dict[str, str]] = None,
     ) -> bool:
         """Move a job to the dead letter queue"""
-        pool = await get_context_pool()
+        pool = await self._pool()
         async with pool.acquire() as conn:
             async with conn.transaction():
                 # Get the job record
@@ -231,7 +249,7 @@ class DeadLetterManager:
         new_queue: Optional[str] = None,
     ) -> Optional[str]:
         """Resurrect a job from the dead letter queue"""
-        pool = await get_context_pool()
+        pool = await self._pool()
         async with pool.acquire() as conn:
             async with conn.transaction():
                 # Get dead letter job
@@ -323,7 +341,7 @@ class DeadLetterManager:
 
     async def delete_dead_letter_job(self, dead_letter_id: str) -> bool:
         """Permanently delete a dead letter job"""
-        pool = await get_context_pool()
+        pool = await self._pool()
         async with pool.acquire() as conn:
             result = await conn.execute(
                 f"""
@@ -345,7 +363,7 @@ class DeadLetterManager:
         if conditions:
             where_clause = "WHERE " + " AND ".join(conditions)
 
-        pool = await get_context_pool()
+        pool = await self._pool()
         async with pool.acquire() as conn:
             result = await conn.execute(
                 f"""
@@ -380,7 +398,7 @@ class DeadLetterManager:
         offset_param = f"${param_count}"
         params.append(filter_criteria.offset)
 
-        pool = await get_context_pool()
+        pool = await self._pool()
         async with pool.acquire() as conn:
             records = await conn.fetch(
                 f"""
@@ -419,7 +437,7 @@ class DeadLetterManager:
         filter_criteria = DeadLetterFilter()
         filter_criteria.limit = 1
 
-        pool = await get_context_pool()
+        pool = await self._pool()
         async with pool.acquire() as conn:
             record = await conn.fetchrow(
                 f"""
@@ -452,7 +470,7 @@ class DeadLetterManager:
         self, hours: Optional[int] = None
     ) -> DeadLetterStats:
         """Get dead letter queue statistics"""
-        pool = await get_context_pool()
+        pool = await self._pool()
         async with pool.acquire() as conn:
             # Base query conditions
             time_condition = ""
@@ -565,7 +583,7 @@ class DeadLetterManager:
 
     async def cleanup_old_dead_letter_jobs(self, days: int = 30) -> int:
         """Clean up dead letter jobs older than specified days"""
-        pool = await get_context_pool()
+        pool = await self._pool()
         async with pool.acquire() as conn:
             result = await conn.execute(
                 f"""
@@ -583,7 +601,7 @@ class DeadLetterManager:
 
     async def add_tags_to_job(self, dead_letter_id: str, tags: Dict[str, str]) -> bool:
         """Add tags to a dead letter job"""
-        pool = await get_context_pool()
+        pool = await self._pool()
         async with pool.acquire() as conn:
             # Get current tags
             current_tags = await conn.fetchval(
@@ -656,21 +674,36 @@ class DeadLetterManager:
             raise ValueError(f"Unsupported export format: {format}")
 
 
-# Global manager instance
-_dead_letter_manager = DeadLetterManager()
+# Backwards-compatible alias. The class was renamed when it stopped reaching
+# for the global app on every method; existing external imports of
+# `DeadLetterManager` keep working without code change.
+DeadLetterManager = DeadLetterService
+
+
+def _service() -> DeadLetterService:
+    """Build a service bound to the global Soniq app on demand.
+
+    Module-level helpers (`move_job_to_dead_letter`, `list_dead_letter_jobs`,
+    ...) are convenience wrappers for users who never hold an explicit
+    `Soniq` instance. Library code should construct
+    `DeadLetterService(app)` directly.
+    """
+    import soniq
+
+    return DeadLetterService(soniq._get_global_app())
 
 
 # Public API
 async def setup_dead_letter_queue():
     """Setup dead letter queue database tables"""
-    await _dead_letter_manager.setup_database()
+    await _service().setup_database()
 
 
 async def move_job_to_dead_letter(
     job_id: str, reason: DeadLetterReason, tags: Optional[Dict[str, str]] = None
 ) -> bool:
     """Move a job to the dead letter queue"""
-    return await _dead_letter_manager.move_job_to_dead_letter(job_id, reason, tags)
+    return await _service().move_job_to_dead_letter(job_id, reason, tags)
 
 
 async def resurrect_job(
@@ -681,7 +714,7 @@ async def resurrect_job(
     new_queue: Optional[str] = None,
 ) -> Optional[str]:
     """Resurrect a job from the dead letter queue"""
-    return await _dead_letter_manager.resurrect_job(
+    return await _service().resurrect_job(
         dead_letter_id, reset_attempts, new_max_attempts, new_priority, new_queue
     )
 
@@ -692,48 +725,48 @@ async def bulk_resurrect_jobs(
     new_max_attempts: Optional[int] = None,
 ) -> List[str]:
     """Resurrect multiple jobs matching filter criteria"""
-    return await _dead_letter_manager.bulk_resurrect(
+    return await _service().bulk_resurrect(
         filter_criteria, reset_attempts, new_max_attempts
     )
 
 
 async def delete_dead_letter_job(dead_letter_id: str) -> bool:
     """Permanently delete a dead letter job"""
-    return await _dead_letter_manager.delete_dead_letter_job(dead_letter_id)
+    return await _service().delete_dead_letter_job(dead_letter_id)
 
 
 async def bulk_delete_dead_letter_jobs(filter_criteria: DeadLetterFilter) -> int:
     """Delete multiple dead letter jobs matching filter criteria"""
-    return await _dead_letter_manager.bulk_delete(filter_criteria)
+    return await _service().bulk_delete(filter_criteria)
 
 
 async def list_dead_letter_jobs(
     filter_criteria: Optional[DeadLetterFilter] = None,
 ) -> List[DeadLetterJob]:
     """List dead letter jobs with optional filtering"""
-    return await _dead_letter_manager.list_dead_letter_jobs(filter_criteria)
+    return await _service().list_dead_letter_jobs(filter_criteria)
 
 
 async def get_dead_letter_job(dead_letter_id: str) -> Optional[DeadLetterJob]:
     """Get a specific dead letter job by ID"""
-    return await _dead_letter_manager.get_dead_letter_job(dead_letter_id)
+    return await _service().get_dead_letter_job(dead_letter_id)
 
 
 async def get_dead_letter_stats(hours: Optional[int] = None) -> DeadLetterStats:
     """Get dead letter queue statistics"""
-    return await _dead_letter_manager.get_dead_letter_stats(hours)
+    return await _service().get_dead_letter_stats(hours)
 
 
 async def cleanup_old_dead_letter_jobs(days: int = 30) -> int:
     """Clean up dead letter jobs older than specified days"""
-    return await _dead_letter_manager.cleanup_old_dead_letter_jobs(days)
+    return await _service().cleanup_old_dead_letter_jobs(days)
 
 
 async def export_dead_letter_jobs(
     filter_criteria: Optional[DeadLetterFilter] = None, format: str = "json"
 ) -> str:
     """Export dead letter jobs to file"""
-    return await _dead_letter_manager.export_dead_letter_jobs(filter_criteria, format)
+    return await _service().export_dead_letter_jobs(filter_criteria, format)
 
 
 def create_filter() -> DeadLetterFilter:

@@ -17,7 +17,7 @@ import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +35,12 @@ def _require_croniter():
         )
 
 
-from soniq import enqueue  # noqa: E402
 from soniq.core.registry import get_job as get_registered_job  # noqa: E402
-from soniq.db.context import get_context_pool  # noqa: E402
 
 from .flags import require_feature  # noqa: E402
+
+if TYPE_CHECKING:
+    from soniq.app import Soniq
 
 
 class Priority(Enum):
@@ -249,11 +250,34 @@ class MonthlyScheduler(FluentRecurringScheduler):
 
 
 class EnhancedRecurringManager:
-    """Enhanced recurring job manager with better integration"""
+    """Enhanced recurring job manager with better integration.
 
-    def __init__(self):
+    Takes an optional ``Soniq`` instance up front so the wholesale recurring
+    rewrite (S3) lands against an already-decoupled API. When ``app`` is
+    ``None`` the manager falls back to the global app for pool resolution
+    and enqueue, preserving the legacy import-and-call entry point.
+    """
+
+    def __init__(self, app: Optional["Soniq"] = None):
+        self._app = app
         self.jobs: Dict[str, Dict[str, Any]] = {}
         self._loaded = False
+
+    def _resolve_app(self) -> "Soniq":
+        """Return the bound app, or the global one as a fallback."""
+        if self._app is not None:
+            return self._app
+        import soniq
+
+        return soniq._get_global_app()
+
+    async def _pool(self):
+        app = self._resolve_app()
+        await app._ensure_initialized()
+        return app.backend.pool
+
+    async def _enqueue(self, *args, **kwargs):
+        return await self._resolve_app().enqueue(*args, **kwargs)
 
     async def load_jobs(self) -> None:
         """Load recurring jobs from the database.
@@ -268,7 +292,7 @@ class EnhancedRecurringManager:
         if self._loaded:
             return
 
-        pool = await get_context_pool()
+        pool = await self._pool()
         async with pool.acquire() as conn:
             rows = await conn.fetch(
                 """
@@ -442,7 +466,7 @@ class EnhancedRecurringManager:
         await coro
 
     async def _persist_job(self, job_record: Dict[str, Any]) -> None:
-        pool = await get_context_pool()
+        pool = await self._pool()
         async with pool.acquire() as conn:
             await conn.execute(
                 """
@@ -468,7 +492,7 @@ class EnhancedRecurringManager:
             )
 
     async def _persist_next_run(self, job_id: str, next_run: datetime) -> None:
-        pool = await get_context_pool()
+        pool = await self._pool()
         async with pool.acquire() as conn:
             await conn.execute(
                 """
@@ -481,7 +505,7 @@ class EnhancedRecurringManager:
             )
 
     async def _delete_job(self, job_id: str) -> None:
-        pool = await get_context_pool()
+        pool = await self._pool()
         async with pool.acquire() as conn:
             await conn.execute(
                 "DELETE FROM soniq_recurring_jobs WHERE id = $1",
@@ -489,7 +513,7 @@ class EnhancedRecurringManager:
             )
 
     async def _set_status(self, job_id: str, status: str) -> None:
-        pool = await get_context_pool()
+        pool = await self._pool()
         async with pool.acquire() as conn:
             await conn.execute(
                 """
@@ -517,12 +541,31 @@ class EnhancedRecurringManager:
 
 
 class EnhancedRecurringScheduler:
-    """Enhanced background scheduler with better performance"""
+    """Enhanced background scheduler with better performance.
 
-    def __init__(self, check_interval: int = 30):
+    Takes an optional ``Soniq`` so the scheduler uses the caller's backend
+    and ``enqueue`` rather than reaching for the global app from within
+    private attribute lookups. Falls back to the global app when ``app`` is
+    ``None`` (legacy entry points).
+    """
+
+    def __init__(self, check_interval: int = 30, app: Optional["Soniq"] = None):
+        self._app = app
         self.check_interval = check_interval
         self.running = False
         self._task: Optional[asyncio.Task] = None
+
+    def _resolve_app(self) -> "Soniq":
+        if self._app is not None:
+            return self._app
+        import soniq
+
+        return soniq._get_global_app()
+
+    async def _pool(self):
+        app = self._resolve_app()
+        await app._ensure_initialized()
+        return app.backend.pool
 
     async def start(self):
         """Start the scheduler"""
@@ -580,27 +623,15 @@ class EnhancedRecurringScheduler:
                 await asyncio.sleep(min(self.check_interval, 60))  # Backoff
 
     def _resolve_backend(self):
-        """Return the backend of the currently-active Soniq app, if any.
+        """Return the backend of the bound Soniq app, or fall back.
 
-        Checks the active-app contextvar first so recurring jobs triggered
-        from inside an explicit `Soniq(...)` instance honor that
-        instance's backend rather than silently landing in the global app's
-        database. Falls back to the global app when nothing is active.
-
-        When the backend is Postgres, it exposes `with_advisory_lock`; other
-        backends return no attribute and `with_advisory_lock(None_or_backend)`
-        falls through to always-leader mode.
+        When the backend is Postgres, it exposes ``with_advisory_lock``;
+        other backends return no attribute and
+        ``with_advisory_lock(None_or_backend)`` falls through to
+        always-leader mode.
         """
         try:
-            from soniq._active import get_active_app
-
-            active = get_active_app()
-            if active is not None:
-                return active._backend
-
-            import soniq
-
-            return soniq._get_global_app()._backend
+            return self._resolve_app().backend
         except Exception:
             # Global app may not be initialized (feature used standalone or
             # during early startup). Fall back to always-leader mode.
@@ -666,7 +697,7 @@ class EnhancedRecurringScheduler:
             from soniq.db.helpers import rows_affected
 
             actual_job_id: Optional[str] = None
-            pool = await get_context_pool()
+            pool = await self._pool()
             async with pool.acquire() as conn:
                 async with conn.transaction():
                     # Atomically claim the next_run slot.
@@ -708,7 +739,7 @@ class EnhancedRecurringScheduler:
                     task_name = (
                         getattr(job_func, "_soniq_name", None) or job_func.__name__
                     )
-                    actual_job_id = await enqueue(
+                    actual_job_id = await self._resolve_app().enqueue(
                         task_name,
                         args=job["job_kwargs"],
                         connection=conn,

@@ -17,6 +17,7 @@ from soniq.features.webhooks import (  # noqa: E402
     WebhookRegistry,
     WebhookSigner,
 )
+from soniq.testing.helpers import make_app  # noqa: E402
 
 
 class TestWebhookSigner:
@@ -50,7 +51,7 @@ class TestWebhookSigner:
 class TestWebhookRegistry:
     @pytest.mark.asyncio
     async def test_register_and_get_endpoint(self):
-        registry = WebhookRegistry()
+        registry = WebhookRegistry(make_app())
         ep = WebhookEndpoint(id="ep-1", url="https://example.com/hook")
 
         with patch.object(registry, "_save_endpoint_to_db", new_callable=AsyncMock):
@@ -62,7 +63,7 @@ class TestWebhookRegistry:
 
     @pytest.mark.asyncio
     async def test_unregister_endpoint(self):
-        registry = WebhookRegistry()
+        registry = WebhookRegistry(make_app())
         ep = WebhookEndpoint(id="ep-1", url="https://example.com/hook")
 
         with patch.object(registry, "_save_endpoint_to_db", new_callable=AsyncMock):
@@ -76,13 +77,13 @@ class TestWebhookRegistry:
 
     @pytest.mark.asyncio
     async def test_unregister_missing_returns_false(self):
-        registry = WebhookRegistry()
+        registry = WebhookRegistry(make_app())
         result = await registry.unregister_endpoint("nonexistent")
         assert result is False
 
     @pytest.mark.asyncio
     async def test_list_endpoints(self):
-        registry = WebhookRegistry()
+        registry = WebhookRegistry(make_app())
         ep1 = WebhookEndpoint(id="ep-1", url="https://a.com")
         ep2 = WebhookEndpoint(id="ep-2", url="https://b.com")
 
@@ -95,7 +96,7 @@ class TestWebhookRegistry:
 
     @pytest.mark.asyncio
     async def test_get_endpoints_for_event(self):
-        registry = WebhookRegistry()
+        registry = WebhookRegistry(make_app())
         ep1 = WebhookEndpoint(
             id="ep-1",
             url="https://a.com",
@@ -127,7 +128,7 @@ class TestWebhookRegistry:
 
     @pytest.mark.asyncio
     async def test_inactive_endpoint_excluded_from_event_filter(self):
-        registry = WebhookRegistry()
+        registry = WebhookRegistry(make_app())
         ep = WebhookEndpoint(
             id="ep-1",
             url="https://a.com",

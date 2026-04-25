@@ -13,16 +13,17 @@ import uuid
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 try:
     import aiohttp
 except ImportError:
     aiohttp = None  # type: ignore[assignment]
 
-from soniq.db.connection import get_pool
-
 from .signing import SecureWebhookSecret
+
+if TYPE_CHECKING:
+    from soniq.app import Soniq
 
 logger = logging.getLogger(__name__)
 
@@ -141,11 +142,22 @@ class WebhookSigner:
 
 
 class WebhookRegistry:
-    """Registry for webhook endpoints"""
+    """Registry for webhook endpoints.
 
-    def __init__(self):
+    Holds the in-memory endpoint cache and persists changes to Postgres
+    through ``self._app.backend.pool``. Constructed by ``WebhookService``;
+    code that wants to drop in a custom backend can pass any ``Soniq``-like
+    object exposing a ``backend.pool`` property.
+    """
+
+    def __init__(self, app: "Soniq"):
+        self._app = app
         self.endpoints: Dict[str, WebhookEndpoint] = {}
         self._lock = asyncio.Lock()
+
+    async def _pool(self):
+        await self._app._ensure_initialized()
+        return self._app.backend.pool
 
     async def register_endpoint(self, endpoint: WebhookEndpoint) -> str:
         """Register a webhook endpoint"""
@@ -205,7 +217,7 @@ class WebhookRegistry:
 
     async def _save_endpoint_to_db(self, endpoint: WebhookEndpoint):
         """Save endpoint configuration to database"""
-        pool = await get_pool()
+        pool = await self._pool()
         async with pool.acquire() as conn:
             await conn.execute(
                 """
@@ -234,7 +246,7 @@ class WebhookRegistry:
 
     async def _delete_endpoint_from_db(self, endpoint_id: str):
         """Delete endpoint from database"""
-        pool = await get_pool()
+        pool = await self._pool()
         async with pool.acquire() as conn:
             await conn.execute(
                 "DELETE FROM soniq_webhook_endpoints WHERE id = $1", endpoint_id
@@ -243,7 +255,7 @@ class WebhookRegistry:
     async def load_endpoints_from_db(self):
         """Load endpoints from database on startup"""
         try:
-            pool = await get_pool()
+            pool = await self._pool()
             async with pool.acquire() as conn:
                 endpoints = await conn.fetch(
                     """
@@ -273,7 +285,12 @@ class WebhookRegistry:
 
 
 class WebhookDispatcher:
-    """Webhook event dispatcher and delivery manager"""
+    """Webhook event dispatcher and delivery manager.
+
+    Pool access for retry-processor reads and delivery-record writes is
+    routed through the same ``Soniq`` instance the registry was bound to,
+    via ``self.registry._app``.
+    """
 
     def __init__(self, registry: WebhookRegistry, max_concurrent_deliveries: int = 10):
         self.registry = registry
@@ -282,6 +299,9 @@ class WebhookDispatcher:
         self.delivery_semaphore = asyncio.Semaphore(max_concurrent_deliveries)
         self._delivery_workers: List[asyncio.Task] = []
         self._running = False
+
+    async def _pool(self):
+        return await self.registry._pool()
 
     async def start(self):
         """Start webhook delivery workers"""
@@ -492,7 +512,7 @@ class WebhookDispatcher:
         while self._running:
             try:
                 # Find deliveries ready for retry
-                pool = await get_pool()
+                pool = await self._pool()
                 async with pool.acquire() as conn:
                     deliveries = await conn.fetch(
                         """
@@ -535,7 +555,7 @@ class WebhookDispatcher:
     async def _save_delivery_record(self, delivery: WebhookDelivery):
         """Save delivery record to database"""
         try:
-            pool = await get_pool()
+            pool = await self._pool()
             async with pool.acquire() as conn:
                 await conn.execute(
                     """
@@ -571,13 +591,22 @@ class WebhookDispatcher:
             logger.error(f"Failed to save delivery record: {e}")
 
 
-class WebhookManager:
-    """High-level webhook management interface"""
+class WebhookService:
+    """High-level webhook interface bound to a Soniq instance.
 
-    def __init__(self):
-        self.registry = WebhookRegistry()
+    Owns the per-app ``WebhookRegistry`` and ``WebhookDispatcher``. Replaces
+    the old global ``WebhookManager`` whose pool access reached for the
+    global app. The legacy class name is kept as an alias below.
+    """
+
+    def __init__(self, app: "Soniq"):
+        self._app = app
+        self.registry = WebhookRegistry(app)
         self.dispatcher = WebhookDispatcher(self.registry)
         self._started = False
+
+    async def _pool(self):
+        return await self.registry._pool()
 
     async def start(self):
         """Start webhook system"""
@@ -630,7 +659,7 @@ class WebhookManager:
 
     async def get_delivery_stats(self, hours: int = 24) -> Dict[str, Any]:
         """Get webhook delivery statistics"""
-        pool = await get_pool()
+        pool = await self._pool()
         async with pool.acquire() as conn:
             stats = await conn.fetchrow(
                 """
@@ -667,36 +696,52 @@ class WebhookManager:
             }
 
 
-# Global webhook manager instance
-_webhook_manager = WebhookManager()
+# Backwards-compatible alias for the renamed service class.
+WebhookManager = WebhookService
+
+
+# Lazily-built service against the global Soniq app. Module-level helpers
+# below preserve the zero-config import-and-call entry point; library code
+# should construct ``WebhookService(app)`` on the explicit instance.
+_global_webhook_service: Optional[WebhookService] = None
+
+
+def _service() -> WebhookService:
+    global _global_webhook_service
+    import soniq
+
+    app = soniq._get_global_app()
+    if _global_webhook_service is None or _global_webhook_service._app is not app:
+        _global_webhook_service = WebhookService(app)
+    return _global_webhook_service
 
 
 # Public API
 async def start_webhook_system():
     """Start the webhook system"""
-    await _webhook_manager.start()
+    await _service().start()
 
 
 async def stop_webhook_system():
     """Stop the webhook system"""
-    await _webhook_manager.stop()
+    await _service().stop()
 
 
 async def register_webhook(
     url: str, events: Optional[List[str]] = None, secret: Optional[str] = None, **kwargs
 ) -> str:
     """Register a webhook endpoint"""
-    return await _webhook_manager.register_webhook(url, events, secret, **kwargs)
+    return await _service().register_webhook(url, events, secret, **kwargs)
 
 
 async def unregister_webhook(endpoint_id: str) -> bool:
     """Unregister a webhook endpoint"""
-    return await _webhook_manager.unregister_webhook(endpoint_id)
+    return await _service().unregister_webhook(endpoint_id)
 
 
 async def send_job_queued(job_id: str, job_name: str, queue: str, **kwargs):
     """Send job queued webhook"""
-    await _webhook_manager.send_webhook(
+    await _service().send_webhook(
         WebhookEvent.JOB_QUEUED,
         {"job_id": job_id, "job_name": job_name, "queue": queue, **kwargs},
     )
@@ -706,7 +751,7 @@ async def send_job_started(
     job_id: str, job_name: str, queue: str, attempt: int, **kwargs
 ):
     """Send job started webhook"""
-    await _webhook_manager.send_webhook(
+    await _service().send_webhook(
         WebhookEvent.JOB_STARTED,
         {
             "job_id": job_id,
@@ -722,7 +767,7 @@ async def send_job_completed(
     job_id: str, job_name: str, queue: str, duration_ms: float, **kwargs
 ):
     """Send job completed webhook"""
-    await _webhook_manager.send_webhook(
+    await _service().send_webhook(
         WebhookEvent.JOB_COMPLETED,
         {
             "job_id": job_id,
@@ -744,7 +789,7 @@ async def send_job_failed(
     **kwargs,
 ):
     """Send job failed webhook"""
-    await _webhook_manager.send_webhook(
+    await _service().send_webhook(
         WebhookEvent.JOB_FAILED,
         {
             "job_id": job_id,
@@ -762,7 +807,7 @@ async def send_job_dead_letter(
     job_id: str, job_name: str, queue: str, final_error: str, **kwargs
 ):
     """Send job moved to dead letter webhook"""
-    await _webhook_manager.send_webhook(
+    await _service().send_webhook(
         WebhookEvent.JOB_DEAD_LETTER,
         {
             "job_id": job_id,
@@ -776,12 +821,12 @@ async def send_job_dead_letter(
 
 async def get_webhook_endpoints() -> List[WebhookEndpoint]:
     """Get all registered webhook endpoints"""
-    return await _webhook_manager.registry.list_endpoints()  # type: ignore[no-any-return]
+    return await _service().registry.list_endpoints()  # type: ignore[no-any-return]
 
 
 async def get_delivery_stats(hours: int = 24) -> Dict[str, Any]:
     """Get webhook delivery statistics"""
-    return await _webhook_manager.get_delivery_stats(hours)
+    return await _service().get_delivery_stats(hours)
 
 
 def verify_webhook_signature(payload: str, signature: str, secret: str) -> bool:

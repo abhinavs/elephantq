@@ -12,7 +12,6 @@ from typing import List, Optional, Tuple
 import asyncpg
 
 from ..core.leadership import advisory_key
-from .context import get_context_pool
 
 # Reused across concurrent migration runs. Parallel deploys (two CI nodes
 # calling `soniq setup` at once) used to race on non-idempotent DDL or
@@ -29,12 +28,23 @@ class MigrationError(Exception):
 
 
 class MigrationRunner:
-    """Manages database schema migrations for Soniq"""
+    """Manages database schema migrations for Soniq.
 
-    def __init__(self, migrations_dir: Optional[Path] = None):
+    The runner is pool-agnostic: callers always pass a connection (or a
+    pool) explicitly. The previous global-pool fallback via
+    ``get_context_pool`` is gone - migrations run against the connection
+    that the caller already holds (Soniq's backend pool, in practice).
+    """
+
+    def __init__(
+        self,
+        migrations_dir: Optional[Path] = None,
+        pool: Optional[asyncpg.Pool] = None,
+    ):
         if migrations_dir is None:
             migrations_dir = Path(__file__).parent / "migrations"
         self.migrations_dir = migrations_dir
+        self._pool = pool
 
     async def ensure_migration_table(self, conn: asyncpg.Connection) -> None:
         """Create the migration tracking table if it doesn't exist"""
@@ -146,8 +156,12 @@ class MigrationRunner:
             Number of migrations applied
         """
         if conn is None:
-            pool = await get_context_pool()
-            async with pool.acquire() as conn:
+            if self._pool is None:
+                raise MigrationError(
+                    "MigrationRunner has no pool; pass conn= or construct "
+                    "MigrationRunner(pool=...) explicitly."
+                )
+            async with self._pool.acquire() as conn:
                 return await self._run_migrations_with_connection(conn)
         else:
             return await self._run_migrations_with_connection(conn)
@@ -214,8 +228,12 @@ class MigrationRunner:
             Dictionary with migration status information
         """
         if conn is None:
-            pool = await get_context_pool()
-            async with pool.acquire() as conn:
+            if self._pool is None:
+                raise MigrationError(
+                    "MigrationRunner has no pool; pass conn= or construct "
+                    "MigrationRunner(pool=...) explicitly."
+                )
+            async with self._pool.acquire() as conn:
                 return await self._get_migration_status_with_connection(conn)
         else:
             return await self._get_migration_status_with_connection(conn)

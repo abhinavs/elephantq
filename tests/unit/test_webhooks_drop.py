@@ -19,7 +19,9 @@ async def test_full_delivery_queue_drops_and_warns(caplog):
     )
 
     # Two registered endpoints, queue size 1 -> second delivery drops.
-    registry = WebhookRegistry()
+    from soniq.testing.helpers import make_app
+
+    registry = WebhookRegistry(make_app())
     registry.endpoints = {
         "a": WebhookEndpoint(id="a", url="http://a/"),
         "b": WebhookEndpoint(id="b", url="http://b/"),

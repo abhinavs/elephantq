@@ -86,14 +86,29 @@ class _FakePool:
 
 @pytest.fixture
 def fake_pool(monkeypatch):
+    """Stub the global Soniq app's backend pool with `_FakePool`.
+
+    The post-S1 BatchScheduler reaches `soniq._get_global_app().backend.pool`
+    directly instead of calling the deleted `get_context_pool`. We replace
+    the global app with a tiny stand-in that satisfies the lookup chain
+    without spinning up Postgres.
+    """
     pool = _FakePool()
 
-    async def fake_get_context_pool():
-        return pool
+    class _StubBackend:
+        def __init__(self, p):
+            self.pool = p
 
-    import soniq.db.context as db_context
+    class _StubApp:
+        def __init__(self, p):
+            self.backend = _StubBackend(p)
 
-    monkeypatch.setattr(db_context, "get_context_pool", fake_get_context_pool)
+        async def _ensure_initialized(self):
+            return None
+
+    import soniq
+
+    monkeypatch.setattr(soniq, "_get_global_app", lambda: _StubApp(pool))
     return pool
 
 
@@ -106,7 +121,7 @@ async def test_batch_add_chaining_enqueue_all(monkeypatch, fake_pool):
         captured.append(kwargs)
         return str(uuid.uuid4())
 
-    monkeypatch.setattr(scheduling, "enqueue", fake_enqueue)
+    monkeypatch.setattr(scheduling, "_enqueue_via_global", fake_enqueue)
 
     batch = BatchScheduler()
     batch.add(dummy_job_a).with_priority(30)
@@ -127,7 +142,7 @@ async def test_batch_enqueue_all_uses_single_connection(monkeypatch, fake_pool):
         seen_connections.append(kwargs.get("connection"))
         return str(uuid.uuid4())
 
-    monkeypatch.setattr(scheduling, "enqueue", fake_enqueue)
+    monkeypatch.setattr(scheduling, "_enqueue_via_global", fake_enqueue)
 
     batch = BatchScheduler()
     for _ in range(5):
@@ -153,7 +168,7 @@ async def test_batch_enqueue_all_propagates_error(monkeypatch, fake_pool):
             raise RuntimeError("boom")
         return str(uuid.uuid4())
 
-    monkeypatch.setattr(scheduling, "enqueue", fake_enqueue)
+    monkeypatch.setattr(scheduling, "_enqueue_via_global", fake_enqueue)
 
     batch = BatchScheduler()
     for _ in range(5):

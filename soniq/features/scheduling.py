@@ -7,9 +7,21 @@ from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional, Union
 
-from soniq import enqueue
-
 from .flags import require_feature
+
+
+def _enqueue_via_global(*args, **kwargs):
+    """Delegate enqueue to the global Soniq instance.
+
+    `JobScheduleBuilder` predates the per-instance feature services and is
+    slated for deletion in S3. Until then, we route enqueue through the
+    global app explicitly rather than through the import-time
+    ``soniq.enqueue`` wrapper, so this module stops carrying a top-level
+    dependency on the convenience API.
+    """
+    import soniq
+
+    return soniq._get_global_app().enqueue(*args, **kwargs)
 
 
 class JobScheduleBuilder:
@@ -148,7 +160,7 @@ class JobScheduleBuilder:
         # See the per-call timeout note in scheduling docs.
         if connection is not None:
             enqueue_kwargs["connection"] = connection
-        job_id = await enqueue(self.job_func, **enqueue_kwargs)
+        job_id = await _enqueue_via_global(self.job_func, **enqueue_kwargs)
 
         # Store additional metadata (tags, timeout, etc.)
         if any([self._tags, self._timeout, self._retries is not None]):
@@ -222,14 +234,16 @@ class BatchScheduler:
         hold exactly one connection for the full batch instead of
         acquiring/releasing per job.
         """
-        from soniq.db.context import get_context_pool
+        import soniq
 
         for i, builder in enumerate(self.jobs):
             builder.with_tags(f"batch:{self.batch_name}", f"batch_item:{i}")
             if batch_priority is not None:
                 builder.with_priority(batch_priority)
 
-        pool = await get_context_pool()
+        app = soniq._get_global_app()
+        await app._ensure_initialized()
+        pool = app.backend.pool
         job_ids: List[Union[str, Dict[str, Any]]] = []
         async with pool.acquire() as conn:
             async with conn.transaction():

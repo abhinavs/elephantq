@@ -41,6 +41,7 @@ class TestGetDeliveryStatsParameterized:
         from contextlib import asynccontextmanager
 
         from soniq.features import webhooks
+        from soniq.testing.helpers import make_app
 
         mock_conn = AsyncMock()
         mock_conn.fetchrow = AsyncMock(
@@ -61,10 +62,12 @@ class TestGetDeliveryStatsParameterized:
         mock_pool = MagicMock()
         mock_pool.acquire = _acquire
 
-        monkeypatch.setattr(webhooks, "get_pool", AsyncMock(return_value=mock_pool))
-
-        manager = webhooks.WebhookManager()
-        await manager.get_delivery_stats(hours=48)
+        # The service now reads its pool from the bound Soniq via
+        # `WebhookService._pool`. Replace that hop with a mock so the SQL
+        # under test runs against `mock_conn` without touching Postgres.
+        service = webhooks.WebhookService(make_app())
+        monkeypatch.setattr(service, "_pool", AsyncMock(return_value=mock_pool))
+        await service.get_delivery_stats(hours=48)
 
         fetchrow_call = mock_conn.fetchrow.call_args
         sql = fetchrow_call.args[0]

@@ -6,7 +6,10 @@ Provides encryption utilities for sensitive data like webhook secrets.
 import base64
 import os
 import secrets
-from typing import Optional, Union
+from typing import TYPE_CHECKING, Optional, Union
+
+if TYPE_CHECKING:
+    from soniq.app import Soniq
 
 try:
     from cryptography.fernet import Fernet
@@ -129,6 +132,30 @@ class SecretManager:
             return len(decoded) >= _SALT_LENGTH + 73
         except Exception:
             return False
+
+
+class SigningService:
+    """Signing/encryption service bound to a Soniq instance.
+
+    Signing has no database state today, so the service is a thin shell;
+    it exists for symmetry with the other feature services so callers can
+    construct ``SigningService(app)`` and reach encryption helpers through
+    a uniform surface. Future additions (key rotation, per-tenant keys)
+    will hang off the bound app's settings.
+    """
+
+    def __init__(self, app: "Soniq"):
+        self._app = app
+        self.manager = get_secret_manager()
+
+    def encrypt(self, plaintext: str) -> str:
+        return self.manager.encrypt(plaintext)
+
+    def decrypt(self, ciphertext: str) -> str:
+        return self.manager.decrypt(ciphertext)
+
+    def is_encrypted(self, value: str) -> bool:
+        return self.manager.is_encrypted(value)
 
 
 # Global secret manager instance

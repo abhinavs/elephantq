@@ -34,10 +34,13 @@ async def test_load_jobs_failure_leaves_state_untouched(monkeypatch):
     manager.jobs = {"existing": {"id": "existing"}}
     # _loaded stays False so the manager attempts a real load.
 
-    async def fake_get_pool():
+    async def fake_pool(self=None):
         return _BoomPool()
 
-    monkeypatch.setattr("soniq.features.recurring.get_context_pool", fake_get_pool)
+    # The manager now resolves its pool through the bound Soniq app via
+    # `EnhancedRecurringManager._pool`. Replace that method on the instance
+    # so the load path hits our exploding pool without touching Postgres.
+    manager._pool = fake_pool.__get__(manager)
 
     with pytest.raises(RuntimeError, match="db unavailable"):
         await manager.load_jobs()

@@ -236,6 +236,18 @@ class Soniq:
         return self._settings
 
     @property
+    def backend(self) -> Any:
+        """Public accessor for the storage backend.
+
+        Feature services (`WebhookService`, `DeadLetterService`, ...) take a
+        `Soniq` and reach the database through `app.backend.pool`. Returns
+        `None` until `_ensure_initialized()` has run; lazy backends create
+        their pool there. The accessor is intentionally untyped because
+        `StorageBackend` becomes a Protocol in a later session.
+        """
+        return self._backend
+
+    @property
     def _is_initialized(self) -> bool:
         """Check if app is initialized."""
         return self._initialized

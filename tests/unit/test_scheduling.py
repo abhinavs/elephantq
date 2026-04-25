@@ -48,7 +48,7 @@ async def test_job_schedule_builder_records_metadata(monkeypatch):
         captured.append(kwargs)
         return "job-id"
 
-    monkeypatch.setattr(scheduling, "enqueue", fake_enqueue)
+    monkeypatch.setattr(scheduling, "_enqueue_via_global", fake_enqueue)
 
     async def dummy_job(message: str):
         return message
@@ -79,7 +79,7 @@ async def test_job_schedule_builder_records_metadata(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_job_schedule_builder_respects_condition(monkeypatch):
-    monkeypatch.setattr(scheduling, "enqueue", lambda *_: asyncio.Future())
+    monkeypatch.setattr(scheduling, "_enqueue_via_global", lambda *_: asyncio.Future())
     builder = scheduling.schedule_job(lambda: None).if_condition(lambda: False)
     with pytest.raises(RuntimeError):
         await builder.enqueue()
@@ -98,7 +98,7 @@ async def test_batch_scheduler_applies_batch_metadata(monkeypatch):
         captured.append(kwargs)
         return str(uuid.uuid4())
 
-    monkeypatch.setattr(scheduling, "enqueue", fake_enqueue)
+    monkeypatch.setattr(scheduling, "_enqueue_via_global", fake_enqueue)
 
     class _FakeConn:
         async def __aenter__(self):
@@ -114,12 +114,20 @@ async def test_batch_scheduler_applies_batch_metadata(monkeypatch):
         def acquire(self):
             return _FakeConn()
 
-    async def fake_get_context_pool():
-        return _FakePool()
+    class _StubBackend:
+        def __init__(self, pool):
+            self.pool = pool
 
-    import soniq.db.context as db_context
+    class _StubApp:
+        def __init__(self, pool):
+            self.backend = _StubBackend(pool)
 
-    monkeypatch.setattr(db_context, "get_context_pool", fake_get_context_pool)
+        async def _ensure_initialized(self):
+            return None
+
+    import soniq
+
+    monkeypatch.setattr(soniq, "_get_global_app", lambda: _StubApp(_FakePool()))
 
     async def dummy_job():
         pass
@@ -150,7 +158,7 @@ async def test_schedule_helper_variants(monkeypatch):
         scheduled.append(kwargs.get("scheduled_at"))
         return "generated-job"
 
-    monkeypatch.setattr(scheduling, "enqueue", fake_enqueue)
+    monkeypatch.setattr(scheduling, "_enqueue_via_global", fake_enqueue)
 
     future_time = datetime.now() + timedelta(minutes=1)
     await scheduling.schedule(lambda: None, future_time)
@@ -170,7 +178,7 @@ async def test_enqueue_without_timeout_keeps_simple_path(monkeypatch):
         calls.append(kwargs)
         return "job-456"
 
-    monkeypatch.setattr(scheduling, "enqueue", fake_enqueue)
+    monkeypatch.setattr(scheduling, "_enqueue_via_global", fake_enqueue)
 
     async def dummy():
         pass

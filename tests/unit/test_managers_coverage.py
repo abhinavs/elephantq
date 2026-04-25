@@ -4,8 +4,6 @@ Tests for managers.py feature manager facade.
 Covers: manager instantiation with feature flags, method delegation pattern.
 """
 
-import os
-
 import pytest
 
 import soniq.settings as settings_module
@@ -24,11 +22,12 @@ def _enable_features(monkeypatch):
 
 
 class TestWebhookManager:
-    @pytest.mark.skipif(
-        not os.environ.get("SONIQ_WEBHOOKS_ENABLED"),
-        reason="webhooks not enabled",
-    )
     def test_instantiation(self):
+        # The autouse fixture above sets SONIQ_WEBHOOKS_ENABLED, so the
+        # require_feature gate inside WebhookManager.__init__ is satisfied.
+        # The previous `@pytest.mark.skipif` ran at collection time, before
+        # the fixture had a chance to set the env var, so the test always
+        # skipped regardless.
         pytest.importorskip("aiohttp")
         from soniq.features.managers import WebhookManager
 

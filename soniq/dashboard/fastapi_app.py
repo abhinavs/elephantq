@@ -2,25 +2,15 @@
 FastAPI web dashboard for Soniq.
 """
 
-from typing import Any, Dict, List, Optional
+from contextlib import asynccontextmanager
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from soniq.settings import get_settings
 
-from .app import (
-    cancel_job,
-    delete_job,
-    get_job_details,
-    get_job_metrics,
-    get_job_stats,
-    get_job_timeline,
-    get_job_types_stats,
-    get_queue_stats,
-    get_recent_jobs,
-    get_system_health,
-    get_worker_stats,
-    retry_job,
-    search_jobs,
-)
+from .app import DashboardService
+
+if TYPE_CHECKING:
+    from soniq.app import Soniq
 
 try:
     import uvicorn
@@ -92,8 +82,14 @@ def _require_write_authorization(request: "Request") -> None:
     )
 
 
-def create_dashboard_app() -> "FastAPI":
-    """Create FastAPI dashboard application"""
+def create_dashboard_app(soniq_app: Optional["Soniq"] = None) -> "FastAPI":
+    """Create FastAPI dashboard application.
+
+    Constructs a single ``DashboardService`` bound to ``soniq_app`` (or the
+    global Soniq instance when omitted) and stores it on the FastAPI
+    app's ``state`` so per-request handlers reach the same instance. The
+    lifespan ensures the underlying Soniq is initialized once at startup.
+    """
     if not FASTAPI_AVAILABLE:
         raise ImportError(
             "FastAPI is required for dashboard. Install with: pip install fastapi uvicorn"
@@ -103,11 +99,25 @@ def create_dashboard_app() -> "FastAPI":
     if not settings.dashboard_enabled:
         raise RuntimeError("Dashboard is disabled. Set SONIQ_DASHBOARD_ENABLED=true")
 
+    if soniq_app is None:
+        import soniq as _soniq
+
+        soniq_app = _soniq._get_global_app()
+
+    data = DashboardService(soniq_app)
+
+    @asynccontextmanager
+    async def _lifespan(_app):
+        await soniq_app._ensure_initialized()
+        yield
+
     app = FastAPI(
         title="Soniq Dashboard",
         description="Real-time job monitoring and management",
         version="1.0.0",
+        lifespan=_lifespan,
     )
+    app.state.data = data
 
     # CORS: restrict origins to configured list or localhost default
     import os
@@ -158,29 +168,29 @@ def create_dashboard_app() -> "FastAPI":
     @app.get("/api/stats")
     async def api_job_stats() -> Dict[str, int]:
         """Get job statistics by status"""
-        return await get_job_stats()
+        return await data.get_job_stats()
 
     @app.get("/api/jobs")
     async def api_recent_jobs(
         limit: int = 50, queue: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """Get recent jobs"""
-        return await get_recent_jobs(limit=limit, queue=queue)
+        return await data.get_recent_jobs(limit=limit, queue=queue)
 
     @app.get("/api/queues")
     async def api_queue_stats() -> List[Dict[str, Any]]:
         """Get queue statistics"""
-        return await get_queue_stats()
+        return await data.get_queue_stats()
 
     @app.get("/api/metrics")
     async def api_job_metrics(hours: int = 24) -> Dict[str, Any]:
         """Get job processing metrics"""
-        return await get_job_metrics(hours=hours)
+        return await data.get_job_metrics(hours=hours)
 
     @app.get("/api/jobs/{job_id}")
     async def api_job_details(job_id: str) -> Dict[str, Any]:
         """Get job details"""
-        job = await get_job_details(job_id)
+        job = await data.get_job_details(job_id)
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
         return job
@@ -189,7 +199,7 @@ def create_dashboard_app() -> "FastAPI":
     async def api_retry_job(job_id: str, request: Request) -> Dict[str, str]:
         """Retry a failed job"""
         _require_write_authorization(request)
-        success = await retry_job(job_id)
+        success = await data.retry_job(job_id)
         if not success:
             raise HTTPException(status_code=400, detail="Unable to retry job")
         return {"message": "Job queued for retry"}
@@ -198,7 +208,7 @@ def create_dashboard_app() -> "FastAPI":
     async def api_delete_job(job_id: str, request: Request) -> Dict[str, str]:
         """Delete a job"""
         _require_write_authorization(request)
-        success = await delete_job(job_id)
+        success = await data.delete_job(job_id)
         if not success:
             raise HTTPException(status_code=400, detail="Unable to delete job")
         return {"message": "Job deleted"}
@@ -207,7 +217,7 @@ def create_dashboard_app() -> "FastAPI":
     async def api_cancel_job(job_id: str, request: Request) -> Dict[str, str]:
         """Cancel a queued job"""
         _require_write_authorization(request)
-        success = await cancel_job(job_id)
+        success = await data.cancel_job(job_id)
         if not success:
             raise HTTPException(status_code=400, detail="Unable to cancel job")
         return {"message": "Job cancelled"}
@@ -215,17 +225,17 @@ def create_dashboard_app() -> "FastAPI":
     @app.get("/api/workers/stats")
     async def api_worker_stats() -> Dict[str, Any]:
         """Get worker statistics and health information"""
-        return await get_worker_stats()
+        return await data.get_worker_stats()
 
     @app.get("/api/jobs/timeline")
     async def api_job_timeline(hours: int = 24) -> List[Dict[str, Any]]:
         """Get job processing timeline for visualization"""
-        return await get_job_timeline(hours=hours)
+        return await data.get_job_timeline(hours=hours)
 
     @app.get("/api/jobs/types")
     async def api_job_types_stats() -> List[Dict[str, Any]]:
         """Get statistics grouped by job type/name"""
-        return await get_job_types_stats()
+        return await data.get_job_types_stats()
 
     @app.get("/api/jobs/search")
     async def api_search_jobs(
@@ -237,7 +247,7 @@ def create_dashboard_app() -> "FastAPI":
         offset: int = 0,
     ) -> Dict[str, Any]:
         """Search and filter jobs with pagination"""
-        return await search_jobs(
+        return await data.search_jobs(
             query=query,
             status=status,
             queue=queue,
@@ -249,7 +259,7 @@ def create_dashboard_app() -> "FastAPI":
     @app.get("/api/system/health")
     async def api_system_health() -> Dict[str, Any]:
         """Get overall system health metrics"""
-        return await get_system_health()
+        return await data.get_system_health()
 
     @app.get("/api/tasks/drift")
     async def api_task_registry_drift(
@@ -259,9 +269,7 @@ def create_dashboard_app() -> "FastAPI":
         registered. Surfaces deploy-skew between producer and consumer
         services that share a database. Backed by the
         soniq_task_registry observability table populated by workers."""
-        from .app import get_task_registry_drift
-
-        return await get_task_registry_drift(window_minutes=window_minutes)
+        return await data.get_task_registry_drift(window_minutes=window_minutes)
 
     return app
 
@@ -941,14 +949,18 @@ def get_dashboard_html() -> str:
     return html.replace("__SONIQ_CAN_WRITE__", can_write)
 
 
-async def run_dashboard(host: str = "127.0.0.1", port: int = 6161):
+async def run_dashboard(
+    host: str = "127.0.0.1",
+    port: int = 6161,
+    soniq_app: Optional["Soniq"] = None,
+):
     """Run the dashboard server"""
     if not FASTAPI_AVAILABLE:
         raise ImportError(
             "FastAPI is required for dashboard. Install with: pip install fastapi uvicorn"
         )
 
-    app = create_dashboard_app()
+    app = create_dashboard_app(soniq_app=soniq_app)
     config = uvicorn.Config(app, host=host, port=port, log_level="info")
     server = uvicorn.Server(config)
 

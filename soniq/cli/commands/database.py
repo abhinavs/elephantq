@@ -56,24 +56,24 @@ async def handle_setup_command(args):
         print_status(f"Configuration error: {e}", "error")
         return 1
 
+    # When no explicit instance is provided, fall back to the global Soniq.
+    # Migrations always run against an explicit instance now; the previous
+    # "global pool" path went away with the get_context_pool fallback.
+    _owns_instance = False
+    if soniq_instance is None:
+        import soniq as _soniq
+
+        soniq_instance = _soniq._get_global_app()
+        _owns_instance = False  # do not close the global app
     try:
         print_status("Setting up Soniq database...", "info")
 
-        if soniq_instance:
-            print_status(
-                f"Using instance-based configuration (database: {soniq_instance.settings.database_url})",
-                "info",
-            )
-            # Use instance-based migrations
-            status = await soniq_instance._get_migration_status()
-            applied_count = await soniq_instance._run_migrations()
-        else:
-            print_status("Using global API configuration", "info")
-            # Use global API migrations
-            from soniq.db.migrations import get_migration_status, run_migrations
-
-            status = await get_migration_status()
-            applied_count = await run_migrations()
+        print_status(
+            f"Using instance-based configuration (database: {soniq_instance.settings.database_url})",
+            "info",
+        )
+        status = await soniq_instance._get_migration_status()
+        applied_count = await soniq_instance._run_migrations()
 
         print(f"  Found {status['total_migrations']} total migrations")
 
@@ -108,19 +108,14 @@ async def handle_setup_command(args):
             print_status(f"Setup failed: {e}", "error")
         return 1
     finally:
-        # Clean up instance if used
-        if soniq_instance and soniq_instance._is_initialized:
+        # Clean up instance only if we constructed it ourselves (the
+        # `--database-url` path).  The global app is shared, so don't close it.
+        if _owns_instance and soniq_instance and soniq_instance._is_initialized:
             await soniq_instance.close()
 
 
 async def handle_migrate_status_command(args):
     """Handle migrate status command"""
-    from soniq.db.context import (
-        DatabaseContext,
-        clear_current_context,
-        set_current_context,
-    )
-    from soniq.db.migrations import get_migration_status
 
     # Resolve Soniq instance from CLI arguments
     try:
@@ -129,24 +124,21 @@ async def handle_migrate_status_command(args):
         print_status(f"Configuration error: {e}", "error")
         return 1
 
-    # Set up database context
-    if soniq_instance:
-        context = DatabaseContext.from_instance(soniq_instance)
-        print_status(
-            f"Using instance-based configuration: {soniq_instance.settings.database_url}",
-            "info",
-        )
-    else:
-        context = DatabaseContext.from_global_api()
-        print_status("Using global API configuration", "info")
+    if soniq_instance is None:
+        import soniq as _soniq
 
-    set_current_context(context)
+        soniq_instance = _soniq._get_global_app()
+
+    print_status(
+        f"Using instance-based configuration: {soniq_instance.settings.database_url}",
+        "info",
+    )
 
     try:
         print_status("Soniq Database Migration Status", "info")
         print("=" * 50)
 
-        status = await get_migration_status()
+        status = await soniq_instance._get_migration_status()
 
         print(f"Total migrations: {status['total_migrations']}")
         print(f"Applied migrations: {len(status['applied_migrations'])}")
@@ -170,5 +162,3 @@ async def handle_migrate_status_command(args):
     except Exception as e:
         print_status(f"Failed to get migration status: {e}", "error")
         return 1
-    finally:
-        clear_current_context()
