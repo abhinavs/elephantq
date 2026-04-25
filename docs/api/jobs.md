@@ -162,16 +162,24 @@ Exactly one of `run_at` or `run_in` is required.
 
 ## @app.periodic() / @soniq.periodic()
 
-Declares a job that runs on a recurring schedule. The scheduler process
-(`soniq scheduler`) picks up all `@periodic` functions automatically.
+Declares a job that runs on a recurring schedule. Single decorator: registers the
+function as a regular `@app.job` and stamps the schedule on it. The scheduler
+process (`soniq scheduler`) picks up all `@periodic` functions automatically.
 
 ```python
-@soniq.periodic(cron="0 9 * * *")
+from datetime import timedelta
+from soniq import cron, daily, every
+
+@soniq.periodic(cron=daily().at("09:00"), name="reports.daily")
 async def daily_report():
     ...
 
-@soniq.periodic(every_minutes=10, queue="maintenance")
+@soniq.periodic(cron=every(10).minutes(), queue="maintenance", name="cleanup")
 async def cleanup_old_sessions():
+    ...
+
+@soniq.periodic(every=timedelta(seconds=30), name="metrics.flush")
+async def flush_metrics():
     ...
 ```
 
@@ -179,19 +187,15 @@ async def cleanup_old_sessions():
 
 | Parameter | Type | Description |
 |---|---|---|
-| `cron` | `str` | Standard cron expression (5 fields: minute hour day month weekday). |
-| `every_seconds` | `int` | Run every N seconds. |
-| `every_minutes` | `int` | Run every N minutes. |
-| `every_hours` | `int` | Run every N hours. |
-| `**job_kwargs` | | Any parameter accepted by `@app.job` (name, queue, priority, retries, etc.). |
+| `cron` | `str` or builder | A 5-field cron expression, or any object whose `__str__` is one (e.g. `daily().at("09:00")` from `soniq.schedules`). |
+| `every` | `timedelta` or `int`/`float` | Interval between runs. Use `timedelta` for clarity; ints are treated as seconds. |
+| `**job_kwargs` | | Any parameter accepted by `@app.job` (`name`, `queue`, `priority`, `retries`, etc.). `name` is optional and falls back to `f"{module}.{qualname}"`. |
 
 Rules:
-- Specify exactly one of `cron` or one `every_*` parameter.
-- You cannot combine `cron` with any `every_*` parameter.
-- You cannot combine multiple `every_*` parameters.
+- Specify exactly one of `cron=` or `every=`.
+- They cannot be combined.
 
-Requires `SONIQ_SCHEDULING_ENABLED=true` and a running `soniq scheduler`
-process.
+Requires a running `soniq scheduler` process to actually fire the jobs.
 
 
 ## JobContext
@@ -241,77 +245,47 @@ from soniq import JobStatus
 | `JobStatus.CANCELLED` | Cancelled before execution. |
 
 
-## JobScheduleBuilder (advanced scheduling)
+## Imperative scheduling: `app.scheduler`
 
-A fluent interface for building complex schedules. Requires
-`SONIQ_SCHEDULING_ENABLED=true`.
+For schedules computed at runtime (per-tenant, per-flag, ...) use the
+`Scheduler` service exposed on the Soniq instance:
 
 ```python
-from soniq.features.scheduling import schedule_job
-
-job_id = await (
-    schedule_job(send_report)
-    .in_minutes(30)
-    .with_priority(5)
-    .in_queue("reports")
-    .with_retries(2)
-    .enqueue(user_id=42)
+await app.scheduler.add(
+    target=cleanup,        # callable, task-name string, or pass name=
+    cron="0 9 * * *",      # OR: every=timedelta(...)
+    args={"region": "US"},
+    queue="reports",
+    priority=10,
 )
+
+await app.scheduler.pause("reports.daily")
+await app.scheduler.resume("reports.daily")
+await app.scheduler.remove("reports.daily")
+schedules = await app.scheduler.list(status="active")
+sched = await app.scheduler.get("reports.daily")
 ```
 
-### Builder methods
+Schedules are keyed by the resolved task name. Re-adding the same name
+updates the schedule in place rather than creating a duplicate.
 
-All methods return `self` for chaining.
+## Cron-string DSL
 
-| Method | Description |
-|---|---|
-| `.in_seconds(n)` | Run in N seconds from now. |
-| `.in_minutes(n)` | Run in N minutes from now. |
-| `.in_hours(n)` | Run in N hours from now. |
-| `.in_days(n)` | Run in N days from now. |
-| `.at_time(time_str)` | Run at a specific time. Accepts ISO 8601 datetime or `"HH:MM"` for today (schedules tomorrow if the time has passed). |
-| `.with_priority(n)` | Set priority (lower = higher). |
-| `.in_queue(name)` | Set target queue. |
-| `.with_retries(n)` | Set max retry attempts. |
-| `.with_tags(*tags)` | Add tags for categorization. |
-| `.with_timeout(seconds)` | Set execution timeout. |
-| `.if_condition(fn)` | Only enqueue if `fn()` returns `True`. |
-| `.dry_run()` | Return configuration dict instead of enqueueing. |
-
-### Terminal method
+`soniq.schedules` (also re-exported from the `soniq` package root) is a
+small, pure-Python builder layer that returns plain cron strings:
 
 ```python
-async def enqueue(self, connection=None, **kwargs) -> str | dict
+from datetime import timedelta
+from soniq import cron, daily, every, monthly, weekly
+
+every(5).minutes()                 # "*/5 * * * *"
+every(2).hours()                   # "0 */2 * * *"
+every(30).seconds()                # timedelta(seconds=30)
+daily().at("09:00")                # "0 9 * * *"
+weekly().on("monday").at("09:00")  # "0 9 * * 1"
+monthly().on_day(15).at("12:00")   # "0 12 15 * *"
+cron("*/15 * * * *")               # identity passthrough
 ```
 
-Enqueues the job and returns its UUID. In dry-run mode, returns a configuration
-dictionary instead.
-
-
-## BatchScheduler
-
-Enqueue multiple jobs as a logical batch:
-
-```python
-from soniq.features.scheduling import create_batch
-
-batch = create_batch()
-batch.add(send_email, to="a@b.com").with_priority(10)
-batch.add(send_email, to="c@d.com").with_priority(10)
-job_ids = await batch.enqueue_all()
-```
-
-## Recurring schedule helpers
-
-The `every()` and `cron()` helpers provide a fluent API for registering recurring
-jobs. They require `SONIQ_SCHEDULING_ENABLED=true`.
-
-```python
-import soniq
-
-# Every 5 minutes
-await soniq.every(5).minutes().schedule(cleanup_task)
-
-# Cron expression
-await soniq.cron("0 9 * * *").schedule(daily_report)
-```
+Each terminal returns a `str`, so `cron=daily().at("09:00")` plugs straight
+into `@app.periodic(cron=...)` or `app.scheduler.add(cron=...)`.

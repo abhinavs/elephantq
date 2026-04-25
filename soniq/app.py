@@ -166,6 +166,7 @@ class Soniq:
             "after_job": [],
             "on_error": [],
         }
+        self._scheduler: Optional[Any] = None
 
         logger.debug("Created Soniq instance")
 
@@ -405,6 +406,71 @@ class Soniq:
         # `@app.job` (no parens) - Python passed the function in directly.
         if _func is not None:
             return decorator(_func)
+        return decorator
+
+    @property
+    def scheduler(self) -> Any:
+        """Lazy per-app `Scheduler` service.
+
+        Constructed once and reused for the life of the Soniq instance.
+        Stays cheap to access from sync code: `Scheduler.__init__` does no
+        I/O and never touches the backend until an async method runs.
+        """
+        if self._scheduler is None:
+            from .features.scheduler import Scheduler
+
+            self._scheduler = Scheduler(self)
+        return self._scheduler
+
+    def periodic(self, *, cron: Any = None, every: Any = None, **job_kwargs):
+        """Register a recurring job in one decorator.
+
+        Stamps `_soniq_periodic` on the wrapped callable so
+        `Scheduler.start()` (called by `soniq scheduler`) finds it on
+        startup, and registers the function with `@app.job` in the same
+        pass so callers don't need to stack two decorators. `name=` is
+        optional - falls back to `f"{module}.{qualname}"`, same as
+        `@app.job`.
+
+        Pass `cron=` for cron expressions (5 fields, or any object whose
+        `__str__` is a cron expression like the builders in
+        ``soniq.schedules``) and `every=` for an interval (a
+        ``timedelta`` or seconds as int/float). They are mutually
+        exclusive.
+        """
+        if cron is None and every is None:
+            raise ValueError("@app.periodic requires either cron= or every=")
+        if cron is not None and every is not None:
+            raise ValueError("@app.periodic cannot accept both cron= and every=")
+
+        # Normalize the schedule shape now so the error surfaces at import
+        # time rather than at scheduler.start(). The Scheduler service
+        # re-validates on add() in case a caller hand-builds the spec.
+        from .features.scheduler import _coerce_schedule
+
+        schedule_type, schedule_value = _coerce_schedule(cron=cron, every=every)
+
+        # Capture args / queue / priority / max_attempts off the @app.job
+        # kwargs so the scheduler can use them when materializing the
+        # schedule on startup. The remaining kwargs flow to @app.job.
+        sched_args = job_kwargs.pop("schedule_args", None)
+
+        def decorator(func):
+            wrapped = self.job(**job_kwargs)(func)
+            wrapped._soniq_periodic = {  # type: ignore[attr-defined]
+                "cron": schedule_value if schedule_type == "cron" else None,
+                "every": int(schedule_value) if schedule_type == "interval" else None,
+                "args": sched_args or {},
+                "queue": job_kwargs.get("queue"),
+                "priority": job_kwargs.get("priority"),
+                "max_attempts": (
+                    (job_kwargs.get("retries") + 1)
+                    if job_kwargs.get("retries") is not None
+                    else None
+                ),
+            }
+            return wrapped
+
         return decorator
 
     def before_job(self, fn):

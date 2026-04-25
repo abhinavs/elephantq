@@ -4,8 +4,7 @@ from . import (
     dead_letter,
     logging,
     metrics,
-    recurring,
-    scheduling,
+    scheduler,
     signing,
     webhooks,
 )
@@ -14,8 +13,7 @@ from .managers import SoniqFeatures, features
 __all__ = [
     "SoniqFeatures",
     "features",
-    "recurring",
-    "scheduling",
+    "scheduler",
     "dead_letter",
     "logging",
     "metrics",

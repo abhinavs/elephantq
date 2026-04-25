@@ -56,18 +56,22 @@ async def check_stale_orders():
     ...
 ```
 
-Interval helpers for simpler cases:
+Interval helpers for simpler cases (use the cron-string builders or a `timedelta`):
 
 ```python
-@soniq.periodic(every_minutes=10)
+from datetime import timedelta
+from soniq import every
+
+@soniq.periodic(cron=every(10).minutes())
 async def cleanup_temp_files():
     ...
 
-@soniq.periodic(every_hours=1)
+@soniq.periodic(cron=every(1).hours())
 async def sync_inventory():
     ...
 
-@soniq.periodic(every_seconds=30)
+# Sub-minute uses every= directly (cron has no second resolution).
+@soniq.periodic(every=timedelta(seconds=30))
 async def health_ping():
     ...
 ```

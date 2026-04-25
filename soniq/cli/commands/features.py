@@ -208,26 +208,26 @@ def handle_dashboard_command(args):
 def handle_scheduler_command(args):
     import os
 
+    import soniq
     from soniq.cli.commands.core import _configure_cli_logging
-    from soniq.features.recurring import (
-        get_scheduler_status,
-        start_recurring_scheduler,
-        stop_recurring_scheduler,
-    )
 
     _configure_cli_logging(
         getattr(args, "log_level", None) or os.getenv("SONIQ_LOG_LEVEL", "INFO")
     )
 
     async def _run():
+        app = soniq._get_global_app()
+        scheduler = app.scheduler
+
         if args.status:
-            status = get_scheduler_status()
+            schedules = await scheduler.list()
+            active = [s for s in schedules if s["status"] == "active"]
+            paused = [s for s in schedules if s["status"] == "paused"]
             print("Soniq Scheduler Status:")
-            print(f"  Running: {status['running']}")
-            print(f"  Scheduler exists: {status['scheduler_exists']}")
-            print(f"  Scheduled jobs: {status['scheduled_jobs']}")
-            if status.get("check_interval"):
-                print(f"  Check interval: {status['check_interval']}s")
+            print(f"  Running: {scheduler.running}")
+            print(
+                f"  Scheduled jobs: {len(schedules)} ({len(active)} active, {len(paused)} paused)"
+            )
             return 0
 
         print(
@@ -236,16 +236,13 @@ def handle_scheduler_command(args):
         print("Use Ctrl+C to stop gracefully")
 
         try:
-            await start_recurring_scheduler(args.check_interval)
-            while True:
-                status = get_scheduler_status()
-                if not status["running"]:
-                    print("Scheduler stopped unexpectedly")
-                    break
+            await scheduler.start(check_interval=args.check_interval)
+            while scheduler.running:
                 await asyncio.sleep(10)
+            print("Scheduler stopped unexpectedly")
         except KeyboardInterrupt:
             print("Stopping scheduler...")
-            await stop_recurring_scheduler()
+            await scheduler.stop()
             print("Scheduler stopped")
         except Exception as e:
             print(f"Scheduler error: {e}")

@@ -25,10 +25,11 @@ where the name is a wire-protocol identifier)::
 
 from datetime import datetime, timedelta, timezone
 from importlib.metadata import PackageNotFoundError, version
-from typing import Optional, Union
+from typing import Any, Optional, Union
 
 from .app import Soniq
 from .job import JobContext, JobStatus, Snooze
+from .schedules import cron, daily, every, monthly, weekly
 from .settings import configure as settings_configure
 from .task_ref import TaskRef, task_ref
 
@@ -66,6 +67,9 @@ __all__ = [
     "task_ref",
     "every",
     "cron",
+    "daily",
+    "weekly",
+    "monthly",
     "features",
     "DASHBOARD_AVAILABLE",
 ]
@@ -215,67 +219,35 @@ def job(*decorator_args, **kwargs):
     return decorator
 
 
-def periodic(
-    *,
-    cron: Optional[str] = None,
-    every_seconds: Optional[int] = None,
-    every_minutes: Optional[int] = None,
-    every_hours: Optional[int] = None,
-    **job_kwargs,
-):
+def periodic(*, cron: Any = None, every: Any = None, **job_kwargs):
     """
-    Decorator that registers a function as a recurring job.
+    Module-level convenience decorator that registers a recurring job
+    against the global Soniq instance. Delegates to ``app.periodic(...)``.
 
-    Declares both the job and its schedule at definition time.
-    The scheduler picks up all @periodic functions automatically.
+    Pass ``cron=`` for a cron expression (a string, or any object whose
+    ``__str__`` is a cron expression - e.g. ``daily().at("09:00")`` from
+    ``soniq.schedules``) and ``every=`` for an interval (a ``timedelta``
+    or seconds as int/float). They are mutually exclusive. Remaining
+    kwargs flow to ``@app.job``.
 
     Examples:
         @soniq.periodic(cron="0 9 * * *")
         async def daily_report():
             ...
 
-        @soniq.periodic(every_minutes=10, queue="maintenance")
+        @soniq.periodic(every=timedelta(minutes=10), queue="maintenance")
         async def cleanup():
             ...
     """
-    # Determine schedule type and value
-    interval_args = [
-        ("seconds", every_seconds),
-        ("minutes", every_minutes),
-        ("hours", every_hours),
-    ]
-    interval_set = [(name, val) for name, val in interval_args if val is not None]
-
-    if cron and interval_set:
-        raise ValueError("Cannot specify both cron and every_* parameters")
-    if not cron and not interval_set:
-        raise ValueError(
-            "Must specify either cron='...' or one of every_seconds/every_minutes/every_hours"
-        )
-    if len(interval_set) > 1:
-        raise ValueError(
-            "Specify only one of every_seconds, every_minutes, every_hours"
-        )
-
-    if cron:
-        schedule_type = "cron"
-        schedule_value: Union[str, int] = cron
-    else:
-        name, val = interval_set[0]
-        schedule_type = "interval"
-        multipliers = {"seconds": 1, "minutes": 60, "hours": 3600}
-        schedule_value = val * multipliers[name]  # type: ignore[operator]
+    app = _get_global_app()
+    inner = app.periodic(cron=cron, every=every, **job_kwargs)
 
     def decorator(func):
-        # @app.job now derives `module.qualname` when no name= is passed,
-        # so `@periodic` does not need its own name-derivation step. If
-        # the caller passed name= explicitly, it flows through job_kwargs
-        # unchanged.
-        wrapped = job(**job_kwargs)(func)
-        wrapped._soniq_periodic = {  # type: ignore[attr-defined]
-            "type": schedule_type,
-            "value": schedule_value,
-        }
+        wrapped = inner(func)
+        # Mirror the registration into the global registry so a later
+        # configure() that recreates the global app re-applies it like
+        # any other @soniq.job-registered function.
+        _global_job_registry.append((func, dict(job_kwargs)))
         return wrapped
 
     return decorator
@@ -425,21 +397,3 @@ async def get_queue_stats():
 
 # Feature namespace (advanced features live under soniq.features)
 from . import features  # noqa: E402
-
-# Lazy imports for top-level scheduling functions to avoid circular import.
-# soniq.features.recurring imports from soniq at module level,
-# so we can't import from it at the top of this file.
-_LAZY_IMPORTS = {
-    "every": ("soniq.features.recurring", "every"),
-    "cron": ("soniq.features.recurring", "cron"),
-}
-
-
-def __getattr__(name: str):
-    if name in _LAZY_IMPORTS:
-        module_path, attr = _LAZY_IMPORTS[name]
-        import importlib
-
-        mod = importlib.import_module(module_path)
-        return getattr(mod, attr)
-    raise AttributeError(f"module 'soniq' has no attribute {name!r}")

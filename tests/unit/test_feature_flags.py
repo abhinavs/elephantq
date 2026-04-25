@@ -70,22 +70,11 @@ def test_feature_managers_enabled():
     assert features.dead_letter is not None
     assert features.signing is not None
 
-
-def test_scheduling_flag_required():
-    _clear_soniq_env()
-    _disable_all_feature_flags()
-    _reset_settings_cache()
-
-    from soniq.features import recurring, scheduling
-
-    def noop():
-        return None
-
-    with pytest.raises(RuntimeError, match="Advanced scheduling"):
-        scheduling.schedule_job(noop)
-
-    with pytest.raises(RuntimeError, match="Recurring scheduler"):
-        recurring.daily()
+    # As of S3, the cron-string DSL (`soniq.schedules.daily/weekly/...`) is
+    # pure-Python and does not gate on a feature flag - it builds strings.
+    # The Scheduler service itself only requires croniter for cron entries
+    # (raised on add()), and there is no flag wall in front of it. The old
+    # `JobScheduleBuilder` and `Advanced scheduling` flag are gone.
 
     # The dedicated timeout-processor module was removed in 0.0.2; timeouts
     # are now enforced inline in the core processor via asyncio.wait_for,

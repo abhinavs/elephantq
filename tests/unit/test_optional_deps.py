@@ -10,10 +10,10 @@ import pytest
 class TestOptionalDepGuards:
     """Verify import guards produce actionable error messages."""
 
-    def test_recurring_has_croniter_guard(self):
-        """recurring.py should have a _require_croniter guard function."""
+    def test_scheduler_has_croniter_guard(self):
+        """scheduler.py should have a _require_croniter guard function."""
         pytest.importorskip("croniter")
-        from soniq.features.recurring import _require_croniter
+        from soniq.features.scheduler import _require_croniter
 
         # Since croniter is installed in dev, this should not raise
         _require_croniter()
