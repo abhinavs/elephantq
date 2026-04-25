@@ -103,8 +103,16 @@ def _line_col_to_offset(src: str, line: int, col: int) -> int:
 
 
 def _node_range(src: str, node: ast.AST) -> Tuple[int, int]:
-    start = _line_col_to_offset(src, node.lineno, node.col_offset)
-    end = _line_col_to_offset(src, node.end_lineno, node.end_col_offset)
+    # Every concrete AST node we look at (Call, FunctionDef, AsyncFunctionDef,
+    # decorators) has `lineno`, `col_offset`, `end_lineno`, `end_col_offset`
+    # at runtime. mypy's stubs only expose them on `ast.expr` / `ast.stmt`,
+    # so we silence the attr-defined complaint at the boundary.
+    start = _line_col_to_offset(
+        src, node.lineno, node.col_offset  # type: ignore[attr-defined]
+    )
+    end = _line_col_to_offset(
+        src, node.end_lineno, node.end_col_offset  # type: ignore[attr-defined]
+    )
     return start, end
 
 
@@ -116,8 +124,27 @@ def _migrate_job_decorator(src: str, dec: ast.expr) -> str | None:
     raise NotImplementedError("handled inline; this is a placeholder for clarity")
 
 
-def migrate_source(src: str, path: str = "<input>") -> Tuple[str, List[str]]:
-    """Return (new_source, list_of_changes) for a single file's source."""
+def migrate_source(
+    src: str,
+    path: str = "<input>",
+    name_resolver=None,
+) -> Tuple[str, List[str]]:
+    """Return (new_source, list_of_changes) for a single file's source.
+
+    `name_resolver(short_ident, kind)` is an optional callable that maps a
+    bare identifier to its canonical task name. ``kind`` is one of
+    ``"job"`` (the @app.job decorator path) or ``"enqueue"`` (the
+    enqueue/schedule call path). When it returns None, the codemod
+    emits a ``REFUSE: ...`` change message and leaves the call site
+    untouched. When `name_resolver` is None (the default), the engine
+    falls back to using the bare identifier - the original quick-start
+    behaviour for in-repo migration.
+    """
+    if name_resolver is None:
+
+        def name_resolver(short, kind):  # noqa: E306
+            return short
+
     try:
         tree = ast.parse(src)
     except SyntaxError as e:
@@ -151,16 +178,24 @@ def migrate_source(src: str, path: str = "<input>") -> Tuple[str, List[str]]:
                     continue
                 close_paren_off = snippet.rfind(")")
                 inner = snippet[paren_off + 1 : close_paren_off].strip()
+                resolved = name_resolver(node.name, "job")
+                if resolved is None:
+                    changes.append(
+                        f"{path}:{dec.lineno}: REFUSE: no canonical name for "
+                        f"{node.name!r}; add it to migrate-enqueue.toml or "
+                        f"pass --use-derived-names."
+                    )
+                    continue
                 if inner:
-                    new_inner = f'name="{node.name}", {inner}'
+                    new_inner = f'name="{resolved}", {inner}'
                 else:
-                    new_inner = f'name="{node.name}"'
+                    new_inner = f'name="{resolved}"'
                 new_call = (
                     snippet[: paren_off + 1] + new_inner + snippet[close_paren_off:]
                 )
                 edits.append((start, end, new_call))
                 changes.append(
-                    f"{path}:{dec.lineno}: add name={node.name!r} to {snippet[:paren_off]}"
+                    f"{path}:{dec.lineno}: add name={resolved!r} to {snippet[:paren_off]}"
                 )
 
         # ----- app.enqueue / soniq.enqueue / app.schedule / soniq.schedule -----
@@ -214,7 +249,16 @@ def migrate_source(src: str, path: str = "<input>") -> Tuple[str, List[str]]:
             prefix = call_text[: paren_open + 1]
             suffix = call_text[paren_close:]
 
-            parts: List[str] = [f'"{short}"']
+            resolved = name_resolver(short, "enqueue")
+            if resolved is None:
+                changes.append(
+                    f"{path}:{node.lineno}: REFUSE: no canonical name for "
+                    f"{short!r}; add it to migrate-enqueue.toml or pass "
+                    f"--use-derived-names."
+                )
+                continue
+
+            parts: List[str] = [f'"{resolved}"']
             if args_kwargs:
                 items = ", ".join(f'"{k}": {ast.unparse(v)}' for k, v in args_kwargs)
                 parts.append(f"args={{{items}}}")
