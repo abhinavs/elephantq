@@ -163,7 +163,7 @@ async def test_cli_with_real_jobs():
     job_file_content = """
 import soniq
 
-@soniq.job(retries=1)
+@soniq.job(name="cli_test_job", retries=1)
 async def cli_test_job(message: str):
     with open("/tmp/soniq_cli_test.txt", "w") as f:
         f.write(f"CLI test: {message}")

@@ -41,10 +41,7 @@ async def test_free_features_compliance():
             "SELECT * FROM soniq_jobs WHERE id = $1", uuid.UUID(job_id)
         )
         assert job_record is not None
-        assert (
-            job_record["job_name"]
-            == "tests.integration.global_api.test_specification_compliance.basic_job"
-        )
+        assert job_record["job_name"] == "basic_job"
         assert job_record["args"] == {"message": "test persistence"}
 
     # ✅ Job processing with retry mechanism

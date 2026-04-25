@@ -59,10 +59,7 @@ async def test_enqueue_and_run_job():
         )
 
         assert job_record is not None, f"Job {job_id} not found in database"
-        assert (
-            job_record["job_name"]
-            == "tests.integration.instance_api.test_core.instance_sample_job"
-        )
+        assert job_record["job_name"] == "instance_sample_job"
         assert job_record["args"] == {"x": 1, "y": 2}
         assert job_record["max_attempts"] == 6  # retries=5 -> max_attempts=6
         assert job_record["status"] == "done"
@@ -87,8 +84,11 @@ async def test_enqueue_job_invalid_args():
     async with global_pool.acquire() as conn:
         await conn.execute("DELETE FROM soniq_jobs")
 
-    with pytest.raises(ValueError, match="Invalid arguments for job"):
+    from soniq.errors import SONIQ_TASK_ARGS_INVALID, SoniqError
+
+    with pytest.raises(SoniqError) as exc_info:
         await soniq.enqueue("sample_job", args={"x": 1, "y": "invalid"})
+    assert exc_info.value.error_code == SONIQ_TASK_ARGS_INVALID
 
     # Clean up global app
     if global_app._is_initialized:
@@ -236,13 +236,13 @@ async def test_task_discovery():
 
     importlib.import_module("jobs.my_tasks")
 
-    # Verify that the discovered job is registered
-    discovered_job_meta = get_job("jobs.my_tasks.discovered_job")
+    # Verify that the discovered job is registered under its explicit name
+    discovered_job_meta = get_job("discovered_job")
     assert discovered_job_meta is not None
 
     # Enqueue the discovered job using global API
     await soniq.enqueue(
-        discovered_job_meta["func"], message="Hello from discovered job!"
+        "discovered_job", args={"message": "Hello from discovered job!"}
     )
 
     # Process using global worker
@@ -251,7 +251,7 @@ async def test_task_discovery():
     # Check job status using global pool
     async with global_pool.acquire() as conn:
         job_record = await conn.fetchrow(
-            "SELECT * FROM soniq_jobs WHERE job_name = 'jobs.my_tasks.discovered_job'"
+            "SELECT * FROM soniq_jobs WHERE job_name = 'discovered_job'"
         )
         assert job_record["status"] == "done"
 

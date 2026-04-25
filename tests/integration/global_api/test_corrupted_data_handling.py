@@ -73,7 +73,7 @@ async def test_corrupted_json_data(clean_db):
             VALUES ($1, $2, $3, 'test', 'queued', 3)
             """,
             job_id,
-            "tests.integration.global_api.test_corrupted_data_handling.simple_test_job",
+            "simple_test_job",
             {"message": "test"},
         )
 
@@ -108,7 +108,7 @@ async def test_corrupted_validation_data(clean_db):
             VALUES ($1, $2, $3, 'test', 'queued', 3)
             """,
             job_id,
-            "tests.integration.global_api.test_corrupted_data_handling.validated_test_job",
+            "validated_test_job",
             {"message": 123, "count": "not_a_number"},  # Wrong types
         )
 
@@ -142,7 +142,7 @@ async def test_missing_required_arguments(clean_db):
             VALUES ($1, $2, $3, 'test', 'queued', 3)
             """,
             job_id,
-            "tests.integration.global_api.test_corrupted_data_handling.simple_test_job",
+            "simple_test_job",
             {},  # Missing required 'message' argument
         )
 
@@ -181,7 +181,7 @@ async def test_extra_unexpected_arguments(clean_db):
             VALUES ($1, $2, $3, 'test', 'queued', 3)
             """,
             job_id,
-            "tests.integration.global_api.test_corrupted_data_handling.simple_test_job",
+            "simple_test_job",
             {
                 "message": "test",
                 "unexpected_arg": "value",
@@ -225,7 +225,7 @@ async def test_invalid_json_structure(clean_db):
             VALUES ($1, $2, $3::text::jsonb, 'test', 'queued', 3)
             """,
             job_id,
-            "tests.integration.global_api.test_corrupted_data_handling.simple_test_job",
+            "simple_test_job",
             '"just a string not an object"',
         )
 
@@ -394,7 +394,7 @@ async def test_mixed_corrupted_and_valid_jobs(clean_db):
             VALUES ($1, $2, $3, 'mixed', 'queued', 3)
             """,
             corrupted_job_id,
-            "tests.integration.global_api.test_corrupted_data_handling.validated_test_job",
+            "validated_test_job",
             {"message": 123, "count": "not_a_number"},  # Wrong types
         )
 

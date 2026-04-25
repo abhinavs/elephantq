@@ -1,26 +1,26 @@
 """
 Soniq: Async Job Queue for Python (Backed by PostgreSQL)
 
-Simple global usage:
+Simple global usage::
 
     import soniq
 
-    @soniq.job()
+    @soniq.job(name="my_job")
     async def my_job(message: str):
         print(f"Processing: {message}")
 
-    await soniq.enqueue(my_job, message="Hello World")
+    await soniq.enqueue("my_job", args={"message": "Hello World"})
     await soniq.run_worker()
 
-Instance-based usage for advanced scenarios:
+Instance-based usage for advanced scenarios::
 
     app = Soniq(database_url="postgresql://localhost/myapp")
 
-    @app.job()
+    @app.job(name="my_job")
     async def my_job(message: str):
         print(f"Processing: {message}")
 
-    await app.enqueue(my_job, message="Hello World")
+    await app.enqueue("my_job", args={"message": "Hello World"})
     await app.run_worker()
 """
 

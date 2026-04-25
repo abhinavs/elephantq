@@ -384,7 +384,7 @@ async def test_soniq_integration_with_contexts():
     async def test_context_job(value: int):
         return value * 2
 
-    registry.register_job(test_context_job)
+    registry.register_job(test_context_job, name=test_context_job.__name__)
 
     pool = await app.get_pool()
     await clear_table(pool)

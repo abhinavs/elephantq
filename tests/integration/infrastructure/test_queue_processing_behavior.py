@@ -65,7 +65,7 @@ async def test_process_jobs_all_queues(app, result_file):
     """Test that queue=None processes jobs from any queue"""
 
     registry = app._get_job_registry()
-    registry.register_job(write_to_file_job)
+    registry.register_job(write_to_file_job, name=write_to_file_job.__name__)
     backend = app._backend
     worker = Worker(backend, registry)
 
@@ -113,7 +113,7 @@ async def test_process_jobs_single_queue(app, result_file):
     """Test that queue="name" processes only from that queue"""
 
     registry = app._get_job_registry()
-    registry.register_job(write_to_file_job)
+    registry.register_job(write_to_file_job, name=write_to_file_job.__name__)
     backend = app._backend
     worker = Worker(backend, registry)
 
@@ -149,7 +149,7 @@ async def test_process_jobs_multiple_queues(app, result_file):
     """Test that queue=["q1", "q2"] processes from specified queues efficiently"""
 
     registry = app._get_job_registry()
-    registry.register_job(write_to_file_job)
+    registry.register_job(write_to_file_job, name=write_to_file_job.__name__)
     backend = app._backend
     worker = Worker(backend, registry)
 
@@ -195,7 +195,7 @@ async def test_priority_ordering_across_queues(app, result_file):
     """Test that priority ordering works correctly across different queues"""
 
     registry = app._get_job_registry()
-    registry.register_job(write_to_file_job)
+    registry.register_job(write_to_file_job, name=write_to_file_job.__name__)
     backend = app._backend
     worker = Worker(backend, registry)
 
@@ -263,7 +263,7 @@ async def test_scheduled_jobs_across_queues(app, result_file):
     """Test that scheduled jobs work correctly across different queues"""
 
     registry = app._get_job_registry()
-    registry.register_job(write_to_file_job)
+    registry.register_job(write_to_file_job, name=write_to_file_job.__name__)
     backend = app._backend
     worker = Worker(backend, registry)
 
@@ -316,7 +316,7 @@ async def test_empty_queue_list(app, result_file):
     """Test that empty queue list behaves correctly"""
 
     registry = app._get_job_registry()
-    registry.register_job(write_to_file_job)
+    registry.register_job(write_to_file_job, name=write_to_file_job.__name__)
     backend = app._backend
     worker = Worker(backend, registry)
 
@@ -343,7 +343,7 @@ async def test_queue_efficiency_single_query(app):
     """Test that multiple queues use single efficient query"""
 
     registry = app._get_job_registry()
-    registry.register_job(write_to_file_job)
+    registry.register_job(write_to_file_job, name=write_to_file_job.__name__)
     backend = app._backend
     worker = Worker(backend, registry)
 

@@ -109,7 +109,7 @@ async def main():
         database_url=os.environ.get("SONIQ_DATABASE_URL", "postgresql://localhost/soniq_test")
     )
 
-    @soniq.job()
+    @soniq.job(name="test_job")
     async def test_job():
         return "test"
 
@@ -131,7 +131,7 @@ async def main():
         database_url=os.environ.get("SONIQ_DATABASE_URL", "postgresql://localhost/soniq_test")
     )
 
-    @app.job()
+    @app.job(name="test_job")
     async def test_job():
         return "test"
 

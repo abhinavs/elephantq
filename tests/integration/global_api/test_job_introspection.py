@@ -63,9 +63,7 @@ class TestJobIntrospection:
         assert status is not None
         assert status["id"] == job_id
         # Job name includes the full module path
-        expected_job_name = (
-            "tests.integration.global_api.test_job_introspection.simple_task"
-        )
+        expected_job_name = "simple_task"
         assert status["job_name"] == expected_job_name
         assert status["status"] == "queued"
         assert status["queue"] == "test"
