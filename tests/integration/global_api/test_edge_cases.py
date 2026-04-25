@@ -229,19 +229,20 @@ async def test_cli_integration():
     """Test CLI commands integration"""
     # Test CLI imports don't crash
     from soniq.cli.commands.core import register_core_commands
+    from soniq.cli.commands.database import register_database_commands
     from soniq.cli.main import main
     from soniq.cli.registry import get_cli_registry
 
-    # Test core command registration
+    # Register both core and database commands
     register_core_commands()
+    register_database_commands()
     registry = get_cli_registry()
 
-    # Verify core commands are registered
     commands = registry.get_all_commands()
     command_names = [cmd.name for cmd in commands]
 
-    assert "setup" in command_names  # Database setup command
-    assert "start" in command_names  # Worker start command
+    assert "setup" in command_names  # Database setup command (database.py)
+    assert "start" in command_names  # Worker start command (core.py)
 
     # Test that main function exists and is callable
     assert callable(main)

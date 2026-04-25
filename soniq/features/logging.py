@@ -644,7 +644,6 @@ class LogAnalyzer:
 
 
 # Global instances
-_db_handler = None
 _log_analyzer = LogAnalyzer()
 
 

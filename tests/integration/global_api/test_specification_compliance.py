@@ -139,18 +139,20 @@ async def test_cli_commands_compliance():
 
     # Test CLI commands exist
     from soniq.cli.commands.core import register_core_commands
+    from soniq.cli.commands.database import register_database_commands
     from soniq.cli.registry import get_cli_registry
 
-    # Register core commands and verify they exist
+    # Register core + database commands and verify they exist
     register_core_commands()
+    register_database_commands()
     registry = get_cli_registry()
     commands = registry.get_all_commands()
     command_names = [cmd.name for cmd in commands]
 
-    # Test database setup command (was "migrate")
+    # Test database setup command (registered by database.py)
     assert "setup" in command_names
 
-    # Test worker start command (was "worker")
+    # Test worker start command (registered by core.py)
     assert "start" in command_names
 
     # Verify command structure includes expected features

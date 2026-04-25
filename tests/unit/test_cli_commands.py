@@ -1,5 +1,6 @@
 """
-Tests for cli/commands/core.py and extended.py — command registration.
+Tests for cli/commands/core.py, database.py, and features.py - command
+registration.
 """
 
 from soniq.cli.registry import CLIRegistry
@@ -21,8 +22,8 @@ class TestCoreCommandRegistration:
             assert len(commands) > 0
             names = [c.name for c in commands]
             assert "start" in names
-            assert "setup" in names
             assert "status" in names
+            assert "workers" in names
         finally:
             reg_mod._registry = original
 
@@ -42,9 +43,9 @@ class TestCoreCommandRegistration:
             reg_mod._registry = original
 
 
-class TestExtendedCommandRegistration:
-    def test_register_extended_commands_populates_registry(self):
-        from soniq.cli.commands.extended import register_extended_commands
+class TestDatabaseCommandRegistration:
+    def test_register_database_commands_populates_registry(self):
+        from soniq.cli.commands.database import register_database_commands
 
         registry = CLIRegistry()
         import soniq.cli.registry as reg_mod
@@ -52,11 +53,28 @@ class TestExtendedCommandRegistration:
         original = reg_mod._registry
         reg_mod._registry = registry
         try:
-            register_extended_commands()
+            register_database_commands()
+            names = [c.name for c in registry.get_all_commands()]
+            assert "setup" in names
+            assert "migrate-status" in names
+        finally:
+            reg_mod._registry = original
+
+
+class TestFeatureCommandRegistration:
+    def test_register_feature_commands_populates_registry(self):
+        from soniq.cli.commands.features import register_feature_commands
+
+        registry = CLIRegistry()
+        import soniq.cli.registry as reg_mod
+
+        original = reg_mod._registry
+        reg_mod._registry = registry
+        try:
+            register_feature_commands()
             commands = registry.get_all_commands()
             assert len(commands) > 0
             names = [c.name for c in commands]
-            # Extended commands include dashboard, scheduler, etc.
             assert any(
                 n in names for n in ["dashboard", "scheduler", "metrics", "dead-letter"]
             )

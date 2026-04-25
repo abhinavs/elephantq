@@ -54,8 +54,9 @@ def with_soniq_context(handler: Callable):
     return wrapper
 
 
-def register_extended_commands():
-    """Register extended commands using the registry system."""
+def register_feature_commands():
+    """Register feature subcommands (dashboard, scheduler, metrics, dead-letter)
+    against the CLI registry."""
     instance_arguments = [
         {
             "args": ["--database-url"],

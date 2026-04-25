@@ -1,5 +1,5 @@
 """
-Tests for cli/commands/extended.py — context wrapper and registration.
+Tests for cli/commands/features.py — context wrapper and registration.
 """
 
 import argparse
@@ -7,9 +7,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from soniq.cli.commands.extended import (
+from soniq.cli.commands.features import (
     _with_context,
-    register_extended_commands,
+    register_feature_commands,
     with_soniq_context,
 )
 
@@ -25,7 +25,7 @@ class TestWithContext:
 
         args = argparse.Namespace()
         with patch(
-            "soniq.cli.commands.extended.resolve_soniq_instance",
+            "soniq.cli.commands.features.resolve_soniq_instance",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -41,7 +41,7 @@ class TestWithContext:
 
         args = argparse.Namespace()
         with patch(
-            "soniq.cli.commands.extended.resolve_soniq_instance",
+            "soniq.cli.commands.features.resolve_soniq_instance",
             new_callable=AsyncMock,
             return_value=None,
         ):
@@ -66,7 +66,7 @@ class TestRegisterExtendedCommands:
         registry = CLIRegistry()
         reg_mod._registry = registry
         try:
-            register_extended_commands()
+            register_feature_commands()
             names = [c.name for c in registry.get_all_commands()]
             assert len(names) >= 3
         finally:

@@ -15,18 +15,12 @@ from typing import Any, AsyncIterator, Optional
 
 import asyncpg
 
+from soniq.db.helpers import rows_affected as _rows_affected
+
 from ..core.leadership import advisory_key
 from ..db.connection import _init_connection
 
 logger = logging.getLogger(__name__)
-
-
-def _rows_affected(result: str) -> int:
-    """Parse asyncpg command result like 'UPDATE 1' → 1."""
-    try:
-        return int(result.split()[-1])
-    except (ValueError, IndexError):
-        return 0
 
 
 def _row_to_dict(row: asyncpg.Record) -> dict:

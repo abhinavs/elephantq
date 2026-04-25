@@ -9,7 +9,8 @@ from .colors import print_status
 
 # Import extensible command system
 from .commands.core import register_core_commands
-from .commands.extended import register_extended_commands
+from .commands.database import register_database_commands
+from .commands.features import register_feature_commands
 from .registry import get_cli_registry
 
 
@@ -30,11 +31,14 @@ For more information, visit: https://github.com/abhinavs/soniq
 
     subparsers = parser.add_subparsers(dest="command", title="Available commands")
 
-    # Register core commands in the registry
+    # Register core commands (start, status, workers, cli-debug)
     register_core_commands()
 
-    # Register extended commands (dashboard, scheduler, feature tools)
-    register_extended_commands()
+    # Register database commands (setup, migrate-status)
+    register_database_commands()
+
+    # Register feature commands (dashboard, scheduler, metrics, dead-letter)
+    register_feature_commands()
 
     # Add all registered commands to the parser
     registry = get_cli_registry()

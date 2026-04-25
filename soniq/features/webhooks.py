@@ -15,8 +15,6 @@ from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-import asyncpg
-
 try:
     import aiohttp
 except ImportError:
@@ -227,11 +225,11 @@ class WebhookRegistry:
                 endpoint.id,
                 endpoint.url,
                 endpoint.secret,
-                json.dumps(endpoint.events),
+                endpoint.events,
                 endpoint.active,
                 endpoint.max_retries,
                 endpoint.timeout_seconds,
-                json.dumps(endpoint.headers) if endpoint.headers else None,
+                endpoint.headers,
             )
 
     async def _delete_endpoint_from_db(self, endpoint_id: str):
@@ -247,10 +245,6 @@ class WebhookRegistry:
         try:
             pool = await get_pool()
             async with pool.acquire() as conn:
-                # Ensure webhook tables exist
-                await self._ensure_webhook_tables(conn)
-
-                # Load endpoints
                 endpoints = await conn.fetch(
                     """
                     SELECT * FROM soniq_webhook_endpoints WHERE active = true
@@ -259,17 +253,16 @@ class WebhookRegistry:
 
                 async with self._lock:
                     for row in endpoints:
+                        # JSONB columns are decoded by the pool codec.
                         endpoint = WebhookEndpoint(
                             id=row["id"],
                             url=row["url"],
                             secret=row["secret"],
-                            events=json.loads(row["events"]) if row["events"] else None,
+                            events=row["events"],
                             active=row["active"],
                             max_retries=row["max_retries"],
                             timeout_seconds=row["timeout_seconds"],
-                            headers=(
-                                json.loads(row["headers"]) if row["headers"] else None
-                            ),
+                            headers=row["headers"],
                         )
                         self.endpoints[endpoint.id] = endpoint
 
@@ -277,10 +270,6 @@ class WebhookRegistry:
 
         except Exception as e:
             logger.error(f"Failed to load webhook endpoints: {e}")
-
-    async def _ensure_webhook_tables(self, conn: asyncpg.Connection):
-        """Tables are created by migrations. No-op."""
-        pass
 
 
 class WebhookDispatcher:
@@ -497,7 +486,7 @@ class WebhookDispatcher:
                             id=row["id"],
                             endpoint_id=row["endpoint_id"],
                             event=row["event"],
-                            payload=json.loads(row["payload"]),
+                            payload=row["payload"],
                             status=row["status"],
                             attempts=row["attempts"],
                             max_attempts=row["max_attempts"],
@@ -542,7 +531,7 @@ class WebhookDispatcher:
                     delivery.id,
                     delivery.endpoint_id,
                     delivery.event,
-                    json.dumps(delivery.payload),
+                    delivery.payload,
                     delivery.status,
                     delivery.attempts,
                     delivery.max_attempts,
