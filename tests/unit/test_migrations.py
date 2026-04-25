@@ -22,13 +22,14 @@ class TestMigrationStructure:
         assert files == [
             "001_soniq_baseline.sql",
             "002_producer_id.sql",
+            "003_task_registry.sql",
         ]
 
     def test_migrations_discovered_in_order(self):
         runner = MigrationRunner()
         migrations = runner.discover_migrations()
         versions = [v for v, _, _ in migrations]
-        assert versions == ["001", "002"]
+        assert versions == ["001", "002", "003"]
 
 
 class TestBaselineContents:

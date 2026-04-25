@@ -65,6 +65,12 @@ class Worker:
             f"Starting worker - concurrency: {concurrency}, processing: {queue_info}"
         )
 
+        # Populate the soniq_task_registry observability table with the
+        # names this worker handles. Best-effort; runs in both run_once
+        # and continuous modes so the dashboard / tasks-check CLI sees a
+        # consistent view regardless of how the worker was started.
+        await self._populate_task_registry()
+
         try:
             if run_once:
                 return await self.run_once(queues)
@@ -72,6 +78,44 @@ class Worker:
                 return await self._run_continuous(concurrency, queues)
         finally:
             logger.info("Worker stopped")
+
+    async def _populate_task_registry(self) -> None:
+        """Upsert this worker's task names into the observability table.
+
+        Plan section 14.4: this table is observability metadata only.
+        Failures here log at debug and do not block worker startup.
+        """
+        if not hasattr(self._backend, "register_task_name"):
+            return
+        import uuid
+
+        # Generate a stable per-call worker_id for the observability row.
+        # The continuous path uses its own worker_id (with heartbeat); for
+        # run_once we just need a unique identifier so the upsert keys
+        # don't collide across separate run_once invocations.
+        worker_id = getattr(self, "_observability_worker_id", None) or str(uuid.uuid4())
+        self._observability_worker_id = worker_id
+
+        for task_name, meta in self._registry.list_jobs().items():
+            args_model = meta.get("args_model")
+            repr_str = (
+                getattr(args_model, "__name__", repr(args_model))
+                if args_model is not None
+                else None
+            )
+            try:
+                await self._backend.register_task_name(
+                    task_name=task_name,
+                    worker_id=worker_id,
+                    args_model_repr=repr_str,
+                )
+            except Exception:
+                logger.debug(
+                    "register_task_name failed for %s; observability "
+                    "table will be sparse but worker startup continues",
+                    task_name,
+                    exc_info=True,
+                )
 
     async def run_once(
         self,

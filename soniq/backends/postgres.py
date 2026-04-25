@@ -699,6 +699,50 @@ class PostgresBackend:
 
     # --- Worker tracking ---
 
+    async def register_task_name(
+        self,
+        *,
+        task_name: str,
+        worker_id: str,
+        args_model_repr: Optional[str] = None,
+    ) -> None:
+        """Upsert this worker's registration for ``task_name``.
+
+        Observability only: nothing in the enqueue path reads this table.
+        See plan section 14.4 'Architectural boundary statement' and the
+        boundary tests in tests/unit/test_enqueue.py.
+        """
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO soniq_task_registry
+                    (task_name, worker_id, last_seen_at, args_model_repr)
+                VALUES ($1, $2, NOW(), $3)
+                ON CONFLICT (task_name, worker_id)
+                DO UPDATE SET
+                    last_seen_at = NOW(),
+                    args_model_repr = EXCLUDED.args_model_repr
+                """,
+                task_name,
+                worker_id,
+                args_model_repr,
+            )
+
+    async def list_registered_task_names(self) -> list[dict]:
+        """Return registered (task_name, worker_id, last_seen_at) rows.
+
+        Observability only. See ``register_task_name``.
+        """
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT task_name, worker_id, last_seen_at, args_model_repr
+                FROM soniq_task_registry
+                ORDER BY task_name, worker_id
+                """
+            )
+            return [dict(r) for r in rows]
+
     async def register_worker(
         self,
         *,
