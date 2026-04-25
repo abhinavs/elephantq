@@ -89,13 +89,13 @@ def create_dashboard_app(soniq_app: Optional["Soniq"] = None) -> "FastAPI":
     if soniq_app is None:
         import soniq as _soniq
 
-        soniq_app = _soniq._get_global_app()
+        soniq_app = _soniq.get_global_app()
 
     data = DashboardService(soniq_app)
 
     @asynccontextmanager
     async def _lifespan(_app):
-        await soniq_app._ensure_initialized()
+        await soniq_app.ensure_initialized()
         yield
 
     app = FastAPI(
@@ -257,6 +257,28 @@ def create_dashboard_app(soniq_app: Optional["Soniq"] = None) -> "FastAPI":
         services that share a database. Backed by the
         soniq_task_registry observability table populated by workers."""
         return await data.get_task_registry_drift(window_minutes=window_minutes)
+
+    # Plugin-registered dashboard panels. Each plugin registers a
+    # ``PanelSpec`` via ``app.dashboard.add_panel(spec)``; here we expose
+    # an index of available panels and a render endpoint per panel id.
+    # Panels render lazily (the UI fetches ``/api/panels/{id}`` only
+    # when the user opens that panel) so a slow plugin doesn't block
+    # the rest of the dashboard.
+    @app.get("/api/panels")
+    async def api_list_panels() -> List[Dict[str, str]]:
+        return [{"id": p.id, "title": p.title} for p in soniq_app.dashboard._panels]
+
+    @app.get("/api/panels/{panel_id}")
+    async def api_render_panel(panel_id: str) -> Dict[str, Any]:
+        for panel in soniq_app.dashboard._panels:
+            if panel.id == panel_id:
+                content = await panel.render(soniq_app)
+                return {
+                    "id": panel.id,
+                    "title": panel.title,
+                    "content": content,
+                }
+        return {"error": f"Panel {panel_id!r} not registered"}
 
     return app
 

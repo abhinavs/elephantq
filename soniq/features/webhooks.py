@@ -245,7 +245,7 @@ class WebhookRegistry:
 
     @asynccontextmanager
     async def _acquire(self) -> AsyncIterator[Any]:
-        await self._app._ensure_initialized()
+        await self._app.ensure_initialized()
         async with self._app.backend.acquire() as conn:
             yield conn
 

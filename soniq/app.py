@@ -79,6 +79,8 @@ class Soniq:
         serializer: Optional[Any] = None,
         log_sink: Optional[Any] = None,
         metrics_sink: Optional[Any] = None,
+        plugins: Optional[List[Any]] = None,
+        autoload_plugins: bool = False,
         **settings_overrides,
     ):
         """
@@ -110,6 +112,16 @@ class Soniq:
                 via `prometheus_client`. The sink is invoked by the
                 worker around each job's execution.
                 Also settable post-construct via ``app.metrics_sink = ...``.
+            plugins: Optional list of ``SoniqPlugin`` instances to install
+                during construction. Equivalent to calling ``app.use(p)``
+                for each in order. ``SONIQ_PLUGIN_DUPLICATE`` is raised on
+                a name collision.
+            autoload_plugins: When True, resolve plugins via the
+                ``soniq.plugins`` entry-point group and install them
+                after the explicit ``plugins=`` list. Off by default so
+                imports never have side effects; opt in per instance,
+                or via the ``SONIQ_PLUGINS`` env var / ``--plugins`` CLI
+                flag.
             **settings_overrides: Override any SoniqSettings field
         """
         # Core instance state
@@ -158,6 +170,28 @@ class Soniq:
         self._logs: Optional[Any] = None
         self._signing: Optional[Any] = None
         self._dashboard_data: Optional[Any] = None
+
+        # Plugin infrastructure. ``cli`` / ``dashboard`` / ``migrations``
+        # are lazy handles plugins reach for in their ``install()``; the
+        # built-in CLI and dashboard read these to discover plugin
+        # contributions at parse / render time.
+        from .plugin import (
+            PluginCLI,
+            PluginDashboard,
+            PluginMigrations,
+            discover_plugins,
+        )
+
+        self._plugins: list[Any] = []
+        self._cli = PluginCLI()
+        self._dashboard = PluginDashboard()
+        self._migrations = PluginMigrations()
+
+        for plugin in plugins or []:
+            self.use(plugin)
+        if autoload_plugins:
+            for plugin in discover_plugins():
+                self.use(plugin)
 
         logger.debug("Created Soniq instance")
 
@@ -295,6 +329,15 @@ class Soniq:
     def _is_closed(self) -> bool:
         return self._closed
 
+    async def ensure_initialized(self) -> None:
+        """Public idempotent init.
+
+        Plugins, feature services, and library code that may run before
+        an explicit ``await app.setup()`` call this to guarantee the
+        backend is connected. Returns immediately on subsequent calls.
+        """
+        await self._ensure_initialized()
+
     async def _ensure_initialized(self):
         """
         Auto-initialize Soniq on first use.
@@ -365,13 +408,31 @@ class Soniq:
         """
         Close the Soniq application and cleanup resources.
 
-        Closes database connection pool and cleans up all resources.
+        Plugin ``on_shutdown`` hooks fire first, in reverse install
+        order. Failures during shutdown are logged and swallowed -
+        cleanup is best-effort and one plugin's bug must not block the
+        next from running.
         """
         if self._closed:
             logger.warning("Soniq already closed")
             return
 
         logger.info("Closing Soniq application...")
+
+        # Plugin shutdown - reverse install order so the last-installed
+        # plugin sees teardown first, mirroring stack semantics.
+        for plugin in reversed(self._plugins):
+            hook = getattr(plugin, "on_shutdown", None)
+            if hook is None:
+                continue
+            try:
+                await hook(self)
+            except Exception:
+                logger.warning(
+                    "Plugin %s on_shutdown failed; continuing.",
+                    plugin.name,
+                    exc_info=True,
+                )
 
         try:
             # Close backend (which closes its pool)
@@ -605,6 +666,80 @@ class Soniq:
         """
         self._middleware.append(fn)
         return fn
+
+    # ------------------------------------------------------------------
+    # Plugin lifecycle
+    # ------------------------------------------------------------------
+
+    def use(self, plugin: Any) -> Any:
+        """Install a plugin against this Soniq instance.
+
+        Idempotent on ``plugin.name``: a second installation of the same
+        name raises ``SoniqError(SONIQ_PLUGIN_DUPLICATE)`` so two
+        deployments accidentally pulling the same plugin twice fail
+        loud rather than registering hooks twice.
+
+        ``install`` runs synchronously and must not perform I/O. Plugins
+        with deferred work implement ``on_startup`` / ``on_shutdown``,
+        which the lifecycle in ``setup()`` / ``close()`` invokes.
+        """
+        if any(p.name == plugin.name for p in self._plugins):
+            raise SoniqError(
+                f"Plugin {plugin.name!r} is already installed.",
+                "SONIQ_PLUGIN_DUPLICATE",
+                context={
+                    "name": plugin.name,
+                    "version": getattr(plugin, "version", "unknown"),
+                },
+            )
+        plugin.install(self)
+        self._plugins.append(plugin)
+        logger.debug("Installed plugin %s (version %s)", plugin.name, plugin.version)
+        return plugin
+
+    @property
+    def plugins(self) -> Any:
+        """Read-only registry of installed plugins.
+
+        ``app.plugins["stripe"]`` returns the installed instance,
+        ``"stripe" in app.plugins`` and iteration both work. Use this
+        to ask "is plugin X installed and at what version?"
+        """
+        from .plugin import PluginRegistry
+
+        return PluginRegistry(self._plugins)
+
+    @property
+    def cli(self) -> Any:
+        """Plugin-facing CLI registry.
+
+        Plugins call ``app.cli.add_command(spec)`` in ``install()``;
+        ``soniq.cli.main`` reads the registered specs at parse time and
+        wires them as additional argparse subparsers.
+        """
+        return self._cli
+
+    @property
+    def dashboard(self) -> Any:
+        """Plugin-facing dashboard registry.
+
+        Plugins call ``app.dashboard.add_panel(spec)`` in ``install()``;
+        the dashboard server iterates registered panels alongside the
+        built-ins. For the data layer (queries against the jobs table),
+        see ``app.dashboard_data``.
+        """
+        return self._dashboard
+
+    @property
+    def migrations(self) -> Any:
+        """Plugin-facing migration source registry.
+
+        Plugins ship their own ``.sql`` files and register the
+        directory: ``app.migrations.register_source(<path>, prefix="0100")``.
+        The migration runner discovers plugin sources at ``app.setup()``
+        and applies them under the same advisory lock as core.
+        """
+        return self._migrations
 
     async def enqueue(
         self,
@@ -1149,7 +1284,9 @@ class Soniq:
 
         from .db.migrations import MigrationRunner
 
-        migration_runner = MigrationRunner()
+        migration_runner = MigrationRunner(
+            plugin_sources=self._migrations.list_sources()
+        )
         async with self._backend.acquire() as conn:  # type: ignore[union-attr]
             return await migration_runner._get_migration_status_with_connection(conn)
 
@@ -1167,7 +1304,9 @@ class Soniq:
 
         from .db.migrations import MigrationRunner
 
-        migration_runner = MigrationRunner()
+        migration_runner = MigrationRunner(
+            plugin_sources=self._migrations.list_sources()
+        )
         async with self._backend.acquire() as conn:  # type: ignore[union-attr]
             return await migration_runner._run_migrations_with_connection(conn)
 
@@ -1179,6 +1318,10 @@ class Soniq:
         - SQLite: tables created automatically by SQLiteBackend.initialize()
         - Memory: no-op
 
+        After migrations, plugin ``on_startup`` hooks fire in install
+        order. Failures propagate so a misconfigured plugin can't be
+        ignored at boot time.
+
         Returns:
             Number of migrations applied (0 for SQLite/Memory)
         """
@@ -1187,13 +1330,24 @@ class Soniq:
         await self._ensure_initialized()
         assert self._backend is not None  # narrow type after init
 
-        # SQLite and Memory backends create tables on initialize() - nothing to migrate.
-        if not isinstance(self._backend, PostgresBackend):
-            return 0
+        applied = 0
+        if isinstance(self._backend, PostgresBackend):
+            # PostgreSQL: attempt to create the database, then run migrations
+            await self._ensure_postgres_database_exists()
+            applied = await self._run_migrations()
+        # else: SQLite / Memory create tables on initialize() - skip.
 
-        # PostgreSQL: attempt to create the database, then run migrations
-        await self._ensure_postgres_database_exists()
-        return await self._run_migrations()
+        await self._run_plugin_startup_hooks()
+        return applied
+
+    async def _run_plugin_startup_hooks(self) -> None:
+        """Invoke ``on_startup(self)`` on every installed plugin in install
+        order. Failures propagate; plugins are load-bearing."""
+        for plugin in self._plugins:
+            hook = getattr(plugin, "on_startup", None)
+            if hook is None:
+                continue
+            await hook(self)
 
     # Underscore-prefixed alias preserved for in-package callers and the
     # global module facade. Public callers should use ``setup()``.

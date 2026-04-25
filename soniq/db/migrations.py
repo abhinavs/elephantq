@@ -15,6 +15,7 @@ from ..core.leadership import advisory_key
 
 if TYPE_CHECKING:
     from ..backends.postgres import PostgresBackend
+    from ..plugin import MigrationSource
 
 # Reused across concurrent migration runs. Parallel deploys (two CI nodes
 # calling `soniq setup` at once) used to race on non-idempotent DDL or
@@ -37,17 +38,26 @@ class MigrationRunner:
     or a ``PostgresBackend`` explicitly. There is no global-pool
     fallback - migrations run against the connection that the caller
     already holds (Soniq's backend, in practice).
+
+    Plugin migrations. Plugins ship their own ``NNNN_*.sql`` files
+    inside their package and register the directory via
+    ``app.migrations.register_source(path, prefix=...)``. Soniq passes
+    those sources through ``plugin_sources`` here so the runner discovers
+    them alongside core migrations and applies them under the same
+    advisory-lock guard.
     """
 
     def __init__(
         self,
         migrations_dir: Optional[Path] = None,
         backend: Optional["PostgresBackend"] = None,
+        plugin_sources: Optional[List["MigrationSource"]] = None,
     ):
         if migrations_dir is None:
             migrations_dir = Path(__file__).parent / "migrations"
         self.migrations_dir = migrations_dir
         self._backend = backend
+        self._plugin_sources: List["MigrationSource"] = list(plugin_sources or [])
 
     async def ensure_migration_table(self, conn: asyncpg.Connection) -> None:
         """Create the migration tracking table if it doesn't exist"""
@@ -73,10 +83,19 @@ class MigrationRunner:
 
     def discover_migrations(self) -> List[Tuple[str, str, Path]]:
         """
-        Discover all migration files in the migrations directory.
+        Discover all migration files in the core directory plus any
+        registered plugin sources.
 
         Returns:
             List of (version, name, file_path) tuples sorted by version
+
+        Core migrations live in ``soniq/db/migrations/`` and use raw
+        ``NNN_*.sql`` filenames (versions ``001``-``099``). Plugin
+        migrations live inside the plugin package and use a 4-digit
+        version derived from ``prefix + last-three-of-filename`` so the
+        per-plugin range stays contiguous in the sort. ``soniq-stripe``
+        with prefix ``"0100"`` and a file ``002_events.sql`` registers
+        as version ``0100002``.
         """
         migrations: List[Tuple[str, str, Path]] = []
 
@@ -84,28 +103,53 @@ class MigrationRunner:
             logger.warning(
                 f"Migrations directory does not exist: {self.migrations_dir}"
             )
-            return migrations
+        else:
+            for file_path in self.migrations_dir.glob("*.sql"):
+                entry = self._parse_migration_filename(file_path)
+                if entry is not None:
+                    migrations.append(entry)
 
-        for file_path in self.migrations_dir.glob("*.sql"):
-            filename = file_path.stem
+        for source in self._plugin_sources:
+            if not source.path.exists():
+                logger.warning(
+                    "Plugin migrations directory does not exist: %s", source.path
+                )
+                continue
+            for file_path in source.path.glob("*.sql"):
+                entry = self._parse_migration_filename(
+                    file_path, version_prefix=source.prefix
+                )
+                if entry is not None:
+                    migrations.append(entry)
 
-            # Expected format: "001_initial_schema" or "002_add_retry_count"
-            try:
-                parts = filename.split("_", 1)
-                if len(parts) >= 2:
-                    version = parts[0]
-                    name = parts[1] if len(parts) > 1 else "unnamed"
-                    migrations.append((version, name, file_path))
-                else:
-                    logger.warning(
-                        f"Skipping migration file with invalid name format: {filename}"
-                    )
-            except Exception as e:
-                logger.warning(f"Error parsing migration filename {filename}: {e}")
-
-        # Sort by version (assumes version is numeric like 001, 002, etc.)
+        # Sort by version. Core ``001`` and plugin ``0100002`` both sort
+        # numerically; lexicographic also works because every version is
+        # a left-padded digit string.
         migrations.sort(key=lambda x: x[0])
         return migrations
+
+    @staticmethod
+    def _parse_migration_filename(
+        file_path: Path, version_prefix: Optional[str] = None
+    ) -> Optional[Tuple[str, str, Path]]:
+        """Parse ``NNN_name.sql`` into a ``(version, name, path)`` tuple.
+
+        With ``version_prefix`` set (plugin source), the file's leading
+        number is concatenated onto the prefix so plugin migrations
+        keep a deterministic order distinct from core's.
+        """
+        filename = file_path.stem
+        parts = filename.split("_", 1)
+        if len(parts) < 2:
+            logger.warning(
+                "Skipping migration file with invalid name format: %s", filename
+            )
+            return None
+        local_version, name = parts[0], parts[1]
+        version = (
+            f"{version_prefix}{local_version}" if version_prefix else local_version
+        )
+        return version, name, file_path
 
     async def get_applied_migrations(self, conn: asyncpg.Connection) -> List[str]:
         """Get list of migration versions that have already been applied"""

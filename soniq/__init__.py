@@ -72,6 +72,7 @@ __all__ = [
     "weekly",
     "monthly",
     "DASHBOARD_AVAILABLE",
+    "get_global_app",
 ]
 
 # Dashboard availability flag (for CLI checks)
@@ -81,17 +82,20 @@ except Exception:
     DASHBOARD_AVAILABLE = False
 
 
-def _get_global_app() -> Soniq:
-    """
-    Get or create the global Soniq application instance.
+def get_global_app() -> Soniq:
+    """Get or create the global Soniq application instance.
 
-    This enables a global convenience API.
-    The global app is created lazily on first use with default settings.
-    If the existing global app is closed, a new one is created automatically.
+    Lazy: the first call constructs a ``Soniq`` with default settings,
+    re-registering all globally-defined jobs against it. Subsequent
+    calls return the same instance until ``close()`` runs.
+
+    Used by the global convenience API (``soniq.enqueue``,
+    ``soniq.run_worker``, ...) and by feature services that want to
+    fall back to the global app when no instance was wired in.
     """
     global _global_app
 
-    if _global_app is None or _global_app._is_closed:
+    if _global_app is None or _global_app.is_closed:
         _global_app = Soniq()
 
         # Re-register all global jobs with the new instance
@@ -99,6 +103,12 @@ def _get_global_app() -> Soniq:
             _global_app.job(**job_kwargs)(job_func)
 
     return _global_app
+
+
+# Underscore alias preserved for in-package callers and tests written
+# against the older spelling. New call sites (and plugins) should use
+# the public name above.
+_get_global_app = get_global_app
 
 
 async def configure(

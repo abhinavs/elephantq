@@ -328,7 +328,7 @@ class Scheduler:
     async def _get_store(self) -> Union[_SqlStore, _MemoryStore]:
         if self._store is not None:
             return self._store
-        await self._app._ensure_initialized()
+        await self._app.ensure_initialized()
         backend = self._app.backend
         # Postgres is the only backend with the soniq_recurring_jobs table
         # and a real connection pool. Everything else (Memory, SQLite) keeps
@@ -418,7 +418,7 @@ class Scheduler:
             raise ValueError("args must be JSON-serializable") from exc
 
         # Pick up registered defaults when caller didn't override.
-        meta = self._app._get_job_registry().get_job(job_name)
+        meta = self._app.registry.get_job(job_name)
         if meta is not None:
             final_priority = priority if priority is not None else meta["priority"]
             final_queue = queue if queue is not None else meta["queue"]
@@ -549,7 +549,7 @@ class Scheduler:
         return self._running
 
     async def _register_decorated(self) -> None:
-        registry = self._app._get_job_registry()
+        registry = self._app.registry
         for job_name, meta in registry.list_jobs().items():
             func = meta.get("func")
             spec = getattr(func, "_soniq_periodic", None)

@@ -223,14 +223,14 @@ class DatabaseLogHandler(logging.Handler):
         production code passes an explicit ``Soniq``.
         """
         if self._app is not None:
-            await self._app._ensure_initialized()
+            await self._app.ensure_initialized()
             async with self._app.backend.acquire() as conn:
                 yield conn
             return
         import soniq
 
-        app = soniq._get_global_app()
-        await app._ensure_initialized()
+        app = soniq.get_global_app()
+        await app.ensure_initialized()
         async with app.backend.acquire() as conn:
             yield conn
 
@@ -619,14 +619,14 @@ class LogAnalyzer:
     @asynccontextmanager
     async def _acquire(self) -> AsyncIterator[Any]:
         if self._app is not None:
-            await self._app._ensure_initialized()
+            await self._app.ensure_initialized()
             async with self._app.backend.acquire() as conn:
                 yield conn
             return
         import soniq
 
-        app = soniq._get_global_app()
-        await app._ensure_initialized()
+        app = soniq.get_global_app()
+        await app.ensure_initialized()
         async with app.backend.acquire() as conn:
             yield conn
 
@@ -778,7 +778,7 @@ def _service() -> LogService:
     """Build a service against the global Soniq app on demand."""
     import soniq
 
-    return LogService(soniq._get_global_app())
+    return LogService(soniq.get_global_app())
 
 
 # Public API

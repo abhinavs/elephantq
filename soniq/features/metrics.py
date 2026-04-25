@@ -173,14 +173,14 @@ class MetricsAnalyzer:
     @asynccontextmanager
     async def _acquire(self) -> AsyncIterator[Any]:
         if self._app is not None:
-            await self._app._ensure_initialized()
+            await self._app.ensure_initialized()
             async with self._app.backend.acquire() as conn:
                 yield conn
             return
         import soniq
 
-        app = soniq._get_global_app()
-        await app._ensure_initialized()
+        app = soniq.get_global_app()
+        await app.ensure_initialized()
         async with app.backend.acquire() as conn:
             yield conn
 

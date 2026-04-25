@@ -171,7 +171,7 @@ class DeadLetterService:
 
     @asynccontextmanager
     async def _acquire(self) -> AsyncIterator[Any]:
-        await self._app._ensure_initialized()
+        await self._app.ensure_initialized()
         async with self._app.backend.acquire() as conn:
             yield conn
 
@@ -685,7 +685,7 @@ def _service() -> DeadLetterService:
     """
     import soniq
 
-    return DeadLetterService(soniq._get_global_app())
+    return DeadLetterService(soniq.get_global_app())
 
 
 # Public API
