@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ElephantQ Release Script
+Soniq Release Script
 Automates cleaning, formatting, building, and publishing to PyPI
 
 Features:
@@ -24,7 +24,7 @@ from typing import List, Optional, Tuple
 
 
 class ReleaseManager:
-    """Manages the release process for ElephantQ"""
+    """Manages the release process for Soniq"""
 
     def __init__(
         self,
@@ -250,7 +250,7 @@ class ReleaseManager:
 
         # Format with black
         success, _ = self.run_command(
-            ["black", "elephantq/", "tests/", "--line-length", "88"],
+            ["black", "soniq/", "tests/", "--line-length", "88"],
             "Formatting with black",
         )
         if not success:
@@ -258,7 +258,7 @@ class ReleaseManager:
 
         # Sort imports with isort
         success, _ = self.run_command(
-            ["isort", "elephantq/", "tests/", "--profile", "black"],
+            ["isort", "soniq/", "tests/", "--profile", "black"],
             "Sorting imports with isort",
         )
         if not success:
@@ -288,7 +288,7 @@ class ReleaseManager:
             success, _ = self.run_command(
                 [
                     "flake8",
-                    "elephantq/",
+                    "soniq/",
                     "--max-line-length",
                     "88",
                     "--ignore",
@@ -303,7 +303,7 @@ class ReleaseManager:
         # Run mypy if available
         if "mypy" in available_linters:
             success, _ = self.run_command(
-                ["mypy", "elephantq/", "--ignore-missing-imports"],
+                ["mypy", "soniq/", "--ignore-missing-imports"],
                 "Running mypy type checker",
                 check=False,
             )
@@ -316,9 +316,9 @@ class ReleaseManager:
         """Run the test suite"""
         print("\n🧪 Running tests...")
 
-        # Use ElephantQ's comprehensive test runner
+        # Use Soniq's comprehensive test runner
         success, _ = self.run_command(
-            ["python3", "run_tests.py"], "Running ElephantQ test suite"
+            ["python3", "run_tests.py"], "Running Soniq test suite"
         )
         return success
 
@@ -416,7 +416,7 @@ class ReleaseManager:
         skip_git_checks: bool = False,
     ) -> bool:
         """Run the complete release process"""
-        print("🚀 ElephantQ Release Process Starting...")
+        print("🚀 Soniq Release Process Starting...")
         print(f"Mode: {'DRY RUN' if self.dry_run else 'LIVE'}")
         print(f"Target: {'Test PyPI' if self.test_pypi else 'PyPI'}")
 
@@ -467,13 +467,13 @@ class ReleaseManager:
         print("\n🎉 Release process completed successfully!")
         if not self.dry_run and not skip_publish:
             repo_name = "Test PyPI" if self.test_pypi else "PyPI"
-            print(f"ElephantQ v{release_version} has been published to {repo_name}!")
+            print(f"Soniq v{release_version} has been published to {repo_name}!")
 
         return True
 
 
 def main():
-    parser = argparse.ArgumentParser(description="ElephantQ Release Manager")
+    parser = argparse.ArgumentParser(description="Soniq Release Manager")
     parser.add_argument(
         "--dry-run",
         action="store_true",

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-ElephantQ Test Runner - Runs tests in organized batches with API isolation
+Soniq Test Runner - Runs tests in organized batches with API isolation
 
 This script runs tests in the new isolated structure:
-- Global API tests: Use elephantq.job, elephantq.enqueue, etc.
-- Instance API tests: Use app = ElephantQ(), app.job, etc.
+- Global API tests: Use soniq.job, soniq.enqueue, etc.
+- Instance API tests: Use app = Soniq(), app.job, etc.
 - Infrastructure tests: Test underlying systems (CLI, connections, etc.)
 - Unit tests: Test individual modules
 """
@@ -26,7 +26,7 @@ def _venv_python_path(venv_dir: str) -> str:
 
 def _bootstrap_venv(project_root: str) -> None:
     """Ensure a venv exists, dependencies are installed, and re-exec in the venv."""
-    if _bool_env("ELEPHANTQ_TEST_VENV_BOOTSTRAPPED"):
+    if _bool_env("SONIQ_TEST_VENV_BOOTSTRAPPED"):
         return
 
     venv_dir = os.path.join(project_root, ".venv")
@@ -56,8 +56,8 @@ def _bootstrap_venv(project_root: str) -> None:
         print(f"   Details: {exc}")
 
     env = os.environ.copy()
-    env["ELEPHANTQ_TEST_VENV_BOOTSTRAPPED"] = "1"
-    env["ELEPHANTQ_TEST_VENV_PYTHON"] = venv_python
+    env["SONIQ_TEST_VENV_BOOTSTRAPPED"] = "1"
+    env["SONIQ_TEST_VENV_PYTHON"] = venv_python
     os.execvpe(venv_python, [venv_python, __file__], env)
 
 
@@ -92,7 +92,7 @@ def run_test_batch(name, test_paths, verbose=True):
     print(f"Running {name}")
     print(f"{'='*60}")
 
-    python = os.environ.get("ELEPHANTQ_TEST_VENV_PYTHON", sys.executable)
+    python = os.environ.get("SONIQ_TEST_VENV_PYTHON", sys.executable)
     cmd = [python, "-m", "pytest"] + test_paths
     if verbose:
         cmd.append("-v")
@@ -115,18 +115,18 @@ def run_flake8():
     print("Running flake8 lint checks")
     print("============================================================")
 
-    python = os.environ.get("ELEPHANTQ_TEST_VENV_PYTHON", sys.executable)
-    result = subprocess.run([python, "-m", "flake8", "elephantq"])
+    python = os.environ.get("SONIQ_TEST_VENV_PYTHON", sys.executable)
+    result = subprocess.run([python, "-m", "flake8", "soniq"])
     if result.returncode != 0:
         sys.exit(result.returncode)
 
 
 def main():
     """Run all test batches with new API isolation structure"""
-    print("🚀 ElephantQ Comprehensive Test Suite")
+    print("🚀 Soniq Comprehensive Test Suite")
     print("Running tests with API isolation for maximum reliability...")
 
-    # Change to the script's directory (should be the elephantq root)
+    # Change to the script's directory (should be the soniq root)
     script_dir = os.path.dirname(os.path.abspath(__file__))
     os.chdir(script_dir)
     print(f"📁 Running tests from: {script_dir}")
@@ -138,7 +138,7 @@ def main():
     run_flake8()
 
     # Avoid row locks during tests when requested
-    os.environ.setdefault("ELEPHANTQ_SKIP_UPDATE_LOCK", "true")
+    os.environ.setdefault("SONIQ_SKIP_UPDATE_LOCK", "true")
 
     # Define test batches with new structure
     test_batches = [
@@ -162,7 +162,7 @@ def main():
             "Smoke Tests",
             ["tests/smoke/"],
         ),
-        # GLOBAL API TESTS - Use elephantq.job, elephantq.enqueue, etc.
+        # GLOBAL API TESTS - Use soniq.job, soniq.enqueue, etc.
         (
             "Global API - Job Management & Introspection",
             ["tests/integration/global_api/test_job_introspection.py"],
@@ -195,7 +195,7 @@ def main():
             "Global API - TTL & Job Cleanup",
             ["tests/integration/global_api/test_ttl_functionality.py"],
         ),
-        # INSTANCE API TESTS - Use app = ElephantQ(), app.job, etc.
+        # INSTANCE API TESTS - Use app = Soniq(), app.job, etc.
         (
             "Instance API - Core Functionality",
             ["tests/integration/instance_api/test_core.py"],
@@ -285,7 +285,7 @@ def main():
     print(f"\n📊 SUMMARY: {passed_count}/{total_batches} test batches passed")
 
     if passed_count == total_batches:
-        print("🎉 ALL TESTS PASSING! ElephantQ is ready for production! 🚀")
+        print("🎉 ALL TESTS PASSING! Soniq is ready for production! 🚀")
         return 0
     else:
         print("⚠️  Some test batches failed. Check individual results above.")
