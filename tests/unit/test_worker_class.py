@@ -47,9 +47,9 @@ async def test_worker_run_once_processes_job():
     """Worker.run_once should process a job via MemoryBackend."""
     import uuid
 
-    from soniq.backends.memory import MemoryBackend
     from soniq.core.registry import JobRegistry
     from soniq.core.worker import Worker
+    from soniq.testing.memory_backend import MemoryBackend
 
     backend = MemoryBackend()
     registry = JobRegistry()

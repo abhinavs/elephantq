@@ -26,7 +26,7 @@ def test_soniq_exposes_backend_attribute():
 def test_soniq_resolves_memory_backend_string():
     """Soniq(backend='memory') should create a MemoryBackend."""
     from soniq.app import Soniq
-    from soniq.backends.memory import MemoryBackend
+    from soniq.testing.memory_backend import MemoryBackend
 
     app = Soniq(backend="memory")
     assert isinstance(app._backend, MemoryBackend)

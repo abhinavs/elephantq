@@ -9,9 +9,9 @@ so operators can read it back from the job record.
 
 import pytest
 
-from soniq.backends.memory import MemoryBackend
 from soniq.core.processor import process_job_via_backend
 from soniq.core.registry import JobRegistry
+from soniq.testing.memory_backend import MemoryBackend
 
 
 def _helper_that_explodes():

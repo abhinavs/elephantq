@@ -193,7 +193,7 @@ class Soniq:
     def _resolve_backend_name(name: str, database_url: Optional[str] = None) -> Any:
         """Resolve a string backend name to a backend instance."""
         if name == "memory":
-            from .backends.memory import MemoryBackend
+            from .testing.memory_backend import MemoryBackend
 
             return MemoryBackend()
         elif name == "sqlite":

@@ -2,15 +2,29 @@
 
 Practical patterns for testing applications that use Soniq. All examples use pytest.
 
+## The `soniq.testing` package
+
+Everything in `soniq.testing` is for tests, examples, and quick scripts. It is intentionally separate from production-tier imports so its scope is obvious at the import site:
+
+```python
+from soniq.testing import MemoryBackend, make_app, wait_until
+```
+
+- `MemoryBackend`: in-memory `StorageBackend`. No persistence, no concurrency contention. Good for unit tests; never use it in production.
+- `make_app(**overrides)`: one-liner Soniq wired against `MemoryBackend`. Equivalent to `Soniq(backend="memory", **overrides)`.
+- `wait_until(predicate, *, timeout=2.0, poll=0.01, message=None)`: deadline-based polling that replaces fixed `asyncio.sleep(...)` calls in async tests. Predicate may be sync or async. Raises `AssertionError` on timeout.
+
 ## Memory backend for unit tests
 
 The fastest way to test. No external services, no cleanup scripts. State lives in Python dicts and disappears when the process exits:
 
 ```python
-from soniq import Soniq
+from soniq.testing import make_app
 
-app = Soniq(backend="memory")
+app = make_app()
 ```
+
+(or, equivalently, `from soniq import Soniq; Soniq(backend="memory")`)
 
 ## Pytest fixture
 
@@ -18,14 +32,43 @@ A reusable fixture that gives each test a clean, isolated Soniq instance:
 
 ```python
 import pytest
-from soniq import Soniq
+from soniq.testing import make_app
 
 @pytest.fixture
 async def eq():
-    app = Soniq(backend="memory")
+    app = make_app()
     yield app
     await app._reset()
     await app.close()
+```
+
+## Async waits without fixed sleeps
+
+`asyncio.sleep(0.5)` in a test is a guess: too short on slow CI, too long on fast hardware. Use `wait_until` to poll an observable condition with a deadline:
+
+```python
+import asyncio
+from soniq.testing import wait_until
+
+
+@pytest.mark.asyncio
+async def test_worker_completes_job(eq):
+    @eq.job()
+    async def do_thing():
+        return "done"
+
+    job_id = await eq.enqueue(do_thing)
+    asyncio.create_task(eq.run_worker(run_once=True))
+
+    async def is_done():
+        job = await eq.get_job(job_id)
+        return job and job["status"] == "done"
+
+    await wait_until(
+        is_done,
+        timeout=2.0,
+        message="job did not complete within 2s",
+    )
 ```
 
 Every test that accepts `eq` gets its own queue with no leftover state from previous runs.

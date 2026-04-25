@@ -13,7 +13,6 @@ parameter. These tests pin the contract.
 import pytest
 
 from soniq import Soniq
-from soniq.backends.memory import MemoryBackend
 from soniq.core.processor import process_job_via_backend
 from soniq.core.registry import JobRegistry
 from soniq.core.retry import (
@@ -21,6 +20,7 @@ from soniq.core.retry import (
     ExponentialBackoff,
     RetryPolicy,
 )
+from soniq.testing.memory_backend import MemoryBackend
 from soniq.utils.serialization import (
     DEFAULT_SERIALIZER,
     JSONSerializer,

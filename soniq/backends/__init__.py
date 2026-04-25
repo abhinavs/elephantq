@@ -1,10 +1,13 @@
 """
 Pluggable storage backends for Soniq.
 
-StorageBackend defines the interface. Implementations:
+StorageBackend defines the interface. Production-tier implementations:
 - PostgresBackend (production)
 - SQLiteBackend (local dev, zero setup)
-- MemoryBackend (tests, no persistence)
+
+The in-memory backend (`MemoryBackend`) lives under `soniq.testing` to
+make its scope obvious at the import site - it is for tests, examples,
+and quick scripts only.
 """
 
 from datetime import datetime

@@ -7,7 +7,7 @@ Postgres conformance runs separately in tests/integration/.
 
 import pytest
 
-from soniq.backends.memory import MemoryBackend
+from soniq.testing.memory_backend import MemoryBackend
 
 
 def _get_backend_params():

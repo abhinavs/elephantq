@@ -6,8 +6,8 @@ process_job_via_backend uses StorageBackend instead of raw asyncpg.Connection.
 
 import pytest
 
-from soniq.backends.memory import MemoryBackend
 from soniq.core.registry import JobRegistry
+from soniq.testing.memory_backend import MemoryBackend
 
 
 @pytest.mark.asyncio

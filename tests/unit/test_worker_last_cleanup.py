@@ -2,9 +2,9 @@
 Test that _last_cleanup is an instance variable, not a class variable.
 """
 
-from soniq.backends.memory import MemoryBackend
 from soniq.core.registry import JobRegistry
 from soniq.core.worker import Worker
+from soniq.testing.memory_backend import MemoryBackend
 
 
 def test_last_cleanup_is_instance_attribute():

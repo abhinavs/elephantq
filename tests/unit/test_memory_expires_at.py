@@ -2,7 +2,7 @@
 Test that MemoryBackend sets expires_at when mark_job_done is called with result_ttl > 0.
 """
 
-from soniq.backends.memory import MemoryBackend
+from soniq.testing.memory_backend import MemoryBackend
 
 
 async def test_mark_done_sets_expires_at_with_ttl():

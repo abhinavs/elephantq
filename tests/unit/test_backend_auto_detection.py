@@ -59,7 +59,7 @@ def test_no_config_defaults_to_sqlite():
 def test_explicit_backend_overrides_auto_detection():
     """Explicit backend= param should override URL-based detection."""
     from soniq.app import Soniq
-    from soniq.backends.memory import MemoryBackend
+    from soniq.testing.memory_backend import MemoryBackend
 
     app = Soniq(backend="memory")
     assert isinstance(app._backend, MemoryBackend)

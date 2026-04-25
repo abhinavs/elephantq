@@ -68,7 +68,7 @@ async def test_run_worker_ok_with_adequate_pool(monkeypatch):
     app = Soniq(pool_max_size=10, pool_headroom=2)
 
     # With the memory backend there is no pool — check should be skipped.
-    from soniq.backends.memory import MemoryBackend
+    from soniq.testing.memory_backend import MemoryBackend
 
     app._backend = MemoryBackend()
     app._initialized = True

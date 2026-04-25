@@ -7,9 +7,9 @@ unregistered job dead-letter, corruption exception handling, hooks.
 
 import pytest
 
-from soniq.backends.memory import MemoryBackend
 from soniq.core.processor import process_job_via_backend
 from soniq.core.registry import JobRegistry
+from soniq.testing.memory_backend import MemoryBackend
 
 
 async def _setup(job_func, args={}, max_attempts=3, attempts_override=None):

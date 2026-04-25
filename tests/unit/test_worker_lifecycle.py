@@ -10,9 +10,9 @@ import uuid
 
 import pytest
 
-from soniq.backends.memory import MemoryBackend
 from soniq.core.registry import JobRegistry
 from soniq.core.worker import Worker
+from soniq.testing.memory_backend import MemoryBackend
 
 
 async def _create_jobs(backend, registry, job_func, count, args_template=None):

@@ -12,10 +12,10 @@ from datetime import datetime, timezone
 
 import pytest
 
-from soniq.backends.memory import MemoryBackend
 from soniq.core.processor import process_job_via_backend
 from soniq.core.registry import JobRegistry
 from soniq.job import Snooze
+from soniq.testing.memory_backend import MemoryBackend
 
 
 async def _setup(job_func, max_attempts=5):
