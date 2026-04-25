@@ -11,17 +11,24 @@ BASELINE = MIGRATIONS_DIR / "001_soniq_baseline.sql"
 
 
 class TestMigrationStructure:
-    """Verify the single baseline migration exists and is discoverable."""
+    """Verify the migration files exist in the expected order.
 
-    def test_only_baseline_exists(self):
+    002_producer_id was added in the cross-service-enqueue work to add
+    a nullable producer_id column to soniq_jobs.
+    """
+
+    def test_expected_migrations_exist(self):
         files = sorted(f.name for f in MIGRATIONS_DIR.glob("*.sql"))
-        assert files == ["001_soniq_baseline.sql"]
+        assert files == [
+            "001_soniq_baseline.sql",
+            "002_producer_id.sql",
+        ]
 
-    def test_baseline_discovered(self):
+    def test_migrations_discovered_in_order(self):
         runner = MigrationRunner()
         migrations = runner.discover_migrations()
         versions = [v for v, _, _ in migrations]
-        assert versions == ["001"]
+        assert versions == ["001", "002"]
 
 
 class TestBaselineContents:

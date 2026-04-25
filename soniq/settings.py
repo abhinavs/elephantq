@@ -123,6 +123,17 @@ class SoniqSettings(BaseSettings):
         ),
     )
 
+    producer_id: str = Field(
+        default="auto",
+        description=(
+            "Identifier stamped on every row this instance enqueues, for "
+            "observability ('who enqueued this poison message?'). 'auto' "
+            "resolves to <hostname>:<pid>:<argv0> the first time a producer_id "
+            "is needed. Set explicitly (e.g. 'billing-api') for cleaner "
+            "dashboards in multi-deployment topologies."
+        ),
+    )
+
     # Feature Flags (all disabled by default)
     dashboard_enabled: bool = Field(
         default=False, description="Enable the Soniq dashboard"

@@ -68,6 +68,7 @@ class MemoryBackend:
         unique: bool,
         dedup_key: Optional[str] = None,
         scheduled_at: Optional[datetime] = None,
+        producer_id: Optional[str] = None,
     ) -> Optional[str]:
         async with self._lock:
             # Unique dedup
@@ -104,6 +105,7 @@ class MemoryBackend:
                 "unique_job": unique,
                 "dedup_key": dedup_key,
                 "scheduled_at": scheduled_at,
+                "producer_id": producer_id,
                 "expires_at": None,
                 "result": None,
                 "last_error": None,

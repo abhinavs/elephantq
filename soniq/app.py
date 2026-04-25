@@ -605,6 +605,10 @@ class Soniq:
         args_hash = compute_args_hash(args) if final_unique else None
         job_id = str(uuid.uuid4())
 
+        from .utils.producer_id import resolve_producer_id
+
+        producer_id = resolve_producer_id(self._settings.producer_id)
+
         if connection is not None:
             if self._backend.supports_transactional_enqueue:
                 txn_id: str = await self._backend.create_job_transactional(
@@ -619,6 +623,7 @@ class Soniq:
                     unique=final_unique,
                     dedup_key=dedup_key,
                     scheduled_at=scheduled_at,
+                    producer_id=producer_id,
                 )
                 return txn_id
             raise ValueError(
@@ -637,6 +642,7 @@ class Soniq:
             unique=final_unique,
             dedup_key=dedup_key,
             scheduled_at=scheduled_at,
+            producer_id=producer_id,
         )
 
         if self._backend.supports_push_notify:

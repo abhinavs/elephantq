@@ -14,7 +14,6 @@ from tests.db_utils import TEST_DATABASE_URL
 
 os.environ.setdefault("SONIQ_DATABASE_URL", TEST_DATABASE_URL)
 
-from soniq import configure  # noqa: E402
 from soniq.errors import (  # noqa: E402
     SONIQ_INVALID_TASK_NAME,
     SONIQ_TASK_ARGS_INVALID,
@@ -246,11 +245,21 @@ async def test_args_model_valid_passes(app):
 
 @pytest.mark.asyncio
 async def test_module_level_enqueue_routes_to_active_app():
+    """Module-level soniq.enqueue routes through the active-app
+    contextvar when one is set. Use the memory backend so this test
+    does not depend on the Postgres test database schema."""
     import soniq
+    from soniq._active import _active_app
 
-    await configure(database_url=TEST_DATABASE_URL, enqueue_validation="none")
-    job_id = await soniq.enqueue("billing.modlevel", args={"x": 1})
+    app = make_app(enqueue_validation="none")
+    token = _active_app.set(app)
+    try:
+        job_id = await soniq.enqueue("billing.modlevel", args={"x": 1})
+    finally:
+        _active_app.reset(token)
     assert isinstance(job_id, str) and len(job_id) == 36
+    rows = await app.list_jobs()
+    assert any(r["id"] == job_id for r in rows)
 
 
 # ---------------------------------------------------------------------------
