@@ -4,16 +4,6 @@ FastAPI web dashboard for Soniq.
 
 from typing import Any, Dict, List, Optional
 
-try:
-    import uvicorn
-    from fastapi import FastAPI, HTTPException
-    from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.responses import HTMLResponse
-
-    FASTAPI_AVAILABLE = True
-except ImportError:
-    FASTAPI_AVAILABLE = False
-
 from soniq.settings import get_settings
 
 from .app import (
@@ -31,6 +21,75 @@ from .app import (
     retry_job,
     search_jobs,
 )
+
+try:
+    import uvicorn
+    from fastapi import FastAPI, HTTPException, Request
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import HTMLResponse
+
+    FASTAPI_AVAILABLE = True
+except ImportError:
+    FASTAPI_AVAILABLE = False
+
+
+_LOCALHOST_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+
+
+def _is_localhost_request(request: "Request") -> bool:
+    """Whether the request originated on the same host as the dashboard.
+
+    A request is treated as local when:
+    - the TCP peer address is loopback, AND
+    - the Host header (if present) names a loopback address.
+
+    Both checks matter: a reverse proxy on the same host can connect from
+    127.0.0.1 with an arbitrary `Host:` header, and we don't want to silently
+    let a public-facing proxy bypass write protection.
+    """
+    client = request.client
+    if client is None or client.host not in _LOCALHOST_HOSTS:
+        return False
+    host_header = request.headers.get("host", "")
+    # Strip port if present
+    host = host_header.split(":", 1)[0].lower()
+    return host == "" or host in _LOCALHOST_HOSTS
+
+
+def _require_write_authorization(request: "Request") -> None:
+    """Guard called from each write endpoint.
+
+    Requires `dashboard_write_enabled = true` AND at least one of:
+    1. `SONIQ_DASHBOARD_API_KEY` configured (the global API-key middleware
+       will have already validated the key by the time this runs).
+    2. The request comes from localhost.
+
+    Both conditions taken together mean: in production, an operator opts
+    in to writes by setting both `SONIQ_DASHBOARD_WRITE_ENABLED=true` and
+    `SONIQ_DASHBOARD_API_KEY`. On a developer's laptop, the API key is
+    optional because loopback traffic is treated as trusted.
+    """
+    settings = get_settings()
+    if not settings.dashboard_write_enabled:
+        raise HTTPException(
+            status_code=403, detail="Dashboard write actions are disabled"
+        )
+    import os
+
+    api_key_set = bool(os.environ.get("SONIQ_DASHBOARD_API_KEY", ""))
+    if api_key_set:
+        return  # Global middleware already validated the key.
+    if _is_localhost_request(request):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=(
+            "Dashboard writes from non-local clients require "
+            "SONIQ_DASHBOARD_API_KEY. Set it on the dashboard process "
+            "and pass `X-API-Key: <key>` (or `?api_key=<key>`) on each "
+            "write request."
+        ),
+    )
 
 
 def create_dashboard_app() -> "FastAPI":
@@ -127,36 +186,27 @@ def create_dashboard_app() -> "FastAPI":
         return job
 
     @app.post("/api/jobs/{job_id}/retry")
-    async def api_retry_job(job_id: str) -> Dict[str, str]:
+    async def api_retry_job(job_id: str, request: Request) -> Dict[str, str]:
         """Retry a failed job"""
-        if not settings.dashboard_write_enabled:
-            raise HTTPException(
-                status_code=403, detail="Dashboard write actions are disabled"
-            )
+        _require_write_authorization(request)
         success = await retry_job(job_id)
         if not success:
             raise HTTPException(status_code=400, detail="Unable to retry job")
         return {"message": "Job queued for retry"}
 
     @app.delete("/api/jobs/{job_id}")
-    async def api_delete_job(job_id: str) -> Dict[str, str]:
+    async def api_delete_job(job_id: str, request: Request) -> Dict[str, str]:
         """Delete a job"""
-        if not settings.dashboard_write_enabled:
-            raise HTTPException(
-                status_code=403, detail="Dashboard write actions are disabled"
-            )
+        _require_write_authorization(request)
         success = await delete_job(job_id)
         if not success:
             raise HTTPException(status_code=400, detail="Unable to delete job")
         return {"message": "Job deleted"}
 
     @app.post("/api/jobs/{job_id}/cancel")
-    async def api_cancel_job(job_id: str) -> Dict[str, str]:
+    async def api_cancel_job(job_id: str, request: Request) -> Dict[str, str]:
         """Cancel a queued job"""
-        if not settings.dashboard_write_enabled:
-            raise HTTPException(
-                status_code=403, detail="Dashboard write actions are disabled"
-            )
+        _require_write_authorization(request)
         success = await cancel_job(job_id)
         if not success:
             raise HTTPException(status_code=400, detail="Unable to cancel job")
