@@ -46,9 +46,7 @@ async def _move_sample_job_to_dlq(tag: str) -> str:
 @pytest.mark.asyncio
 async def test_delete_dead_letter_job_returns_in_bounded_time():
     """delete_dead_letter_job exercises _rows_affected; must complete in <5s."""
-    await soniq.configure(
-        database_url=TEST_DATABASE_URL, dead_letter_queue_enabled=True
-    )
+    await soniq.configure(database_url=TEST_DATABASE_URL)
     global_app = soniq._get_global_app()
     await global_app._ensure_initialized()
     await dead_letter.setup_dead_letter_queue()
@@ -73,9 +71,7 @@ async def test_delete_dead_letter_job_returns_in_bounded_time():
 @pytest.mark.asyncio
 async def test_bulk_delete_returns_exact_count_in_bounded_time():
     """bulk_delete exercises _rows_affected; must return accurate count in <5s."""
-    await soniq.configure(
-        database_url=TEST_DATABASE_URL, dead_letter_queue_enabled=True
-    )
+    await soniq.configure(database_url=TEST_DATABASE_URL)
     global_app = soniq._get_global_app()
     await global_app._ensure_initialized()
     await dead_letter.setup_dead_letter_queue()
@@ -105,9 +101,7 @@ async def test_bulk_delete_returns_exact_count_in_bounded_time():
 @pytest.mark.asyncio
 async def test_move_then_single_dlq_row_exists():
     """Guard that move_to_dead_letter produces exactly one DLQ row, no more."""
-    await soniq.configure(
-        database_url=TEST_DATABASE_URL, dead_letter_queue_enabled=True
-    )
+    await soniq.configure(database_url=TEST_DATABASE_URL)
     global_app = soniq._get_global_app()
     await global_app._ensure_initialized()
     await dead_letter.setup_dead_letter_queue()

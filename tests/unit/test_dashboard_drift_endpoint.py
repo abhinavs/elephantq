@@ -29,17 +29,9 @@ def test_drift_data_layer_method_importable():
     assert callable(DashboardService.get_task_registry_drift)
 
 
-def test_drift_endpoint_registered_on_fastapi_app(monkeypatch):
+def test_drift_endpoint_registered_on_fastapi_app():
     """The /api/tasks/drift route is wired on the FastAPI app."""
     fastapi = pytest.importorskip("fastapi")  # noqa: F841
-
-    # `create_dashboard_app` enforces `dashboard_enabled=true`. Enable the
-    # flag via env + cached-settings reset so this unit test does not need
-    # the integration suite's full conftest.
-    monkeypatch.setenv("SONIQ_DASHBOARD_ENABLED", "true")
-    import soniq.settings as settings_module
-
-    settings_module._settings = None
 
     from soniq.dashboard.fastapi_app import create_dashboard_app
 

@@ -70,7 +70,6 @@ __all__ = [
     "daily",
     "weekly",
     "monthly",
-    "features",
     "DASHBOARD_AVAILABLE",
 ]
 
@@ -393,7 +392,3 @@ async def get_queue_stats():
     """Get statistics for all queues."""
     app = _get_global_app()
     return await app.get_queue_stats()
-
-
-# Feature namespace (advanced features live under soniq.features)
-from . import features  # noqa: E402

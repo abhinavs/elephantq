@@ -8,9 +8,7 @@ from tests.db_utils import TEST_DATABASE_URL
 
 @pytest.mark.asyncio
 async def test_dead_letter_move_creates_record():
-    await soniq.configure(
-        database_url=TEST_DATABASE_URL, dead_letter_queue_enabled=True
-    )
+    await soniq.configure(database_url=TEST_DATABASE_URL)
 
     global_app = soniq._get_global_app()
     await global_app._ensure_initialized()

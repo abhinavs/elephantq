@@ -26,16 +26,19 @@ def test_list_jobs_default_limit_consistent():
     )
 
 
-def test_no_enterprise_aliases_in_features():
-    """EnterpriseFeatures and enterprise aliases must not exist."""
-    from soniq.features import features as features_mod
+def test_no_features_umbrella():
+    """The SoniqFeatures umbrella (and the `features` singleton) is gone.
 
-    assert not hasattr(
-        features_mod, "EnterpriseFeatures"
-    ), "EnterpriseFeatures alias should be removed"
-    assert not hasattr(features_mod, "enterprise"), "enterprise alias should be removed"
-
+    Each feature service is now reached via a lazy property on the
+    ``Soniq`` instance: ``app.webhooks``, ``app.dead_letter``,
+    ``app.scheduler``, ``app.signing``, ``app.logs``,
+    ``app.dashboard_data``.
+    """
     import soniq.features as feat_pkg
 
-    assert "EnterpriseFeatures" not in feat_pkg.__all__
-    assert "enterprise" not in feat_pkg.__all__
+    assert not hasattr(feat_pkg, "SoniqFeatures")
+    assert not hasattr(feat_pkg, "EnterpriseFeatures")
+    assert not hasattr(feat_pkg, "features")
+    assert not hasattr(feat_pkg, "enterprise")
+    assert "SoniqFeatures" not in feat_pkg.__all__
+    assert "features" not in feat_pkg.__all__

@@ -254,11 +254,9 @@ def handle_scheduler_command(args):
 
 @with_soniq_context
 def handle_metrics_command(args):
-    from soniq.features.flags import require_feature
     from soniq.features.metrics import get_system_metrics
 
     async def _run():
-        require_feature("metrics_enabled", "Metrics")
         metrics = await get_system_metrics(timeframe_hours=args.hours)
         if args.format == "json":
             import json
@@ -285,10 +283,8 @@ def handle_dead_letter_command(args):
         list_dead_letter_jobs,
         resurrect_job,
     )
-    from soniq.features.flags import require_feature
 
     async def _run():
-        require_feature("dead_letter_queue_enabled", "Dead letter queue")
         action = args.action
         filter_criteria = create_filter()
         filter_criteria.limit = args.limit

@@ -22,10 +22,12 @@ def test_scheduler_service_importable_from_features():
 
 
 def test_webhooks_importable_from_features():
-    """from soniq.features.webhooks import register_webhook"""
-    from soniq.features.webhooks import register_webhook
+    """from soniq.features.webhooks import WebhookService, WebhookTransport"""
+    from soniq.features.webhooks import HTTPTransport, WebhookService, WebhookTransport
 
-    assert callable(register_webhook)
+    assert callable(WebhookService)
+    assert callable(HTTPTransport)
+    assert WebhookTransport is not None
 
 
 def test_dead_letter_importable_from_features():

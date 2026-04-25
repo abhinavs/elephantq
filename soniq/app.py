@@ -6,7 +6,6 @@ Enables multiple isolated Soniq instances with independent configurations.
 """
 
 import logging
-from pathlib import Path
 from typing import Any, List, Optional
 
 from .core.registry import JobRegistry
@@ -74,7 +73,6 @@ class Soniq:
     def __init__(
         self,
         database_url: Optional[str] = None,
-        config_file: Optional[Path] = None,
         backend: Optional[Any] = None,
         retry_policy: Optional[Any] = None,
         serializer: Optional[Any] = None,
@@ -88,27 +86,30 @@ class Soniq:
 
         Args:
             database_url: PostgreSQL connection URL
-            config_file: Optional configuration file path
             backend: Optional StorageBackend instance. If not provided,
                 creates a PostgresBackend from the database_url.
             retry_policy: Optional `soniq.core.retry.RetryPolicy` instance.
                 Defaults to `ExponentialBackoff()` which honors per-job
                 `retry_delay` / `retry_backoff` / `retry_max_delay` /
                 `retry_jitter` set via the `@app.job(...)` decorator.
+                Also settable post-construct via ``app.retry_policy = ...``
+                up until ``await app._setup()`` runs.
             serializer: Optional `soniq.utils.serialization.Serializer`
                 instance. Defaults to `JSONSerializer`. Custom serializers
                 are advisory only at present: backends store via JSONB /
                 JSON-text and read via the same path, so non-JSON formats
                 require a serializer-aware backend.
+                Also settable post-construct via ``app.serializer = ...``.
             log_sink: Optional `soniq.features.logging.LogSink` instance.
-                When provided and `logging_enabled = true`, log records
-                flow into this sink instead of (or in addition to) the
-                built-in `DatabaseLogHandler`.
+                When provided, log records flow into this sink instead of
+                (or in addition to) the built-in ``DatabaseLogHandler``.
+                Also settable post-construct via ``app.log_sink = ...``.
             metrics_sink: Optional `soniq.observability.MetricsSink`
                 instance. Defaults to `NoopMetricsSink`. Pass
                 `PrometheusMetricsSink()` to expose per-job metrics
                 via `prometheus_client`. The sink is invoked by the
                 worker around each job's execution.
+                Also settable post-construct via ``app.metrics_sink = ...``.
             producer_only: When True, this instance can enqueue and
                 manage jobs but cannot run a worker or scheduler.
                 ``run_worker(...)`` and the recurring scheduler entry
@@ -151,12 +152,7 @@ class Soniq:
         if database_url and self._backend is None:
             settings_overrides["database_url"] = database_url
 
-        if config_file:
-            self._settings = SoniqSettings(
-                _env_file=str(config_file), **settings_overrides  # type: ignore[call-arg]
-            )
-        else:
-            self._settings = SoniqSettings(**settings_overrides)
+        self._settings = SoniqSettings(**settings_overrides)
 
         # Instance components (initialized lazily)
         self._pool: Optional[Any] = None
@@ -167,8 +163,66 @@ class Soniq:
             "on_error": [],
         }
         self._scheduler: Optional[Any] = None
+        self._webhooks: Optional[Any] = None
+        self._dead_letter: Optional[Any] = None
+        self._logs: Optional[Any] = None
+        self._signing: Optional[Any] = None
+        self._dashboard_data: Optional[Any] = None
 
         logger.debug("Created Soniq instance")
+
+    def _check_setup_frozen(self, attr: str) -> None:
+        """Refuse to mutate a pluggable extension point after setup() ran.
+
+        ``retry_policy`` / ``serializer`` / ``metrics_sink`` / ``log_sink``
+        are read by the worker construction path. Letting callers swap them
+        after the worker has captured a reference would silently fork
+        behavior between in-flight and future jobs; per O.4 they are
+        settable up until ``_ensure_initialized()`` runs.
+        """
+        if self._initialized:
+            raise SoniqError(
+                f"Cannot set {attr} after Soniq.setup() has run. "
+                f"Configure pluggable extension points before the first "
+                f"async call (or ``await app._setup()``).",
+                "SONIQ_APP_FROZEN",
+            )
+
+    @property
+    def retry_policy(self) -> Any:
+        return self._retry_policy
+
+    @retry_policy.setter
+    def retry_policy(self, value: Any) -> None:
+        self._check_setup_frozen("retry_policy")
+        self._retry_policy = value
+
+    @property
+    def serializer(self) -> Any:
+        return self._serializer
+
+    @serializer.setter
+    def serializer(self, value: Any) -> None:
+        self._check_setup_frozen("serializer")
+        self._serializer = value
+
+    @property
+    def metrics_sink(self) -> Any:
+        return self._metrics_sink
+
+    @metrics_sink.setter
+    def metrics_sink(self, value: Any) -> None:
+        self._check_setup_frozen("metrics_sink")
+        self._metrics_sink = value
+
+    @property
+    def log_sink(self) -> Any:
+        return self._log_sink
+
+    @log_sink.setter
+    def log_sink(self, value: Any) -> None:
+        self._check_setup_frozen("log_sink")
+        self._log_sink = value
 
     @staticmethod
     def _auto_detect_backend(database_url: str) -> Any:
@@ -421,6 +475,60 @@ class Soniq:
 
             self._scheduler = Scheduler(self)
         return self._scheduler
+
+    @property
+    def webhooks(self) -> Any:
+        """Lazy per-app `WebhookService` (HTTP transport by default).
+
+        Construct ``WebhookService(app, transport=...)`` directly and assign
+        to ``app._webhooks`` if you want a non-HTTP transport (e.g. tests).
+        """
+        if self._webhooks is None:
+            from .features.webhooks import HTTPTransport, WebhookService
+
+            self._webhooks = WebhookService(self, transport=HTTPTransport())
+        return self._webhooks
+
+    @property
+    def dead_letter(self) -> Any:
+        """Lazy per-app `DeadLetterService`."""
+        if self._dead_letter is None:
+            from .features.dead_letter import DeadLetterService
+
+            self._dead_letter = DeadLetterService(self)
+        return self._dead_letter
+
+    @property
+    def logs(self) -> Any:
+        """Lazy per-app structured-log query service."""
+        if self._logs is None:
+            from .features.logging import LogService
+
+            self._logs = LogService(self)
+        return self._logs
+
+    @property
+    def signing(self) -> Any:
+        """Lazy per-app `SigningService` (Fernet encryption helpers)."""
+        if self._signing is None:
+            from .features.signing import SigningService
+
+            self._signing = SigningService(self)
+        return self._signing
+
+    @property
+    def dashboard_data(self) -> Any:
+        """Lazy per-app `DashboardService` (the data layer for the dashboard).
+
+        The HTML/FastAPI surface is constructed by
+        ``soniq.dashboard.fastapi_app.create_dashboard_app(app)``; this
+        property is the underlying data accessor that FastAPI handlers use.
+        """
+        if self._dashboard_data is None:
+            from .dashboard.app import DashboardService
+
+            self._dashboard_data = DashboardService(self)
+        return self._dashboard_data
 
     def periodic(self, *, cron: Any = None, every: Any = None, **job_kwargs):
         """Register a recurring job in one decorator.

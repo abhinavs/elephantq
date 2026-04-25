@@ -11,8 +11,6 @@ import uuid
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from soniq.settings import get_settings
-
 if TYPE_CHECKING:
     from soniq.app import Soniq
 
@@ -22,9 +20,9 @@ class DashboardService:
 
     Read methods (``get_job_stats``, ``get_recent_jobs``, ...) issue
     queries against ``self._app.backend.pool``. Write methods
-    (``retry_job``, ``delete_job``, ``cancel_job``) gate on the
-    ``dashboard_*_enabled`` settings just like the previous module-level
-    helpers did.
+    (``retry_job``, ``delete_job``, ``cancel_job``) just hit the backend;
+    HTTP-level authorization for writes is enforced in
+    ``fastapi_app._require_write_authorization``.
     """
 
     def __init__(self, app: "Soniq"):
@@ -33,19 +31,6 @@ class DashboardService:
     async def _pool(self):
         await self._app._ensure_initialized()
         return self._app.backend.pool
-
-    @staticmethod
-    def _require_dashboard_write() -> None:
-        settings = get_settings()
-        if not settings.dashboard_enabled:
-            raise RuntimeError(
-                "Dashboard is disabled. Set SONIQ_DASHBOARD_ENABLED=true"
-            )
-        if not settings.dashboard_write_enabled:
-            raise RuntimeError(
-                "Dashboard write actions are disabled. Set "
-                "SONIQ_DASHBOARD_WRITE_ENABLED=true"
-            )
 
     async def get_job_stats(self) -> Dict[str, int]:
         pool = await self._pool()
@@ -166,7 +151,6 @@ class DashboardService:
             return dict(job) if job else None
 
     async def retry_job(self, job_id: str) -> bool:
-        self._require_dashboard_write()
         pool = await self._pool()
         async with pool.acquire() as conn:
             try:
@@ -188,7 +172,6 @@ class DashboardService:
             return result == "UPDATE 1"  # type: ignore[no-any-return]
 
     async def delete_job(self, job_id: str) -> bool:
-        self._require_dashboard_write()
         pool = await self._pool()
         async with pool.acquire() as conn:
             try:
@@ -202,7 +185,6 @@ class DashboardService:
             return result == "DELETE 1"  # type: ignore[no-any-return]
 
     async def cancel_job(self, job_id: str) -> bool:
-        self._require_dashboard_write()
         pool = await self._pool()
         async with pool.acquire() as conn:
             try:

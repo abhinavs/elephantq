@@ -147,36 +147,6 @@ class SoniqSettings(BaseSettings):
         ),
     )
 
-    # Feature Flags (all disabled by default)
-    dashboard_enabled: bool = Field(
-        default=False, description="Enable the Soniq dashboard"
-    )
-    dashboard_write_enabled: bool = Field(
-        default=False,
-        description="Enable write actions (retry/delete/cancel) in the dashboard",
-    )
-    scheduling_enabled: bool = Field(
-        default=False, description="Enable advanced scheduling and recurring jobs"
-    )
-    dead_letter_queue_enabled: bool = Field(
-        default=False, description="Enable dead-letter queue features"
-    )
-    metrics_enabled: bool = Field(
-        default=False, description="Enable metrics collection features"
-    )
-    logging_enabled: bool = Field(
-        default=False, description="Enable structured logging features"
-    )
-    webhooks_enabled: bool = Field(
-        default=False, description="Enable webhook notifications"
-    )
-    timeouts_enabled: bool = Field(
-        default=False, description="Enable job timeout processing"
-    )
-    signing_enabled: bool = Field(
-        default=False, description="Enable signing and secret helpers"
-    )
-
     # Timeouts and Intervals
     heartbeat_interval: float = Field(
         default=5.0,
@@ -218,72 +188,6 @@ class SoniqSettings(BaseSettings):
         ge=0.1,
         le=300.0,
         description="Delay before retrying after worker errors (seconds)",
-    )
-
-    # Health Monitoring Settings
-    health_check_timeout: float = Field(
-        default=5.0,
-        ge=0.1,
-        le=60.0,
-        description="Default timeout for health checks (seconds)",
-    )
-
-    health_monitoring_interval: float = Field(
-        default=30.0,
-        ge=1.0,
-        le=3600.0,
-        description="Interval for health monitoring loops (seconds)",
-    )
-
-    health_error_retry_delay: float = Field(
-        default=5.0,
-        ge=0.1,
-        le=300.0,
-        description="Delay before retrying health checks after errors (seconds)",
-    )
-
-    # Health Check Thresholds
-    stuck_jobs_threshold: int = Field(
-        default=100,
-        ge=1,
-        le=10000,
-        description="Number of stuck jobs that triggers health warning",
-    )
-
-    job_failure_rate_threshold: float = Field(
-        default=50.0,
-        ge=0.0,
-        le=100.0,
-        description="Job failure rate percentage that triggers health degradation",
-    )
-
-    memory_usage_threshold: float = Field(
-        default=90.0,
-        ge=50.0,
-        le=99.0,
-        description="Memory usage percentage that triggers health warning",
-    )
-
-    disk_usage_threshold: float = Field(
-        default=90.0,
-        ge=50.0,
-        le=99.0,
-        description="Disk usage percentage that triggers health warning",
-    )
-
-    cpu_usage_threshold: float = Field(
-        default=95.0,
-        ge=50.0,
-        le=99.0,
-        description="CPU usage percentage that triggers health warning",
-    )
-
-    # CLI and Display Settings
-    display_limit: int = Field(
-        default=10,
-        ge=1,
-        le=1000,
-        description="Default number of jobs to display in CLI commands",
     )
 
     @field_validator("job_timeout", mode="before")

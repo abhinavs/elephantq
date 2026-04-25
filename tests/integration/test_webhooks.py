@@ -4,7 +4,7 @@ import pytest
 from aiohttp import web
 
 import soniq
-from soniq.features import webhooks
+from soniq.features.webhooks import WebhookEvent
 
 
 @pytest.mark.asyncio
@@ -28,23 +28,27 @@ async def test_webhook_delivery_smoke():
     port = site._server.sockets[0].getsockname()[1]
     url = f"http://127.0.0.1:{port}/webhook"
 
-    try:
-        await webhooks.start_webhook_system()
+    soniq_app = soniq._get_global_app()
+    await soniq_app._ensure_initialized()
 
-        app_for_pool = soniq._get_global_app()
-        await app_for_pool._ensure_initialized()
-        async with app_for_pool.backend.pool.acquire() as conn:
+    try:
+        async with soniq_app.backend.pool.acquire() as conn:
             await conn.execute(
                 "TRUNCATE TABLE soniq_webhook_deliveries, soniq_webhook_endpoints RESTART IDENTITY CASCADE"
             )
 
-        await webhooks.register_webhook(url)
+        webhooks = soniq_app.webhooks
+        await webhooks.start()
+        await webhooks.register(url)
 
-        await webhooks.send_job_completed(
-            job_id="job-123",
-            job_name="tests.webhook_job",
-            queue="default",
-            duration_ms=12.5,
+        await webhooks.send_webhook(
+            WebhookEvent.JOB_COMPLETED,
+            {
+                "job_id": "job-123",
+                "job_name": "tests.webhook_job",
+                "queue": "default",
+                "duration_ms": 12.5,
+            },
         )
 
         await asyncio.wait_for(delivered.wait(), timeout=5)
@@ -52,5 +56,5 @@ async def test_webhook_delivery_smoke():
         assert received[0]["event"] == "job.completed"
         assert received[0]["data"]["job_id"] == "job-123"
     finally:
-        await webhooks.stop_webhook_system()
+        await soniq_app.webhooks.stop()
         await runner.cleanup()

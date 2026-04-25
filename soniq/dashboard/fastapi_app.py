@@ -5,8 +5,6 @@ FastAPI web dashboard for Soniq.
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from soniq.settings import get_settings
-
 from .app import DashboardService
 
 if TYPE_CHECKING:
@@ -49,21 +47,14 @@ def _is_localhost_request(request: "Request") -> bool:
 def _require_write_authorization(request: "Request") -> None:
     """Guard called from each write endpoint.
 
-    Requires `dashboard_write_enabled = true` AND at least one of:
-    1. `SONIQ_DASHBOARD_API_KEY` configured (the global API-key middleware
-       will have already validated the key by the time this runs).
-    2. The request comes from localhost.
-
-    Both conditions taken together mean: in production, an operator opts
-    in to writes by setting both `SONIQ_DASHBOARD_WRITE_ENABLED=true` and
-    `SONIQ_DASHBOARD_API_KEY`. On a developer's laptop, the API key is
-    optional because loopback traffic is treated as trusted.
+    The operator opts in to writes by running the dashboard process at
+    all. To prevent a public-facing dashboard from accepting writes from
+    arbitrary clients, we still require either:
+    1. ``SONIQ_DASHBOARD_API_KEY`` configured (the global API-key
+       middleware will have already validated the key by the time this
+       runs), or
+    2. The request originates on localhost.
     """
-    settings = get_settings()
-    if not settings.dashboard_write_enabled:
-        raise HTTPException(
-            status_code=403, detail="Dashboard write actions are disabled"
-        )
     import os
 
     api_key_set = bool(os.environ.get("SONIQ_DASHBOARD_API_KEY", ""))
@@ -94,10 +85,6 @@ def create_dashboard_app(soniq_app: Optional["Soniq"] = None) -> "FastAPI":
         raise ImportError(
             "FastAPI is required for dashboard. Install with: pip install fastapi uvicorn"
         )
-
-    settings = get_settings()
-    if not settings.dashboard_enabled:
-        raise RuntimeError("Dashboard is disabled. Set SONIQ_DASHBOARD_ENABLED=true")
 
     if soniq_app is None:
         import soniq as _soniq
@@ -276,9 +263,9 @@ def create_dashboard_app(soniq_app: Optional["Soniq"] = None) -> "FastAPI":
 
 def get_dashboard_html() -> str:
     """Generate dashboard HTML"""
-    from soniq.settings import get_settings
-
-    can_write = str(get_settings().dashboard_write_enabled).lower()
+    # Writes are always wired into the UI; the actual authorization gate
+    # lives in `_require_write_authorization` (localhost / API key).
+    can_write = "true"
     html = """
 <!DOCTYPE html>
 <html lang="en">
