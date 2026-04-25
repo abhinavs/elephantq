@@ -341,6 +341,7 @@ class WebhookDispatcher:
         )
 
         # Create delivery records for each endpoint
+        dropped = 0
         for endpoint in endpoints:
             delivery = WebhookDelivery(
                 id=str(uuid.uuid4()),
@@ -351,10 +352,34 @@ class WebhookDispatcher:
                 max_attempts=endpoint.max_retries,
             )
 
-            # Queue for delivery
-            await self.delivery_queue.put(delivery)
+            # Non-blocking enqueue. The dispatcher uses backpressure (a
+            # bounded queue) on purpose: if delivery is slower than
+            # production, we'd rather drop and warn than build an
+            # unbounded backlog that delays application shutdown. The
+            # retry table picks up failed deliveries from the DB, so a
+            # drop here is recoverable.
+            try:
+                self.delivery_queue.put_nowait(delivery)
+            except asyncio.QueueFull:
+                dropped += 1
 
-        logger.info(f"Dispatched {event.value} to {len(endpoints)} endpoints")
+        if dropped:
+            logger.warning(
+                "Webhook delivery queue full; dropped %d/%d deliveries for %s "
+                "(queue maxsize=%d). Retry processor will pick them up from the "
+                "database on the next cycle.",
+                dropped,
+                len(endpoints),
+                event.value,
+                self.delivery_queue.maxsize,
+            )
+
+        logger.info(
+            "Dispatched %s to %d endpoints (%d dropped)",
+            event.value,
+            len(endpoints) - dropped,
+            dropped,
+        )
 
     async def _delivery_worker(self, worker_name: str):
         """Worker to process webhook deliveries"""
