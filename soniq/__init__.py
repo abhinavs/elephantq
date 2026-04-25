@@ -5,23 +5,22 @@ Simple global usage::
 
     import soniq
 
-    @soniq.job(name="my_job")
+    @soniq.job
     async def my_job(message: str):
         print(f"Processing: {message}")
 
-    await soniq.enqueue("my_job", args={"message": "Hello World"})
+    # Task name is derived from `f"{module}.{qualname}"` by default.
+    await soniq.enqueue("myapp.my_job", args={"message": "Hello World"})
     await soniq.run_worker()
 
-Instance-based usage for advanced scenarios::
+Or pass an explicit name (recommended for cross-service deployments
+where the name is a wire-protocol identifier)::
 
-    app = Soniq(database_url="postgresql://localhost/myapp")
+    @app.job(name="users.send_welcome")
+    async def send_welcome(user_id: int):
+        ...
 
-    @app.job(name="my_job")
-    async def my_job(message: str):
-        print(f"Processing: {message}")
-
-    await app.enqueue("my_job", args={"message": "Hello World"})
-    await app.run_worker()
+    await app.enqueue("users.send_welcome", args={"user_id": 42})
 """
 
 from datetime import datetime, timedelta, timezone
@@ -194,17 +193,30 @@ async def configure(
         _global_app.job(**job_kwargs)(job_func)
 
 
-def job(**kwargs):
+def job(*decorator_args, **kwargs):
     """
     Global job decorator.
 
     Equivalent to ``app.job()`` but uses the global Soniq instance. Jobs
     are automatically re-registered if the global instance is recreated.
 
-    Requires an explicit ``name=`` keyword argument (see ``Soniq.job`` for
-    the rationale and example). ``@soniq.job()`` without ``name=`` raises
-    ``SoniqError(SONIQ_INVALID_TASK_NAME)`` at decoration time.
+    Celery-style: ``name=`` is optional. When omitted the task name is
+    derived as ``f"{module}.{qualname}"``. Pass ``name=`` explicitly for
+    cross-service deployments where the name is a wire-protocol
+    identifier.
+
+    Supports both ``@soniq.job`` (no parens) and ``@soniq.job(...)``
+    (with kwargs).
     """
+    # Support `@soniq.job` (no parentheses) by detecting a single
+    # positional callable. Keep backward-compatible with the
+    # `@soniq.job(name=...)` form.
+    if len(decorator_args) == 1 and callable(decorator_args[0]) and not kwargs:
+        func = decorator_args[0]
+        app = _get_global_app()
+        wrapped = app.job()(func)
+        _global_job_registry.append((func, {}))
+        return wrapped
 
     def decorator(func):
         # Register with the global app first so a missing/invalid name=
@@ -272,17 +284,11 @@ def periodic(
         schedule_value = val * multipliers[name]  # type: ignore[operator]
 
     def decorator(func):
-        # `@periodic` jobs share the mandatory-name rule with `@app.job`.
-        # If the caller didn't pass an explicit name=, derive one from the
-        # function name so existing single-repo `@periodic` users keep
-        # working. This is the one place soniq still derives a name; it's
-        # justified because `@periodic` jobs are by convention single-repo
-        # bookkeeping (cron-style maintenance) rather than cross-service
-        # protocol identifiers.
-        local_kwargs = dict(job_kwargs)
-        local_kwargs.setdefault("name", func.__name__)
-
-        wrapped = job(**local_kwargs)(func)
+        # @app.job now derives `module.qualname` when no name= is passed,
+        # so `@periodic` does not need its own name-derivation step. If
+        # the caller passed name= explicitly, it flows through job_kwargs
+        # unchanged.
+        wrapped = job(**job_kwargs)(func)
         wrapped._soniq_periodic = {  # type: ignore[attr-defined]
             "type": schedule_type,
             "value": schedule_value,

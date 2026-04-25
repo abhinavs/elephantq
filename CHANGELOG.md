@@ -14,10 +14,13 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   (`queue`, `priority`, `scheduled_at`, `unique`, `dedup_key`,
   `connection`) stay at the top level. Module-level
   `soniq.enqueue` follows the same shape.
-- **`@app.job(name=...)` is mandatory.** Module-derived names
-  (`module.qualname`) are removed. `@app.job()` without `name=` raises
-  `SoniqError(SONIQ_INVALID_TASK_NAME)` at decoration time.
-  `@app.periodic` derives `name=func.__name__` when you don't pass one.
+- **`@app.job` name resolution is Celery-compatible.** The `name=`
+  kwarg is optional; when omitted the task name is derived from
+  `f"{module}.{qualname}"` (matching Celery / Dramatiq / RQ). Pass
+  `name=` explicitly for cross-service deployments where the name
+  is a stable wire-protocol identifier; explicit names are validated
+  against `SONIQ_TASK_NAME_PATTERN`. Both `@app.job` and
+  `@app.job()` syntactic forms work.
 
 ### Added
 

@@ -15,10 +15,12 @@ def test_periodic_with_cron_registers_job():
     async def daily_report():
         pass
 
-    # Should be registered in the global registry under the func's name
+    # Should be registered in the global registry under the derived name
+    # (Celery-style: f"{module}.{qualname}").
     app = soniq._get_global_app()
     registry = app._get_job_registry()
-    assert registry.get_job("daily_report") is not None
+    derived = f"{daily_report.__module__}.{daily_report.__name__}"
+    assert registry.get_job(derived) is not None
 
 
 def test_periodic_stores_schedule_metadata():
@@ -56,7 +58,8 @@ def test_periodic_with_queue():
     # Job should be registered with the specified queue
     app = soniq._get_global_app()
     registry = app._get_job_registry()
-    job_meta = registry.get_job("nightly_cleanup")
+    derived = f"{nightly_cleanup.__module__}.{nightly_cleanup.__name__}"
+    job_meta = registry.get_job(derived)
     assert job_meta["queue"] == "maintenance"
 
 

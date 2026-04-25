@@ -26,7 +26,9 @@ async def send_welcome(to: str):
 
 ```python
 # enqueue from anywhere in your app
-await app.enqueue(send_welcome, to="dev@example.com")
+# (the task name is derived as f"{module}.{qualname}", Celery-style;
+# pass an explicit @app.job(name=...) for cross-service deployments)
+await app.enqueue("jobs.send_welcome", args={"to": "dev@example.com"})
 ```
 
 ```bash

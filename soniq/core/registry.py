@@ -27,7 +27,7 @@ class JobRegistry:
         self,
         func: Callable[..., Any],
         *,
-        name: str,
+        name: Optional[str] = None,
         retries: int = 3,
         max_retries: Optional[int] = None,
         args_model: Optional[Type[BaseModel]] = None,
@@ -79,9 +79,20 @@ class JobRegistry:
             SoniqError(SONIQ_INVALID_TASK_NAME): name missing, empty, or
                 violating the configured task name pattern.
         """
-        from .naming import validate_task_name
+        # Celery-style name resolution. When the caller passes name=, it is
+        # validated against SONIQ_TASK_NAME_PATTERN (the explicit name is a
+        # protocol identifier; we want the loud failure on a typo). When
+        # the caller omits name=, derive `f"{module}.{qualname}"` and
+        # accept it without pattern validation - the user did not pick the
+        # derived name, and module/qualname segments may legitimately
+        # contain camelcase or test-class chrome that the default pattern
+        # rejects.
+        if name is None:
+            job_name = f"{func.__module__}.{func.__name__}"
+        else:
+            from .naming import validate_task_name
 
-        job_name = validate_task_name(name)
+            job_name = validate_task_name(name)
 
         @functools.wraps(func)
         def wrapper(*args, **kwargs):

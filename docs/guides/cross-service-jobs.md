@@ -66,17 +66,23 @@ deployment environment.
 
 ## Naming conventions
 
-Names are protocol identifiers. The recommended format is dotted
-lowercase with a version suffix:
+Names are protocol identifiers. By default `@app.job` derives a name
+from `f"{module}.{qualname}"` (Celery-style) - that's fine for
+single-repo usage. Cross-service deployments should pass `name=`
+explicitly so the wire identifier doesn't rot when functions get
+renamed:
 
 ```
 billing.invoices.send.v2
 ```
 
+The recommended format is dotted lowercase with a version suffix.
 The default pattern (`SONIQ_TASK_NAME_PATTERN`) enforces ASCII,
 dot-separated, lowercase, no whitespace, no leading or trailing
-dots. Names that violate this raise `SONIQ_INVALID_TASK_NAME` at
-both registration time and enqueue time.
+dots when an explicit `name=` is passed. Module-derived names skip
+pattern validation since the user did not pick them. Explicit names
+that violate the pattern raise `SONIQ_INVALID_TASK_NAME` at
+registration time.
 
 ## Failure semantics
 

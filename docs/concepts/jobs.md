@@ -9,13 +9,21 @@ from soniq import Soniq
 
 app = Soniq(database_url="postgresql://localhost/myapp")
 
-@app.job(name="users.send_welcome_email")
+@app.job
 async def send_welcome_email(user_id: int, template: str = "default"):
     user = await get_user(user_id)
     await send_email(user.email, template)
 ```
 
-The `@app.job(name=...)` decorator registers the function under an explicit, dotted task name. The name is the wire protocol once queues cross repo boundaries; module-derived names are not supported.
+The `@app.job` decorator registers the function. By default the task name is derived from `f"{module}.{qualname}"` (Celery-style), so the example above registers as `myapp.tasks.send_welcome_email`. Pass `name=` explicitly to override:
+
+```python
+@app.job(name="users.send_welcome_email")
+async def send_welcome_email(user_id: int, template: str = "default"):
+    ...
+```
+
+For cross-service deployments the explicit form is recommended — the name is the wire protocol, and module-derived names rot when functions are renamed.
 
 ## Decorator options
 
@@ -53,11 +61,12 @@ Soniq provides two ways to register jobs.
 ```python
 import soniq
 
-@soniq.job(name="users.send_welcome_email")
+@soniq.job
 async def send_welcome_email(user_id: int):
     ...
 
-await soniq.enqueue("users.send_welcome_email", args={"user_id": 42})
+# Derived name: f"{module}.{qualname}".
+await soniq.enqueue("myapp.tasks.send_welcome_email", args={"user_id": 42})
 ```
 
 **Instance API** -- explicit app object, recommended for FastAPI and multi-instance setups:

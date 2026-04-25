@@ -353,23 +353,32 @@ class Soniq:
         await self._ensure_initialized()
         await self._backend.reset()  # type: ignore[union-attr]
 
-    def job(self, **kwargs):
+    def job(self, _func=None, /, **kwargs):
         """
         Job decorator for this Soniq instance.
 
-        Requires an explicit ``name=`` keyword argument: a stable, dotted
-        protocol identifier (e.g. ``billing.invoices.send.v2``) validated
-        against ``SONIQ_TASK_NAME_PATTERN``. Module-derived names were
-        removed because the name is the wire protocol once queues cross
-        repo boundaries.
+        Celery-style name resolution: when ``name=`` is omitted the task
+        name is derived as ``f"{module}.{qualname}"``. Pass ``name=``
+        explicitly for cross-service deployments where the name is a
+        stable wire-protocol identifier; explicit names are validated
+        against ``SONIQ_TASK_NAME_PATTERN``.
 
-        Example::
+        Supports both ``@app.job`` (no parens) and ``@app.job(...)``
+        (with kwargs).
+
+        Example - single-repo, derived name::
+
+            @app.job
+            async def send_welcome(user_id: int): ...
+            # registers as "myapp.tasks.send_welcome"
+
+        Example - explicit name (recommended cross-service)::
 
             @app.job(name="billing.invoices.send.v2", validate=InvoiceArgs)
             async def send_v2(order_id: str, customer: str): ...
 
         Args:
-            **kwargs: Job configuration options. ``name`` is required;
+            **kwargs: Job configuration options. ``name`` is optional;
                 see ``JobRegistry.register_job`` for the full list.
 
         Returns:
@@ -377,8 +386,8 @@ class Soniq:
             original signature via ParamSpec on the inner type annotation.
 
         Raises:
-            SoniqError(SONIQ_INVALID_TASK_NAME): ``name`` missing or
-                violating the configured task name pattern.
+            SoniqError(SONIQ_INVALID_TASK_NAME): explicit ``name=`` was
+                passed and violates the configured task name pattern.
         """
         from typing import Callable, ParamSpec, TypeVar
 
@@ -405,6 +414,9 @@ class Soniq:
         def decorator(func: Callable[_P, _R]) -> Callable[_P, _R]:
             return self._job_registry.register_job(func, _route_map=route_map, **kwargs)
 
+        # `@app.job` (no parens) - Python passed the function in directly.
+        if _func is not None:
+            return decorator(_func)
         return decorator
 
     def before_job(self, fn):
