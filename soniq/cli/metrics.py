@@ -25,21 +25,28 @@ def add_metrics_cmd(subparsers) -> None:
 
 
 async def handle_metrics(args) -> int:
+    # Always resolve to an explicit Soniq instance: either from
+    # --database-url or, when absent, from a fresh Soniq() that reads
+    # SONIQ_DATABASE_URL from the env. The historical "fall back to the
+    # global app" branch is gone - it leaked process-global state into a
+    # CLI command that already accepts an explicit URL
+    # (`docs/contracts/instance_boundary.md`).
     soniq_instance = await resolve_soniq_instance(args)
-    if soniq_instance is not None:
-        print_status(
-            "Using instance-based configuration: "
-            f"{soniq_instance.settings.database_url}",
-            "info",
-        )
-    else:
-        print_status("Using global API configuration", "info")
+    if soniq_instance is None:
+        from soniq import Soniq
+
+        soniq_instance = Soniq()
+    print_status(
+        f"Using Soniq instance: {soniq_instance.settings.database_url}",
+        "info",
+    )
 
     from dataclasses import asdict
 
-    from soniq.features.metrics import get_system_metrics
+    from soniq.features.metrics import MetricsService
 
-    metrics = await get_system_metrics(timeframe_hours=args.hours)
+    service = MetricsService(soniq_instance)
+    metrics = await service.get_system_metrics(timeframe_hours=args.hours)
     payload = asdict(metrics)
     if args.format == "json":
         import json
