@@ -90,11 +90,11 @@ async def test_get_result_with_pydantic_result_model():
     app = Soniq(backend="memory")
     await app._ensure_initialized()
 
-    @app.job()
+    @app.job(name="returns_dict")
     async def returns_dict():
         return {"ok": True, "message": "hi"}
 
-    job_id = await app.enqueue(returns_dict)
+    job_id = await app.enqueue("returns_dict")
     await app.run_worker(run_once=True)
 
     typed = await app.get_result(job_id, result_model=JobResult)
@@ -122,11 +122,11 @@ async def test_get_result_with_dataclass_result_model():
     app = Soniq(backend="memory")
     await app._ensure_initialized()
 
-    @app.job()
+    @app.job(name="returns_pair")
     async def returns_pair():
         return {"a": 1, "b": 2}
 
-    job_id = await app.enqueue(returns_pair)
+    job_id = await app.enqueue("returns_pair")
     await app.run_worker(run_once=True)
 
     typed = await app.get_result(job_id, result_model=Pair)
@@ -151,8 +151,8 @@ async def test_retry_policy_can_short_circuit_to_dead_letter():
     async def always_fails():
         raise RuntimeError("nope")
 
-    registry.register_job(always_fails, max_retries=5)
-    job_name = f"{always_fails.__module__}.{always_fails.__name__}"
+    registry.register_job(always_fails, name=always_fails.__name__, max_retries=5)
+    job_name = always_fails.__name__
 
     await backend.create_job(
         job_id="dl-policy",

@@ -65,19 +65,25 @@ async def test_process_jobs_all_queues(app, result_file):
     """Test that queue=None processes jobs from any queue"""
 
     registry = app._get_job_registry()
-    registry.register_job(write_to_file_job)
+    registry.register_job(write_to_file_job, name=write_to_file_job.__name__)
     backend = app._backend
     worker = Worker(backend, registry)
 
     # Enqueue jobs in different queues
     await app.enqueue(
-        write_to_file_job, queue="high", message="job1", result_file=result_file
+        "write_to_file_job",
+        args={"message": "job1", "result_file": result_file},
+        queue="high",
     )
     await app.enqueue(
-        write_to_file_job, queue="normal", message="job2", result_file=result_file
+        "write_to_file_job",
+        args={"message": "job2", "result_file": result_file},
+        queue="normal",
     )
     await app.enqueue(
-        write_to_file_job, queue="low", message="job3", result_file=result_file
+        "write_to_file_job",
+        args={"message": "job3", "result_file": result_file},
+        queue="low",
     )
 
     # Process with queues=None should pick up any job
@@ -107,16 +113,20 @@ async def test_process_jobs_single_queue(app, result_file):
     """Test that queue="name" processes only from that queue"""
 
     registry = app._get_job_registry()
-    registry.register_job(write_to_file_job)
+    registry.register_job(write_to_file_job, name=write_to_file_job.__name__)
     backend = app._backend
     worker = Worker(backend, registry)
 
     # Enqueue jobs in different queues
     await app.enqueue(
-        write_to_file_job, queue="target", message="target_job", result_file=result_file
+        "write_to_file_job",
+        args={"message": "target_job", "result_file": result_file},
+        queue="target",
     )
     await app.enqueue(
-        write_to_file_job, queue="other", message="other_job", result_file=result_file
+        "write_to_file_job",
+        args={"message": "other_job", "result_file": result_file},
+        queue="other",
     )
 
     # Process only from "target" queue
@@ -139,19 +149,25 @@ async def test_process_jobs_multiple_queues(app, result_file):
     """Test that queue=["q1", "q2"] processes from specified queues efficiently"""
 
     registry = app._get_job_registry()
-    registry.register_job(write_to_file_job)
+    registry.register_job(write_to_file_job, name=write_to_file_job.__name__)
     backend = app._backend
     worker = Worker(backend, registry)
 
     # Enqueue jobs in different queues
     await app.enqueue(
-        write_to_file_job, queue="queue1", message="job1", result_file=result_file
+        "write_to_file_job",
+        args={"message": "job1", "result_file": result_file},
+        queue="queue1",
     )
     await app.enqueue(
-        write_to_file_job, queue="queue2", message="job2", result_file=result_file
+        "write_to_file_job",
+        args={"message": "job2", "result_file": result_file},
+        queue="queue2",
     )
     await app.enqueue(
-        write_to_file_job, queue="excluded", message="job3", result_file=result_file
+        "write_to_file_job",
+        args={"message": "job3", "result_file": result_file},
+        queue="excluded",
     )
 
     # Process only from specified queues
@@ -179,39 +195,35 @@ async def test_priority_ordering_across_queues(app, result_file):
     """Test that priority ordering works correctly across different queues"""
 
     registry = app._get_job_registry()
-    registry.register_job(write_to_file_job)
+    registry.register_job(write_to_file_job, name=write_to_file_job.__name__)
     backend = app._backend
     worker = Worker(backend, registry)
 
     # Enqueue jobs with different priorities across different queues
     # Lower priority number = higher priority
     await app.enqueue(
-        write_to_file_job,
+        "write_to_file_job",
+        args={"message": "medium_A", "result_file": result_file},
         queue="queueA",
         priority=100,
-        message="medium_A",
-        result_file=result_file,
     )
     await app.enqueue(
-        write_to_file_job,
+        "write_to_file_job",
+        args={"message": "high_B", "result_file": result_file},
         queue="queueB",
         priority=50,
-        message="high_B",
-        result_file=result_file,
     )
     await app.enqueue(
-        write_to_file_job,
+        "write_to_file_job",
+        args={"message": "low_A", "result_file": result_file},
         queue="queueA",
         priority=200,
-        message="low_A",
-        result_file=result_file,
     )
     await app.enqueue(
-        write_to_file_job,
+        "write_to_file_job",
+        args={"message": "highest_C", "result_file": result_file},
         queue="queueC",
         priority=25,
-        message="highest_C",
-        result_file=result_file,
     )
 
     # Process all jobs one at a time to verify priority ordering
@@ -251,7 +263,7 @@ async def test_scheduled_jobs_across_queues(app, result_file):
     """Test that scheduled jobs work correctly across different queues"""
 
     registry = app._get_job_registry()
-    registry.register_job(write_to_file_job)
+    registry.register_job(write_to_file_job, name=write_to_file_job.__name__)
     backend = app._backend
     worker = Worker(backend, registry)
 
@@ -261,18 +273,16 @@ async def test_scheduled_jobs_across_queues(app, result_file):
 
     # Schedule jobs in different queues
     await app.enqueue(
-        write_to_file_job,
+        "write_to_file_job",
+        args={"message": "scheduled1", "result_file": result_file},
         queue="queue1",
         scheduled_at=future_time,
-        message="scheduled1",
-        result_file=result_file,
     )
     await app.enqueue(
-        write_to_file_job,
+        "write_to_file_job",
+        args={"message": "scheduled2", "result_file": result_file},
         queue="queue2",
         scheduled_at=future_time,
-        message="scheduled2",
-        result_file=result_file,
     )
 
     # Check that scheduled jobs are not processed before time
@@ -306,12 +316,14 @@ async def test_empty_queue_list(app, result_file):
     """Test that empty queue list behaves correctly"""
 
     registry = app._get_job_registry()
-    registry.register_job(write_to_file_job)
+    registry.register_job(write_to_file_job, name=write_to_file_job.__name__)
     backend = app._backend
     worker = Worker(backend, registry)
 
     await app.enqueue(
-        write_to_file_job, queue="some_queue", message="job1", result_file=result_file
+        "write_to_file_job",
+        args={"message": "job1", "result_file": result_file},
+        queue="some_queue",
     )
 
     # Empty queue list should not process any jobs
@@ -331,17 +343,16 @@ async def test_queue_efficiency_single_query(app):
     """Test that multiple queues use single efficient query"""
 
     registry = app._get_job_registry()
-    registry.register_job(write_to_file_job)
+    registry.register_job(write_to_file_job, name=write_to_file_job.__name__)
     backend = app._backend
     worker = Worker(backend, registry)
 
     # Enqueue jobs in multiple queues
     for i in range(3):
         await app.enqueue(
-            write_to_file_job,
+            "write_to_file_job",
+            args={"message": f"job{i}", "result_file": "/tmp/test"},
             queue=f"queue{i}",
-            message=f"job{i}",
-            result_file="/tmp/test",
         )
 
     # This should use a single query with WHERE queue = ANY([...])

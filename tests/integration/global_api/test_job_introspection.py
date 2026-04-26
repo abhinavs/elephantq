@@ -27,17 +27,17 @@ os.environ["SONIQ_DATABASE_URL"] = TEST_DATABASE_URL
 
 
 # Some test jobs to work with
-@soniq.job(retries=2, priority=50, queue="test")
+@soniq.job(name="simple_task", retries=2, priority=50, queue="test")
 async def simple_task(message: str):
     return f"Processed: {message}"
 
 
-@soniq.job(retries=1, priority=10, queue="unique_test", unique=True)
+@soniq.job(name="unique_task", retries=1, priority=10, queue="unique_test", unique=True)
 async def unique_task(task_id: str):
     return f"Unique task: {task_id}"
 
 
-@soniq.job(retries=3, priority=1, queue="priority_test")
+@soniq.job(name="priority_task", retries=3, priority=1, queue="priority_test")
 async def priority_task(data: str):
     return f"Priority task: {data}"
 
@@ -54,7 +54,7 @@ class TestJobIntrospection:
         # Table clearing handled by conftest.py
 
         # Put a job in the queue
-        job_id = await soniq.enqueue(simple_task, message="test")
+        job_id = await soniq.enqueue("simple_task", args={"message": "test"})
 
         # Now check its status
         status = await soniq.get_job(job_id)
@@ -63,9 +63,7 @@ class TestJobIntrospection:
         assert status is not None
         assert status["id"] == job_id
         # Job name includes the full module path
-        expected_job_name = (
-            "tests.integration.global_api.test_job_introspection.simple_task"
-        )
+        expected_job_name = "simple_task"
         assert status["job_name"] == expected_job_name
         assert status["status"] == "queued"
         assert status["queue"] == "test"
@@ -86,7 +84,7 @@ class TestJobIntrospection:
     async def test_cancel_queued_job(self):
         """Test cancelling a queued job"""
         # Enqueue a job
-        job_id = await soniq.enqueue(simple_task, message="cancel_me")
+        job_id = await soniq.enqueue("simple_task", args={"message": "cancel_me"})
 
         # Cancel the job
         success = await soniq.cancel_job(job_id)
@@ -106,7 +104,7 @@ class TestJobIntrospection:
     async def test_cancel_processed_job(self):
         """Test that completed jobs cannot be cancelled"""
         # Enqueue and process a job
-        job_id = await soniq.enqueue(simple_task, message="process_me")
+        job_id = await soniq.enqueue("simple_task", args={"message": "process_me"})
 
         await process_test_jobs()
 
@@ -123,11 +121,11 @@ class TestJobIntrospection:
         """Test retrying a failed job"""
 
         # Create a job that will fail
-        @soniq.job(retries=1, queue="test")
+        @soniq.job(name="failing_task", retries=1, queue="test")
         async def failing_task():
             raise Exception("Intentional failure")
 
-        job_id = await soniq.enqueue(failing_task)
+        job_id = await soniq.enqueue("failing_task")
 
         # Process to make it fail - need to process twice since retries=1 means max_attempts=2
         await process_test_jobs()  # First attempt (fails, retries)
@@ -150,7 +148,7 @@ class TestJobIntrospection:
     @pytest.mark.asyncio
     async def test_retry_queued_job(self):
         """Test that queued jobs cannot be retried"""
-        job_id = await soniq.enqueue(simple_task, message="queued_job")
+        job_id = await soniq.enqueue("simple_task", args={"message": "queued_job"})
 
         success = await soniq.retry_job(job_id)
         assert success is False
@@ -158,7 +156,7 @@ class TestJobIntrospection:
     @pytest.mark.asyncio
     async def test_delete_job(self):
         """Test deleting a job"""
-        job_id = await soniq.enqueue(simple_task, message="delete_me")
+        job_id = await soniq.enqueue("simple_task", args={"message": "delete_me"})
 
         # Delete the job
         success = await soniq.delete_job(job_id)
@@ -184,9 +182,9 @@ class TestJobListing:
     async def test_list_all_jobs(self):
         """Test listing all jobs"""
         # Enqueue multiple jobs
-        job1 = await soniq.enqueue(simple_task, message="job1")
-        job2 = await soniq.enqueue(priority_task, data="job2")
-        job3 = await soniq.enqueue(unique_task, task_id="job3")
+        job1 = await soniq.enqueue("simple_task", args={"message": "job1"})
+        job2 = await soniq.enqueue("priority_task", args={"data": "job2"})
+        job3 = await soniq.enqueue("unique_task", args={"task_id": "job3"})
 
         # List all jobs
         jobs = await soniq.list_jobs(limit=10)
@@ -199,9 +197,11 @@ class TestJobListing:
     async def test_list_jobs_by_queue(self):
         """Test filtering jobs by queue"""
         # Enqueue jobs in different queues
-        await soniq.enqueue(simple_task, message="test_queue_job")  # test queue
         await soniq.enqueue(
-            priority_task, data="priority_queue_job"
+            "simple_task", args={"message": "test_queue_job"}
+        )  # test queue
+        await soniq.enqueue(
+            "priority_task", args={"data": "priority_queue_job"}
         )  # priority_test queue
 
         # Filter by test queue
@@ -218,11 +218,13 @@ class TestJobListing:
     async def test_list_jobs_by_status(self):
         """Test filtering jobs by status"""
         # Enqueue jobs - one will be processed, one scheduled for future
-        await soniq.enqueue(simple_task, message="immediate_job")
+        await soniq.enqueue("simple_task", args={"message": "immediate_job"})
         from datetime import datetime, timedelta, timezone
 
         future_time = datetime.now(timezone.utc) + timedelta(hours=1)
-        await soniq.enqueue(simple_task, message="future_job", scheduled_at=future_time)
+        await soniq.enqueue(
+            "simple_task", args={"message": "future_job"}, scheduled_at=future_time
+        )
 
         # Process jobs - only immediate job should be processed
         await process_test_jobs()
@@ -242,7 +244,7 @@ class TestJobListing:
         """Test job listing with limit"""
         # Enqueue multiple jobs
         for i in range(5):
-            await soniq.enqueue(simple_task, message=f"job_{i}")
+            await soniq.enqueue("simple_task", args={"message": f"job_{i}"})
 
         # List with limit
         jobs = await soniq.list_jobs(limit=3)
@@ -254,7 +256,9 @@ class TestJobListing:
         # Enqueue jobs
         job_ids = []
         for i in range(5):
-            job_id = await soniq.enqueue(simple_task, message=f"offset_job_{i}")
+            job_id = await soniq.enqueue(
+                "simple_task", args={"message": f"offset_job_{i}"}
+            )
             job_ids.append(job_id)
 
         # Get first 2 jobs
@@ -280,8 +284,8 @@ class TestUniqueJobs:
     async def test_unique_job_prevention(self):
         """Test that unique jobs prevent duplicates"""
         # Enqueue same unique job twice
-        job1 = await soniq.enqueue(unique_task, task_id="same_task")
-        job2 = await soniq.enqueue(unique_task, task_id="same_task")
+        job1 = await soniq.enqueue("unique_task", args={"task_id": "same_task"})
+        job2 = await soniq.enqueue("unique_task", args={"task_id": "same_task"})
 
         # Should return same job ID
         assert job1 == job2
@@ -294,8 +298,8 @@ class TestUniqueJobs:
     @pytest.mark.asyncio
     async def test_unique_job_different_args(self):
         """Test that unique jobs with different args are allowed"""
-        job1 = await soniq.enqueue(unique_task, task_id="task1")
-        job2 = await soniq.enqueue(unique_task, task_id="task2")
+        job1 = await soniq.enqueue("unique_task", args={"task_id": "task1"})
+        job2 = await soniq.enqueue("unique_task", args={"task_id": "task2"})
 
         # Should be different job IDs
         assert job1 != job2
@@ -308,7 +312,7 @@ class TestUniqueJobs:
     async def test_unique_job_after_completion(self):
         """Test that unique jobs can be re-enqueued after completion"""
         # Enqueue and process unique job
-        job1 = await soniq.enqueue(unique_task, task_id="completed_task")
+        job1 = await soniq.enqueue("unique_task", args={"task_id": "completed_task"})
         await process_test_jobs()
 
         # Verify job is done
@@ -316,7 +320,7 @@ class TestUniqueJobs:
         assert status["status"] == "done"
 
         # Enqueue same unique job again
-        job2 = await soniq.enqueue(unique_task, task_id="completed_task")
+        job2 = await soniq.enqueue("unique_task", args={"task_id": "completed_task"})
 
         # Should be a new job ID
         assert job1 != job2
@@ -331,8 +335,8 @@ class TestUniqueJobs:
         # Table clearing handled by conftest.py
 
         # Enqueue same non-unique job twice
-        job1 = await soniq.enqueue(simple_task, message="same_message")
-        job2 = await soniq.enqueue(simple_task, message="same_message")
+        job1 = await soniq.enqueue("simple_task", args={"message": "same_message"})
+        job2 = await soniq.enqueue("simple_task", args={"message": "same_message"})
 
         # Should be different job IDs
         assert job1 != job2
@@ -345,8 +349,12 @@ class TestUniqueJobs:
     async def test_unique_override_parameter(self):
         """Test unique parameter override in enqueue"""
         # Non-unique job made unique via parameter
-        job1 = await soniq.enqueue(simple_task, unique=True, message="override_test")
-        job2 = await soniq.enqueue(simple_task, unique=True, message="override_test")
+        job1 = await soniq.enqueue(
+            "simple_task", args={"message": "override_test"}, unique=True
+        )
+        job2 = await soniq.enqueue(
+            "simple_task", args={"message": "override_test"}, unique=True
+        )
 
         # Should return same job ID
         assert job1 == job2
@@ -372,12 +380,16 @@ class TestQueueStats:
     async def test_queue_stats_with_jobs(self):
         """Test queue stats with various job states"""
         # Enqueue jobs in different queues
-        await soniq.enqueue(simple_task, message="test1")  # test queue
-        await soniq.enqueue(simple_task, message="test2")  # test queue
-        await soniq.enqueue(priority_task, data="priority1")  # priority_test queue
+        await soniq.enqueue("simple_task", args={"message": "test1"})  # test queue
+        await soniq.enqueue("simple_task", args={"message": "test2"})  # test queue
+        await soniq.enqueue(
+            "priority_task", args={"data": "priority1"}
+        )  # priority_test queue
 
         # Cancel one job
-        job_to_cancel = await soniq.enqueue(simple_task, message="cancel_me")
+        job_to_cancel = await soniq.enqueue(
+            "simple_task", args={"message": "cancel_me"}
+        )
         await soniq.cancel_job(job_to_cancel)
 
         # Process some jobs
@@ -404,7 +416,7 @@ class TestQueueStats:
     async def test_queue_stats_structure(self):
         """Test queue stats data structure"""
         # Enqueue a job
-        await soniq.enqueue(simple_task, message="stats_test")
+        await soniq.enqueue("simple_task", args={"message": "stats_test"})
 
         stats = await soniq.get_queue_stats()
         assert len(stats) == 1

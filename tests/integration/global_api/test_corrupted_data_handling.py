@@ -26,13 +26,13 @@ class JobArgsModel(BaseModel):
 
 
 # Register test jobs at module level
-@soniq.job(args_model=JobArgsModel)
+@soniq.job(name="validated_test_job", args_model=JobArgsModel)
 async def validated_test_job(message: str, count: int = 1):
     """Test job with Pydantic validation"""
     return f"processed: {message} x{count}"
 
 
-@soniq.job()
+@soniq.job(name="simple_test_job")
 async def simple_test_job(message: str):
     """Simple test job without validation"""
     return f"processed: {message}"
@@ -73,7 +73,7 @@ async def test_corrupted_json_data(clean_db):
             VALUES ($1, $2, $3, 'test', 'queued', 3)
             """,
             job_id,
-            "tests.integration.global_api.test_corrupted_data_handling.simple_test_job",
+            "simple_test_job",
             {"message": "test"},
         )
 
@@ -108,7 +108,7 @@ async def test_corrupted_validation_data(clean_db):
             VALUES ($1, $2, $3, 'test', 'queued', 3)
             """,
             job_id,
-            "tests.integration.global_api.test_corrupted_data_handling.validated_test_job",
+            "validated_test_job",
             {"message": 123, "count": "not_a_number"},  # Wrong types
         )
 
@@ -142,7 +142,7 @@ async def test_missing_required_arguments(clean_db):
             VALUES ($1, $2, $3, 'test', 'queued', 3)
             """,
             job_id,
-            "tests.integration.global_api.test_corrupted_data_handling.simple_test_job",
+            "simple_test_job",
             {},  # Missing required 'message' argument
         )
 
@@ -181,7 +181,7 @@ async def test_extra_unexpected_arguments(clean_db):
             VALUES ($1, $2, $3, 'test', 'queued', 3)
             """,
             job_id,
-            "tests.integration.global_api.test_corrupted_data_handling.simple_test_job",
+            "simple_test_job",
             {
                 "message": "test",
                 "unexpected_arg": "value",
@@ -225,7 +225,7 @@ async def test_invalid_json_structure(clean_db):
             VALUES ($1, $2, $3::text::jsonb, 'test', 'queued', 3)
             """,
             job_id,
-            "tests.integration.global_api.test_corrupted_data_handling.simple_test_job",
+            "simple_test_job",
             '"just a string not an object"',
         )
 
@@ -256,7 +256,7 @@ async def test_valid_job_still_processes_normally(clean_db):
     app_pool = await global_app.get_pool()
 
     # Enqueue a valid job
-    job_id = await soniq.enqueue(simple_test_job, message="valid_test")
+    job_id = await soniq.enqueue("simple_test_job", args={"message": "valid_test"})
 
     # Process the job
     async with app_pool.acquire() as conn:
@@ -288,7 +288,9 @@ async def test_pydantic_validation_success(clean_db):
 
     # Enqueue a valid job with Pydantic validation
     try:
-        job_id = await soniq.enqueue(validated_test_job, message="valid", count=5)
+        job_id = await soniq.enqueue(
+            "validated_test_job", args={"message": "valid", "count": 5}
+        )
         print(f"Enqueued job ID: {job_id}")
     except Exception as e:
         print(f"Enqueue failed: {e}")
@@ -347,7 +349,7 @@ async def test_pydantic_validation_success(clean_db):
 async def test_regular_job_exceptions_still_retry(clean_db):
     """Test that regular job exceptions still trigger retry logic"""
 
-    @soniq.job(retries=0)  # retries=0 means max_attempts=1
+    @soniq.job(name="failing_job", retries=0)  # retries=0 means max_attempts=1
     async def failing_job(should_fail: bool = True):
         if should_fail:
             raise ValueError("Intentional failure for testing")
@@ -358,7 +360,7 @@ async def test_regular_job_exceptions_still_retry(clean_db):
     app_pool = await global_app.get_pool()
 
     # Enqueue a job that will fail (with retries=0 so max_attempts=1)
-    job_id = await soniq.enqueue(failing_job, should_fail=True)
+    job_id = await soniq.enqueue("failing_job", args={"should_fail": True})
 
     # Process the job (should fail and go to dead letter after 1 attempt)
     async with app_pool.acquire() as conn:
@@ -392,12 +394,14 @@ async def test_mixed_corrupted_and_valid_jobs(clean_db):
             VALUES ($1, $2, $3, 'mixed', 'queued', 3)
             """,
             corrupted_job_id,
-            "tests.integration.global_api.test_corrupted_data_handling.validated_test_job",
+            "validated_test_job",
             {"message": 123, "count": "not_a_number"},  # Wrong types
         )
 
     # Enqueue valid job
-    valid_job_id = await soniq.enqueue(simple_test_job, message="valid", queue="mixed")
+    valid_job_id = await soniq.enqueue(
+        "simple_test_job", args={"message": "valid"}, queue="mixed"
+    )
 
     # Process jobs with run_once=True (processes all available jobs in single run)
     async with app_pool.acquire() as conn:

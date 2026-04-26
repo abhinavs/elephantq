@@ -395,3 +395,101 @@ class TestPydanticConfiguration:
         settings = get_settings(reload=True)
 
         assert settings.job_timeout == 300.0
+
+
+class TestCrossServiceSettings:
+    """enqueue_validation and task_name_pattern (cross-service work)."""
+
+    def setup_method(self):
+        self.original_env = {
+            k: v for k, v in os.environ.items() if k.startswith("SONIQ_")
+        }
+        for key in list(os.environ.keys()):
+            if key.startswith("SONIQ_"):
+                del os.environ[key]
+        os.environ["SONIQ_DATABASE_URL"] = TEST_DATABASE_URL
+        import soniq.settings
+
+        soniq.settings._settings = None
+
+    def teardown_method(self):
+        for key in list(os.environ.keys()):
+            if key.startswith("SONIQ_"):
+                del os.environ[key]
+        for key, value in self.original_env.items():
+            os.environ[key] = value
+        import soniq.settings
+
+        soniq.settings._settings = None
+
+    def test_enqueue_validation_default_is_strict(self):
+        from soniq.settings import get_settings
+
+        settings = get_settings(reload=True)
+        assert settings.enqueue_validation == "strict"
+
+    @pytest.mark.parametrize("mode", ["strict", "warn", "none"])
+    def test_enqueue_validation_accepts_each_literal(self, mode):
+        os.environ["SONIQ_ENQUEUE_VALIDATION"] = mode
+        from soniq.settings import get_settings
+
+        settings = get_settings(reload=True)
+        assert settings.enqueue_validation == mode
+
+    def test_enqueue_validation_rejects_unknown_value(self):
+        os.environ["SONIQ_ENQUEUE_VALIDATION"] = "loose"
+        from soniq.settings import get_settings
+
+        with pytest.raises(
+            ValueError, match=r"(?s)Invalid Soniq configuration.*enqueue_validation"
+        ):
+            get_settings(reload=True)
+
+    def test_enqueue_validation_env_override(self):
+        os.environ["SONIQ_ENQUEUE_VALIDATION"] = "warn"
+        from soniq.settings import get_settings
+
+        settings = get_settings(reload=True)
+        assert settings.enqueue_validation == "warn"
+
+    def test_task_name_pattern_default_accepts_canonical_names(self):
+        import re
+
+        from soniq.settings import get_settings
+
+        settings = get_settings(reload=True)
+        regex = re.compile(settings.task_name_pattern)
+        for good in [
+            "billing.invoices.send.v2",
+            "a.b.c",
+            "x_y.z_w",
+            "foo",
+            "billing_v2.send",
+        ]:
+            assert regex.fullmatch(good), f"expected {good!r} to match"
+
+    def test_task_name_pattern_default_rejects_bad_names(self):
+        import re
+
+        from soniq.settings import get_settings
+
+        settings = get_settings(reload=True)
+        regex = re.compile(settings.task_name_pattern)
+        for bad in [
+            " Billing.X",
+            ".leading",
+            "trailing.",
+            "double..dot",
+            "has space",
+            "dash-name",
+            "",
+            "Billing.x",
+        ]:
+            assert not regex.fullmatch(bad), f"expected {bad!r} to fail"
+
+    def test_task_name_pattern_can_be_overridden(self):
+        os.environ["SONIQ_TASK_NAME_PATTERN"] = r"^.+$"
+        from soniq.settings import get_settings
+
+        settings = get_settings(reload=True)
+        assert settings.task_name_pattern == r"^.+$"

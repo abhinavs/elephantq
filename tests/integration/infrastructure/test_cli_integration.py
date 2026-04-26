@@ -163,7 +163,7 @@ async def test_cli_with_real_jobs():
     job_file_content = """
 import soniq
 
-@soniq.job(retries=1)
+@soniq.job(name="cli_test_job", retries=1)
 async def cli_test_job(message: str):
     with open("/tmp/soniq_cli_test.txt", "w") as f:
         f.write(f"CLI test: {message}")
@@ -181,13 +181,13 @@ async def cli_test_job(message: str):
 
         sys.path.insert(0, str(PROJECT_ROOT))
 
-        # Import the test job module
-        import test_cli_jobs
+        # Import the test job module (registers cli_test_job in soniq)
+        import test_cli_jobs  # noqa: F401
 
         import soniq
 
         # Enqueue a job
-        await soniq.enqueue(test_cli_jobs.cli_test_job, message="Hello CLI")
+        await soniq.enqueue("cli_test_job", args={"message": "Hello CLI"})
 
         # Run start to process the job (with timeout as it may wait for jobs)
         os.environ["SONIQ_JOBS_MODULES"] = "test_cli_jobs"

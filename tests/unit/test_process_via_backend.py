@@ -27,11 +27,11 @@ async def test_process_via_backend_runs_job():
 
     executed = []
 
-    @registry.register_job
     async def my_task(msg: str):
         executed.append(msg)
 
-    job_name = f"{my_task.__module__}.{my_task.__name__}"
+    registry.register_job(my_task, name="my_task")
+    job_name = "my_task"
     await backend.create_job(
         job_id="job-1",
         job_name=job_name,
@@ -82,11 +82,11 @@ async def test_process_via_backend_handles_failure_with_retry():
     await backend.initialize()
     registry = JobRegistry()
 
-    @registry.register_job
     async def failing_task():
         raise RuntimeError("boom")
 
-    job_name = f"{failing_task.__module__}.{failing_task.__name__}"
+    registry.register_job(failing_task, name="failing_task")
+    job_name = "failing_task"
     await backend.create_job(
         job_id="job-fail",
         job_name=job_name,
@@ -120,11 +120,11 @@ async def test_process_via_backend_dead_letters_after_max_attempts():
     await backend.initialize()
     registry = JobRegistry()
 
-    @registry.register_job
     async def always_fails():
         raise RuntimeError("permanent")
 
-    job_name = f"{always_fails.__module__}.{always_fails.__name__}"
+    registry.register_job(always_fails, name="always_fails")
+    job_name = "always_fails"
     await backend.create_job(
         job_id="job-dead",
         job_name=job_name,

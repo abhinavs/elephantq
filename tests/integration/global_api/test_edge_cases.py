@@ -22,17 +22,17 @@ class ComplexJobArgs(BaseModel):
 
 
 # Test job definitions
-@soniq.job()
+@soniq.job(name="simple_job")
 async def simple_job(message: str):
     return f"Processed: {message}"
 
 
-@soniq.job(retries=3)
+@soniq.job(name="complex_job", retries=3)
 async def complex_job(data: dict, numbers: list[int], optional_field: str = "default"):
     return f"Complex job processed: {len(data)} keys, {len(numbers)} numbers"
 
 
-@soniq.job()
+@soniq.job(name="exception_job")
 async def exception_job(exception_type: str):
     if exception_type == "value_error":
         raise ValueError("Test value error")
@@ -49,12 +49,12 @@ async def test_malformed_job_data():
     """Test handling of malformed or corrupted job data"""
 
     # Register a test job to ensure registry is populated
-    @soniq.job(retries=3)
+    @soniq.job(name="test_simple_job", retries=3)
     async def test_simple_job(message: str):
         return f"Processed: {message}"
 
     # Enqueue a normal job first
-    job_id = await soniq.enqueue(test_simple_job, message="normal job")
+    job_id = await soniq.enqueue("test_simple_job", args={"message": "normal job"})
 
     # Process the job
     processed = await soniq.run_worker(run_once=True)
@@ -71,7 +71,9 @@ async def test_concurrent_job_processing():
     # Enqueue multiple jobs using global API
     job_ids = []
     for i in range(5):  # Reduced for speed
-        job_id = await soniq.enqueue(simple_job, message=f"concurrent job {i}")
+        job_id = await soniq.enqueue(
+            "simple_job", args={"message": f"concurrent job {i}"}
+        )
         job_ids.append(job_id)
 
     # Process all jobs
@@ -92,7 +94,7 @@ async def test_concurrent_job_processing():
 async def test_database_connection_failures():
     """Test that the worker handles errors without crashing."""
     # Enqueue a job normally
-    await soniq.enqueue(simple_job, message="connection test")
+    await soniq.enqueue("simple_job", args={"message": "connection test"})
 
     # Process the job — this should succeed
     processed = await soniq.run_worker(run_once=True)
@@ -104,10 +106,12 @@ async def test_job_argument_validation_edge_cases():
     """Test complex argument validation scenarios"""
     # Test valid complex arguments
     valid_job_id = await soniq.enqueue(
-        complex_job,
-        data={"key": "value", "nested": {"inner": "data"}},
-        numbers=[1, 2, 3, 4, 5],
-        optional_field="custom_value",
+        "complex_job",
+        args={
+            "data": {"key": "value", "nested": {"inner": "data"}},
+            "numbers": [1, 2, 3, 4, 5],
+            "optional_field": "custom_value",
+        },
     )
 
     # Process the job
@@ -123,8 +127,12 @@ async def test_job_argument_validation_edge_cases():
 async def test_exception_handling_in_jobs():
     """Test different types of exceptions in job execution"""
     # Enqueue jobs that will raise different exceptions
-    value_error_job = await soniq.enqueue(exception_job, exception_type="value_error")
-    type_error_job = await soniq.enqueue(exception_job, exception_type="type_error")
+    value_error_job = await soniq.enqueue(
+        "exception_job", args={"exception_type": "value_error"}
+    )
+    type_error_job = await soniq.enqueue(
+        "exception_job", args={"exception_type": "type_error"}
+    )
 
     # Process jobs (they will fail)
     for _ in range(10):  # Multiple attempts to handle retries
@@ -153,7 +161,9 @@ async def test_large_job_payloads():
     }
 
     # Enqueue job with large payload
-    job_id = await soniq.enqueue(complex_job, data=large_data, numbers=list(range(20)))
+    job_id = await soniq.enqueue(
+        "complex_job", args={"data": large_data, "numbers": list(range(20))}
+    )
 
     # Process the job
     processed = await soniq.run_worker(run_once=True)
@@ -169,7 +179,7 @@ async def test_large_job_payloads():
 async def test_worker_shutdown_handling():
     """Test graceful worker shutdown"""
     # Enqueue a quick job
-    await soniq.enqueue(simple_job, message="shutdown test")
+    await soniq.enqueue("simple_job", args={"message": "shutdown test"})
 
     # Test that run_worker with run_once=True completes without hanging
     try:
@@ -190,15 +200,15 @@ async def test_registry_edge_cases():
     initial_count = len(app_registry)
 
     # Register the same job function multiple times
-    @soniq.job()
+    @soniq.job(name="duplicate_job")
     async def duplicate_job():
         return "duplicate"
 
-    @soniq.job()
+    @soniq.job(name="duplicate_job")
     async def duplicate_job():  # Same name, should replace  # noqa: F811
         return "replaced"
 
-    @soniq.job()
+    @soniq.job(name="another_job")
     async def another_job():
         return "another"
 
@@ -214,11 +224,13 @@ async def test_timezone_and_datetime_handling():
     # Naive datetimes are ambiguous across hosts and must raise.
     naive = datetime.now() + timedelta(minutes=30)
     with pytest.raises(ValueError, match="timezone-aware"):
-        await soniq.enqueue(simple_job, message="naive", scheduled_at=naive)
+        await soniq.enqueue("simple_job", args={"message": "naive"}, scheduled_at=naive)
 
     # Timezone-aware datetimes continue to work.
     tz_time = datetime.now(timezone.utc) + timedelta(minutes=30)
-    tz_job = await soniq.enqueue(simple_job, message="timezone", scheduled_at=tz_time)
+    tz_job = await soniq.enqueue(
+        "simple_job", args={"message": "timezone"}, scheduled_at=tz_time
+    )
     tz_status = await soniq.get_job(tz_job)
     assert tz_status["scheduled_at"] is not None
     assert tz_status["status"] == "queued"

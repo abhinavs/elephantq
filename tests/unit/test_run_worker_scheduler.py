@@ -54,11 +54,11 @@ async def test_run_worker_does_not_touch_scheduler(monkeypatch):
 async def test_run_worker_warns_when_periodic_jobs_registered(monkeypatch, caplog):
     app = _make_app(monkeypatch)
 
-    @app.job()
+    @app.job(name="regular_job")
     async def regular_job():
         pass
 
-    @app.job()
+    @app.job(name="periodic_job")
     async def periodic_job():
         pass
 
@@ -77,7 +77,7 @@ async def test_run_worker_warns_when_periodic_jobs_registered(monkeypatch, caplo
 async def test_run_worker_warning_suppressible_via_env(monkeypatch, caplog):
     app = _make_app(monkeypatch)
 
-    @app.job()
+    @app.job(name="periodic_job")
     async def periodic_job():
         pass
 
@@ -95,7 +95,7 @@ async def test_run_worker_warning_suppressible_via_env(monkeypatch, caplog):
 async def test_run_worker_no_warning_when_no_periodic_jobs(monkeypatch, caplog):
     app = _make_app(monkeypatch)
 
-    @app.job()
+    @app.job(name="regular_job")
     async def regular_job():
         pass
 
@@ -110,7 +110,7 @@ async def test_run_worker_no_warning_when_no_periodic_jobs(monkeypatch, caplog):
 async def test_run_worker_no_warning_in_run_once_mode(monkeypatch, caplog):
     app = _make_app(monkeypatch)
 
-    @app.job()
+    @app.job(name="periodic_job")
     async def periodic_job():
         pass
 

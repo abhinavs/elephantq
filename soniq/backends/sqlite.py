@@ -102,6 +102,7 @@ class SQLiteBackend:
                 last_error TEXT,
                 result TEXT,
                 worker_id TEXT,
+                producer_id TEXT,
                 created_at TEXT,
                 updated_at TEXT
             );
@@ -130,6 +131,10 @@ class SQLiteBackend:
         columns = {row[1] for row in await cursor.fetchall()}
         if "result" not in columns:
             await self._conn.execute("ALTER TABLE soniq_jobs ADD COLUMN result TEXT")
+        if "producer_id" not in columns:
+            await self._conn.execute(
+                "ALTER TABLE soniq_jobs ADD COLUMN producer_id TEXT"
+            )
 
         await self._conn.commit()
 
@@ -148,6 +153,7 @@ class SQLiteBackend:
         unique: bool,
         dedup_key: Optional[str] = None,
         scheduled_at: Optional[datetime] = None,
+        producer_id: Optional[str] = None,
     ) -> Optional[str]:
         assert self._conn is not None
         now = _now_iso()
@@ -182,8 +188,9 @@ class SQLiteBackend:
             """
             INSERT INTO soniq_jobs
                 (id, job_name, args, args_hash, max_attempts, priority, queue,
-                 unique_job, dedup_key, scheduled_at, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 unique_job, dedup_key, scheduled_at, producer_id, created_at,
+                 updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 job_id,
@@ -196,6 +203,7 @@ class SQLiteBackend:
                 1 if unique else 0,
                 dedup_key,
                 sched,
+                producer_id,
                 now,
                 now,
             ),

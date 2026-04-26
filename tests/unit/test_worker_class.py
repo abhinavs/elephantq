@@ -55,11 +55,11 @@ async def test_worker_run_once_processes_job():
     registry = JobRegistry()
     executed = []
 
-    @registry.register_job
     async def my_task(msg: str):
         executed.append(msg)
 
-    job_name = f"{my_task.__module__}.{my_task.__name__}"
+    registry.register_job(my_task, name="my_task")
+    job_name = "my_task"
     await backend.create_job(
         job_id=str(uuid.uuid4()),
         job_name=job_name,

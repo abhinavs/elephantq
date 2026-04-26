@@ -6,7 +6,7 @@ environment variables, config files, and validation.
 """
 
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -101,6 +101,50 @@ class SoniqSettings(BaseSettings):
         ge=1,
         le=1000,
         description="Default job priority (lower = higher priority)",
+    )
+
+    enqueue_validation: Literal["strict", "warn", "none"] = Field(
+        default="strict",
+        description=(
+            "How enqueue() handles a string name that is not registered locally. "
+            "'strict' raises SONIQ_UNKNOWN_TASK_NAME (default; loud at the call site). "
+            "'warn' emits a rate-limited WARN and proceeds (for producer services that "
+            "cannot validate locally). 'none' is silent. Does not apply when enqueue() "
+            "is called with a TaskRef; that path validates against args_model."
+        ),
+    )
+
+    task_name_pattern: str = Field(
+        default=r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$",
+        description=(
+            "Regex enforced on every task name at @app.job(name=) registration and "
+            "at enqueue() call time. Default rejects spaces, capitalisation, leading "
+            "dots. Override for teams with existing conventions."
+        ),
+    )
+
+    producer_id: str = Field(
+        default="auto",
+        description=(
+            "Identifier stamped on every row this instance enqueues, for "
+            "observability ('who enqueued this poison message?'). 'auto' "
+            "resolves to <hostname>:<pid>:<argv0> the first time a producer_id "
+            "is needed. Set explicitly (e.g. 'billing-api') for cleaner "
+            "dashboards in multi-deployment topologies."
+        ),
+    )
+
+    route_map: Dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Consumer-side prefix-to-queue routing. When a job is registered "
+            "without an explicit queue=, the longest matching prefix in this "
+            "dict determines the queue the consumer's worker polls for that "
+            "name. Producer queue= overrides ride on top of the row, not on "
+            "this map (the producer is unaware of consumer routing - this is "
+            "consumer-side only). Example: "
+            "{'billing.': 'billing-queue', 'reports.': 'reports-queue'}."
+        ),
     )
 
     # Feature Flags (all disabled by default)

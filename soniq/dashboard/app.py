@@ -464,3 +464,49 @@ async def get_system_health() -> Dict[str, Any]:
             "jobs_processed_last_hour": recent_stats["total_recent"],
             "timestamp": datetime.now().isoformat(),
         }
+
+
+async def get_task_registry_drift(window_minutes: int = 60) -> Dict[str, Any]:
+    """Surface deploy-skew: names with queued / dead-lettered rows in the
+    last N minutes that have no current row in soniq_task_registry.
+
+    Plan section 14.4 / 15.8: this is the deploy-skew detector. It
+    *reads* the soniq_task_registry table; the enqueue path still does
+    not. The query joins soniq_jobs.job_name against
+    soniq_task_registry.task_name and surfaces the unmatched names.
+    """
+    pool = await get_context_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT
+                j.job_name,
+                COUNT(*) FILTER (WHERE j.status = 'queued') AS queued,
+                COUNT(*) FILTER (WHERE j.status = 'dead_letter') AS dead_letter,
+                MAX(j.updated_at) AS last_seen
+            FROM soniq_jobs AS j
+            WHERE j.updated_at > NOW() - ($1 || ' minutes')::interval
+              AND j.status IN ('queued', 'dead_letter')
+              AND NOT EXISTS (
+                  SELECT 1 FROM soniq_task_registry AS r
+                  WHERE r.task_name = j.job_name
+              )
+            GROUP BY j.job_name
+            ORDER BY last_seen DESC
+            """,
+            str(window_minutes),
+        )
+        return {
+            "window_minutes": window_minutes,
+            "skewed_names": [
+                {
+                    "job_name": r["job_name"],
+                    "queued": r["queued"],
+                    "dead_letter": r["dead_letter"],
+                    "last_seen": (
+                        r["last_seen"].isoformat() if r["last_seen"] else None
+                    ),
+                }
+                for r in rows
+            ],
+        }

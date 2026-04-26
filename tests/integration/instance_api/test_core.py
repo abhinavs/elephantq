@@ -36,7 +36,7 @@ async def test_enqueue_and_run_job():
     app = soniq.Soniq(database_url=TEST_DATABASE_URL)
 
     # Register job with the instance
-    @app.job(retries=5, args_model=SampleJobArgs)
+    @app.job(name="instance_sample_job", retries=5, args_model=SampleJobArgs)
     async def instance_sample_job(x, y):
         return x + y
 
@@ -46,7 +46,7 @@ async def test_enqueue_and_run_job():
         await conn.execute("DELETE FROM soniq_jobs")
 
     # Enqueue job using instance API
-    job_id = await app.enqueue(instance_sample_job, x=1, y=2)
+    job_id = await app.enqueue("instance_sample_job", args={"x": 1, "y": 2})
     assert job_id
 
     # Process the job using instance worker
@@ -59,10 +59,7 @@ async def test_enqueue_and_run_job():
         )
 
         assert job_record is not None, f"Job {job_id} not found in database"
-        assert (
-            job_record["job_name"]
-            == "tests.integration.instance_api.test_core.instance_sample_job"
-        )
+        assert job_record["job_name"] == "instance_sample_job"
         assert job_record["args"] == {"x": 1, "y": 2}
         assert job_record["max_attempts"] == 6  # retries=5 -> max_attempts=6
         assert job_record["status"] == "done"
@@ -77,7 +74,7 @@ async def test_enqueue_job_invalid_args():
     await soniq.configure(database_url=TEST_DATABASE_URL)
 
     # Define job with args validation
-    @soniq.job(retries=5, args_model=SampleJobArgs)
+    @soniq.job(name="sample_job", retries=5, args_model=SampleJobArgs)
     async def sample_job(x, y):
         return x + y
 
@@ -87,8 +84,11 @@ async def test_enqueue_job_invalid_args():
     async with global_pool.acquire() as conn:
         await conn.execute("DELETE FROM soniq_jobs")
 
-    with pytest.raises(ValueError, match="Invalid arguments for job"):
-        await soniq.enqueue(sample_job, x=1, y="invalid")
+    from soniq.errors import SONIQ_TASK_ARGS_INVALID, SoniqError
+
+    with pytest.raises(SoniqError) as exc_info:
+        await soniq.enqueue("sample_job", args={"x": 1, "y": "invalid"})
+    assert exc_info.value.error_code == SONIQ_TASK_ARGS_INVALID
 
     # Clean up global app
     if global_app._is_initialized:
@@ -104,7 +104,7 @@ async def test_retry_mechanism():
     await soniq.configure(database_url=TEST_DATABASE_URL)
 
     # Define flaky job that fails first 2 times then succeeds
-    @soniq.job(retries=3)
+    @soniq.job(name="flaky_job", retries=3)
     async def flaky_job(job_id: str, should_fail: bool):
         if should_fail:
             _flaky_job_fail_counts[job_id] = _flaky_job_fail_counts.get(job_id, 0) + 1
@@ -113,7 +113,7 @@ async def test_retry_mechanism():
         return "Success"
 
     # Define job that always fails
-    @soniq.job(retries=3)
+    @soniq.job(name="always_fail_job", retries=3)
     async def always_fail_job(job_id: str):
         raise ValueError("Always fails")
 
@@ -125,7 +125,9 @@ async def test_retry_mechanism():
 
     # Test job that succeeds after retries
     job_id_1 = str(uuid.uuid4())
-    actual_job_id_1 = await soniq.enqueue(flaky_job, job_id=job_id_1, should_fail=True)
+    actual_job_id_1 = await soniq.enqueue(
+        "flaky_job", args={"job_id": job_id_1, "should_fail": True}
+    )
 
     # Process job using global worker (will retry until success or max attempts)
     await soniq.run_worker(run_once=True)
@@ -140,7 +142,7 @@ async def test_retry_mechanism():
 
     # Test job that exceeds max retries
     job_id_2 = str(uuid.uuid4())
-    actual_job_id_2 = await soniq.enqueue(always_fail_job, job_id=job_id_2)
+    actual_job_id_2 = await soniq.enqueue("always_fail_job", args={"job_id": job_id_2})
 
     # Process job using global worker (will retry until max attempts reached)
     await soniq.run_worker(run_once=True)
@@ -164,7 +166,7 @@ async def test_run_worker_processes_job():
     await soniq.configure(database_url=TEST_DATABASE_URL)
 
     # Define sample job
-    @soniq.job(retries=5, args_model=SampleJobArgs)
+    @soniq.job(name="sample_job", retries=5, args_model=SampleJobArgs)
     async def sample_job(x, y):
         return x + y
 
@@ -175,7 +177,7 @@ async def test_run_worker_processes_job():
         await conn.execute("DELETE FROM soniq_jobs")
 
     # Enqueue job using global API
-    job_id = await soniq.enqueue(sample_job, x=10, y=20)
+    job_id = await soniq.enqueue("sample_job", args={"x": 10, "y": 20})
 
     # Process job using global worker
     await soniq.run_worker(run_once=True)
@@ -234,13 +236,13 @@ async def test_task_discovery():
 
     importlib.import_module("jobs.my_tasks")
 
-    # Verify that the discovered job is registered
-    discovered_job_meta = get_job("jobs.my_tasks.discovered_job")
+    # Verify that the discovered job is registered under its explicit name
+    discovered_job_meta = get_job("discovered_job")
     assert discovered_job_meta is not None
 
     # Enqueue the discovered job using global API
     await soniq.enqueue(
-        discovered_job_meta["func"], message="Hello from discovered job!"
+        "discovered_job", args={"message": "Hello from discovered job!"}
     )
 
     # Process using global worker
@@ -249,7 +251,7 @@ async def test_task_discovery():
     # Check job status using global pool
     async with global_pool.acquire() as conn:
         job_record = await conn.fetchrow(
-            "SELECT * FROM soniq_jobs WHERE job_name = 'jobs.my_tasks.discovered_job'"
+            "SELECT * FROM soniq_jobs WHERE job_name = 'discovered_job'"
         )
         assert job_record["status"] == "done"
 

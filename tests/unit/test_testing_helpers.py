@@ -74,11 +74,11 @@ async def test_make_app_runs_a_job_end_to_end():
     app = make_app()
     executed = []
 
-    @app.job()
+    @app.job(name="collect")
     async def collect(value: str):
         executed.append(value)
 
-    await app.enqueue(collect, value="hi")
+    await app.enqueue("collect", args={"value": "hi"})
     await app.run_worker(run_once=True)
 
     assert executed == ["hi"]

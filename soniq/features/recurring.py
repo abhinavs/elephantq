@@ -341,7 +341,10 @@ class EnhancedRecurringManager:
 
         job_id = str(uuid.uuid4())
         job_kwargs = job_kwargs or {}
-        job_name = f"{job_func.__module__}.{job_func.__name__}"
+        # Per plan section 15 the registered name is authoritative; @periodic
+        # stamps it on the callable as `_soniq_name`. Fall back to the bare
+        # function name when callers register manually outside @periodic.
+        job_name = getattr(job_func, "_soniq_name", None) or job_func.__name__
 
         try:
             json.dumps(job_kwargs)
@@ -695,14 +698,22 @@ class EnhancedRecurringScheduler:
                         return
 
                     # Claim succeeded. Enqueue inside the same transaction
-                    # so a failed enqueue rolls the claim back.
+                    # so a failed enqueue rolls the claim back. Resolve the
+                    # task name from the registered callable: @periodic sets
+                    # `_soniq_name` on the wrapped function, so we read that
+                    # rather than re-deriving the dotted form. `max_attempts`
+                    # comes from the registered job_meta, not the enqueue
+                    # call, so it is intentionally not passed here.
+                    job_func = job["job_func"]
+                    task_name = (
+                        getattr(job_func, "_soniq_name", None) or job_func.__name__
+                    )
                     actual_job_id = await enqueue(
-                        job["job_func"],
+                        task_name,
+                        args=job["job_kwargs"],
                         connection=conn,
                         priority=job["priority"],
                         queue=job["queue"],
-                        max_attempts=job["max_attempts"],
-                        **job["job_kwargs"],
                     )
 
                     # Record run bookkeeping inside the same transaction.

@@ -17,7 +17,7 @@ async def _setup(job_func, args={}, max_attempts=3, attempts_override=None):
     backend = MemoryBackend()
     await backend.initialize()
     registry = JobRegistry()
-    wrapped = registry.register_job(job_func)
+    wrapped = registry.register_job(job_func, name=job_func.__name__)
     job_name = wrapped._soniq_name
 
     await backend.create_job(

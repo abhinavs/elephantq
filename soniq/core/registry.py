@@ -6,7 +6,7 @@ Supports both instance-based and global operations.
 """
 
 import functools
-from typing import Any, Callable, Dict, List, Optional, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Type, Union  # noqa: F401
 
 from pydantic import BaseModel
 
@@ -26,6 +26,8 @@ class JobRegistry:
     def register_job(
         self,
         func: Callable[..., Any],
+        *,
+        name: str,
         retries: int = 3,
         max_retries: Optional[int] = None,
         args_model: Optional[Type[BaseModel]] = None,
@@ -38,13 +40,23 @@ class JobRegistry:
         retry_max_delay: Optional[Union[int, float]] = None,
         retry_jitter: bool = True,
         timeout: Optional[Union[int, float]] = None,
+        _route_map: Optional[Dict[str, str]] = None,
         **kwargs,
     ) -> Callable[..., Any]:
         """
         Register a job function with this registry.
 
+        `name` is a mandatory keyword argument: a stable, dotted protocol
+        identifier owned by the consumer service (e.g.
+        ``billing.invoices.send.v2``). Module-derived names were removed
+        because once queues cross repo boundaries, the name is the wire
+        protocol; treating ``module.qualname`` as authoritative made every
+        rename a wire-protocol migration. Use the explicit ``name=`` form.
+
         Args:
             func: Job function to register
+            name: Required dotted task identifier (validated against
+                ``SONIQ_TASK_NAME_PATTERN``).
             retries: Number of retry attempts (default: 3)
             args_model: Pydantic model for argument validation (alias: validate)
             priority: Job priority (lower = higher priority)
@@ -62,13 +74,18 @@ class JobRegistry:
 
         Returns:
             The wrapped job function
+
+        Raises:
+            SoniqError(SONIQ_INVALID_TASK_NAME): name missing, empty, or
+                violating the configured task name pattern.
         """
+        from .naming import validate_task_name
+
+        job_name = validate_task_name(name)
 
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
             return func(*args, **kwargs)
-
-        job_name = f"{func.__module__}.{func.__name__}"
 
         # validate is the preferred alias for args_model
         effective_args_model = validate or args_model
@@ -76,13 +93,31 @@ class JobRegistry:
         # max_retries is preferred; retries is the backward-compat alias
         effective_max_retries = max_retries if max_retries is not None else retries
 
+        # Resolve the registered queue with precedence:
+        #     explicit @app.job(queue=...) > route_map prefix match > "default"
+        # The default `queue="default"` kwarg from the signature can't be
+        # distinguished from an explicit pass at this level; we approximate
+        # by treating "default" as "unset" for the route_map check, which
+        # matches the historical default.
+        effective_queue = queue
+        if queue == "default" and _route_map:
+            # Longest-prefix-match wins so a more-specific prefix beats
+            # a less-specific one.
+            best: Optional[tuple[str, str]] = None
+            for prefix, mapped in _route_map.items():
+                if job_name.startswith(prefix):
+                    if best is None or len(prefix) > len(best[0]):
+                        best = (prefix, mapped)
+            if best is not None:
+                effective_queue = best[1]
+
         # Store job metadata
         job_config = {
             "func": wrapper,
             "max_retries": effective_max_retries,
             "args_model": effective_args_model,
             "priority": priority,
-            "queue": queue,
+            "queue": effective_queue,
             "unique": unique,
             "retry_delay": retry_delay,
             "retry_backoff": retry_backoff,

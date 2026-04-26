@@ -21,6 +21,9 @@ class MemoryBackend:
     def __init__(self) -> None:
         self._jobs: dict[str, dict[str, Any]] = {}
         self._workers: dict[str, dict[str, Any]] = {}
+        # Observability metadata only - mirrors soniq_task_registry. See
+        # plan section 14.4 'Architectural boundary statement'.
+        self._task_registry: dict[tuple[str, str], dict[str, Any]] = {}
         self._lock = asyncio.Lock()
 
     # --- Capabilities ---
@@ -68,6 +71,7 @@ class MemoryBackend:
         unique: bool,
         dedup_key: Optional[str] = None,
         scheduled_at: Optional[datetime] = None,
+        producer_id: Optional[str] = None,
     ) -> Optional[str]:
         async with self._lock:
             # Unique dedup
@@ -104,6 +108,7 @@ class MemoryBackend:
                 "unique_job": unique,
                 "dedup_key": dedup_key,
                 "scheduled_at": scheduled_at,
+                "producer_id": producer_id,
                 "expires_at": None,
                 "result": None,
                 "last_error": None,
@@ -328,6 +333,31 @@ class MemoryBackend:
             if s in stats[q]:
                 stats[q][s] += 1
         return sorted(stats.values(), key=lambda x: x["queue"])
+
+    # --- Task registry (observability metadata only) ---
+
+    async def register_task_name(
+        self,
+        *,
+        task_name: str,
+        worker_id: str,
+        args_model_repr: Optional[str] = None,
+    ) -> None:
+        """Upsert this worker's registration for ``task_name``."""
+        async with self._lock:
+            self._task_registry[(task_name, worker_id)] = {
+                "task_name": task_name,
+                "worker_id": worker_id,
+                "last_seen_at": datetime.now(timezone.utc),
+                "args_model_repr": args_model_repr,
+            }
+
+    async def list_registered_task_names(self) -> list[dict]:
+        async with self._lock:
+            return sorted(
+                (dict(v) for v in self._task_registry.values()),
+                key=lambda r: (r["task_name"], r["worker_id"]),
+            )
 
     # --- Worker tracking ---
 

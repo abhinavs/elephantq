@@ -15,12 +15,12 @@ os.environ["SONIQ_DATABASE_URL"] = TEST_DATABASE_URL
 
 
 # Test job definitions
-@soniq.job(retries=3)
+@soniq.job(name="basic_job", retries=3)
 async def basic_job(message: str):
     return f"Basic: {message}"
 
 
-@soniq.job(retries=2, priority=50, queue="test")
+@soniq.job(name="advanced_job", retries=2, priority=50, queue="test")
 async def advanced_job(message: str, count: int):
     return f"Advanced: {message} x{count}"
 
@@ -30,7 +30,7 @@ async def test_free_features_compliance():
     """Test all Free Features (Phase 1 - MVP) compliance"""
 
     # ✅ PostgreSQL-based job persistence (JSON payload)
-    job_id = await soniq.enqueue(basic_job, message="test persistence")
+    job_id = await soniq.enqueue("basic_job", args={"message": "test persistence"})
 
     # Use global app pool for consistency
     global_app = soniq._get_global_app()
@@ -41,10 +41,7 @@ async def test_free_features_compliance():
             "SELECT * FROM soniq_jobs WHERE id = $1", uuid.UUID(job_id)
         )
         assert job_record is not None
-        assert (
-            job_record["job_name"]
-            == "tests.integration.global_api.test_specification_compliance.basic_job"
-        )
+        assert job_record["job_name"] == "basic_job"
         assert job_record["args"] == {"message": "test persistence"}
 
     # ✅ Job processing with retry mechanism
@@ -71,9 +68,13 @@ async def test_pro_features_compliance():
     """Test optional features (Phase 2) compliance"""
 
     # ✅ Priority queues (numeric)
-    await soniq.enqueue(advanced_job, priority=10, message="high priority", count=1)
+    await soniq.enqueue(
+        "advanced_job", args={"message": "high priority", "count": 1}, priority=10
+    )
 
-    await soniq.enqueue(advanced_job, priority=100, message="low priority", count=1)
+    await soniq.enqueue(
+        "advanced_job", args={"message": "low priority", "count": 1}, priority=100
+    )
 
     # Verify priority ordering in database
     global_app = soniq._get_global_app()
@@ -95,13 +96,14 @@ async def test_dsl_usage_examples_compliance():
     """Test that DSL usage examples from spec work exactly as documented"""
 
     # Spec Example 1: Registering a Job
-    @soniq.job(retries=3)
+    @soniq.job(name="send_email", retries=3)
     async def send_email(to: str, subject: str, body: str):
         return f"Email to {to}: {subject}"
 
     # Spec Example 2: Enqueuing a Job
     job_id = await soniq.enqueue(
-        send_email, to="user@example.com", subject="Hello", body="Test message"
+        "send_email",
+        args={"to": "user@example.com", "subject": "Hello", "body": "Test message"},
     )
 
     # Verify job was enqueued
@@ -115,11 +117,13 @@ async def test_dsl_usage_examples_compliance():
     future_time = datetime.now(timezone.utc) + timedelta(minutes=30)
 
     scheduled_job_id = await soniq.schedule(
-        send_email,
+        "send_email",
+        args={
+            "to": "user@example.com",
+            "subject": "Scheduled",
+            "body": "Scheduled message",
+        },
         run_at=future_time,
-        to="user@example.com",
-        subject="Scheduled",
-        body="Scheduled message",
     )
 
     # Verify job was scheduled

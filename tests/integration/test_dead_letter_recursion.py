@@ -38,7 +38,7 @@ async def _move_sample_job_to_dlq(tag: str) -> str:
     async def always_fail():
         raise RuntimeError("boom")
 
-    job_id = await soniq.enqueue(always_fail)
+    job_id = await soniq.enqueue("always_fail")
     moved = await dead_letter.move_job_to_dead_letter(
         job_id,
         DeadLetterReason.MANUAL_MOVE,

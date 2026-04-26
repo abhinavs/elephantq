@@ -159,6 +159,7 @@ class PostgresBackend:
         unique: bool,
         dedup_key: Optional[str] = None,
         scheduled_at: Optional[datetime] = None,
+        producer_id: Optional[str] = None,
     ) -> Optional[str]:
         async with self.pool.acquire() as conn:
             return await self._create_job_on_conn(
@@ -173,6 +174,7 @@ class PostgresBackend:
                 unique=unique,
                 dedup_key=dedup_key,
                 scheduled_at=scheduled_at,
+                producer_id=producer_id,
             )
 
     async def create_job_transactional(
@@ -189,6 +191,7 @@ class PostgresBackend:
         unique: bool,
         dedup_key: Optional[str] = None,
         scheduled_at: Optional[datetime] = None,
+        producer_id: Optional[str] = None,
     ) -> Optional[str]:
         """Enqueue within a caller-provided transaction. PostgreSQL only."""
         return await self._create_job_on_conn(
@@ -203,6 +206,7 @@ class PostgresBackend:
             unique=unique,
             dedup_key=dedup_key,
             scheduled_at=scheduled_at,
+            producer_id=producer_id,
         )
 
     async def _create_job_on_conn(
@@ -219,6 +223,7 @@ class PostgresBackend:
         unique: bool,
         dedup_key: Optional[str],
         scheduled_at: Optional[datetime],
+        producer_id: Optional[str] = None,
     ) -> Optional[str]:
         """Shared implementation for both regular and transactional enqueue."""
         uid = uuid.UUID(job_id)
@@ -229,8 +234,8 @@ class PostgresBackend:
                 """
                 INSERT INTO soniq_jobs
                     (id, job_name, args, args_hash, max_attempts, priority, queue,
-                     unique_job, dedup_key, scheduled_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                     unique_job, dedup_key, scheduled_at, producer_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                 ON CONFLICT (dedup_key)
                     WHERE status = 'queued' AND dedup_key IS NOT NULL
                 DO NOTHING
@@ -246,6 +251,7 @@ class PostgresBackend:
                 unique,
                 dedup_key,
                 scheduled_at,
+                producer_id,
             )
             if row is None:
                 existing = await conn.fetchrow(
@@ -264,8 +270,9 @@ class PostgresBackend:
             row = await conn.fetchrow(
                 """
                 INSERT INTO soniq_jobs
-                    (id, job_name, args, args_hash, max_attempts, priority, queue, unique_job, scheduled_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    (id, job_name, args, args_hash, max_attempts, priority, queue,
+                     unique_job, scheduled_at, producer_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                 ON CONFLICT (job_name, args_hash)
                     WHERE status = 'queued' AND unique_job = TRUE
                 DO NOTHING
@@ -280,6 +287,7 @@ class PostgresBackend:
                 queue,
                 True,
                 scheduled_at,
+                producer_id,
             )
             if row is None:
                 existing = await conn.fetchrow(
@@ -302,8 +310,9 @@ class PostgresBackend:
         await conn.execute(
             """
             INSERT INTO soniq_jobs
-                (id, job_name, args, args_hash, max_attempts, priority, queue, unique_job, scheduled_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                (id, job_name, args, args_hash, max_attempts, priority, queue,
+                 unique_job, scheduled_at, producer_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             """,
             uid,
             job_name,
@@ -314,6 +323,7 @@ class PostgresBackend:
             queue,
             unique,
             scheduled_at,
+            producer_id,
         )
         await conn.execute(
             "SELECT pg_notify($1, $2)",
@@ -688,6 +698,50 @@ class PostgresBackend:
             return [dict(row) for row in rows]
 
     # --- Worker tracking ---
+
+    async def register_task_name(
+        self,
+        *,
+        task_name: str,
+        worker_id: str,
+        args_model_repr: Optional[str] = None,
+    ) -> None:
+        """Upsert this worker's registration for ``task_name``.
+
+        Observability only: nothing in the enqueue path reads this table.
+        See plan section 14.4 'Architectural boundary statement' and the
+        boundary tests in tests/unit/test_enqueue.py.
+        """
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO soniq_task_registry
+                    (task_name, worker_id, last_seen_at, args_model_repr)
+                VALUES ($1, $2, NOW(), $3)
+                ON CONFLICT (task_name, worker_id)
+                DO UPDATE SET
+                    last_seen_at = NOW(),
+                    args_model_repr = EXCLUDED.args_model_repr
+                """,
+                task_name,
+                worker_id,
+                args_model_repr,
+            )
+
+    async def list_registered_task_names(self) -> list[dict]:
+        """Return registered (task_name, worker_id, last_seen_at) rows.
+
+        Observability only. See ``register_task_name``.
+        """
+        async with self.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT task_name, worker_id, last_seen_at, args_model_repr
+                FROM soniq_task_registry
+                ORDER BY task_name, worker_id
+                """
+            )
+            return [dict(r) for r in rows]
 
     async def register_worker(
         self,

@@ -16,11 +16,11 @@ async def test_before_and_after_hooks_called():
         def on_after(job_name, job_id, duration_ms):
             calls.append(("after", job_name))
 
-        @app.job()
+        @app.job(name="my_job")
         async def my_job():
             pass
 
-        await app.enqueue(my_job)
+        await app.enqueue("my_job")
         await app.run_worker(run_once=True)
 
     before_calls = [c for c in calls if c[0] == "before"]
@@ -39,11 +39,11 @@ async def test_on_error_hook_called():
         def on_err(job_name, job_id, error, attempt):
             calls.append(("error", error, attempt))
 
-        @app.job(max_retries=0)
+        @app.job(name="failing_job", max_retries=0)
         async def failing_job():
             raise RuntimeError("boom")
 
-        await app.enqueue(failing_job)
+        await app.enqueue("failing_job")
         await app.run_worker(run_once=True)
 
     assert len(calls) == 1
@@ -60,11 +60,11 @@ async def test_async_hooks_supported():
         async def on_before(job_name, job_id, attempt):
             calls.append("async_before")
 
-        @app.job()
+        @app.job(name="my_job")
         async def my_job():
             pass
 
-        await app.enqueue(my_job)
+        await app.enqueue("my_job")
         await app.run_worker(run_once=True)
 
     assert "async_before" in calls
@@ -79,11 +79,11 @@ async def test_broken_hook_does_not_kill_processing():
         def broken_hook(job_name, job_id, attempt):
             raise RuntimeError("hook crash")
 
-        @app.job()
+        @app.job(name="my_job")
         async def my_job():
             executed.append(True)
 
-        await app.enqueue(my_job)
+        await app.enqueue("my_job")
         await app.run_worker(run_once=True)
 
     assert len(executed) == 1

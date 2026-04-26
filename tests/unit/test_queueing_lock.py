@@ -12,24 +12,21 @@ def test_job_decorator_accepts_dedup_key():
     """@job(dedup_key=...) should store the lock in job config."""
     registry = JobRegistry()
 
-    @registry.register_job
     async def my_job():
         pass
 
-    # dedup_key is a per-enqueue parameter, not per-registration
-    # But the registry should accept it without error
-    assert registry.get_job(f"{my_job.__module__}.{my_job.__name__}") is not None
+    registry.register_job(my_job, name="my_job")
+    # dedup_key is a per-enqueue parameter, not per-registration.
+    # The registry should accept it without error.
+    assert registry.get_job("my_job") is not None
 
 
 def test_enqueue_accepts_dedup_key_parameter():
-    """Soniq.enqueue should accept dedup_key as a keyword argument."""
+    """Soniq.enqueue should accept dedup_key as a keyword-only argument."""
     import inspect
 
     from soniq.app import Soniq
 
     sig = inspect.signature(Soniq.enqueue)
-    # dedup_key is passed via **kwargs, so check the method accepts **kwargs
-    has_var_keyword = any(
-        p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
-    )
-    assert has_var_keyword, "Soniq.enqueue must accept **kwargs for dedup_key"
+    assert "dedup_key" in sig.parameters
+    assert sig.parameters["dedup_key"].kind is inspect.Parameter.KEYWORD_ONLY

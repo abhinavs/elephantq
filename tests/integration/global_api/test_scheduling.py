@@ -14,7 +14,7 @@ from tests.db_utils import TEST_DATABASE_URL
 os.environ["SONIQ_DATABASE_URL"] = TEST_DATABASE_URL
 
 
-@soniq.job(retries=1)
+@soniq.job(name="scheduled_job", retries=1)
 async def scheduled_job(message: str):
     return f"Processed: {message}"
 
@@ -23,12 +23,14 @@ async def scheduled_job(message: str):
 async def test_immediate_vs_scheduled_jobs():
     """Test that scheduled jobs don't run until their scheduled time"""
     # Enqueue immediate job
-    immediate_job_id = await soniq.enqueue(scheduled_job, message="immediate")
+    immediate_job_id = await soniq.enqueue(
+        "scheduled_job", args={"message": "immediate"}
+    )
 
     # Enqueue job scheduled for future
     future_time = datetime.now(timezone.utc) + timedelta(hours=1)
     scheduled_job_id = await soniq.enqueue(
-        scheduled_job, scheduled_at=future_time, message="future"
+        "scheduled_job", args={"message": "future"}, scheduled_at=future_time
     )
 
     # Process jobs - only immediate should run
@@ -58,9 +60,9 @@ async def test_immediate_vs_scheduled_jobs():
 async def test_priority_ordering(clean_db):
     """Test that higher priority jobs (lower numbers) are processed first"""
     # Enqueue jobs with different priorities
-    await soniq.enqueue(scheduled_job, priority=100, message="low")
-    await soniq.enqueue(scheduled_job, priority=1, message="high")
-    await soniq.enqueue(scheduled_job, priority=50, message="medium")
+    await soniq.enqueue("scheduled_job", args={"message": "low"}, priority=100)
+    await soniq.enqueue("scheduled_job", args={"message": "high"}, priority=1)
+    await soniq.enqueue("scheduled_job", args={"message": "medium"}, priority=50)
 
     # Verify jobs are queued in database in priority order
     global_app = soniq._get_global_app()
@@ -106,26 +108,26 @@ async def test_unified_schedule_function():
     # Test with datetime object (absolute time)
     future_datetime = datetime.now(timezone.utc) + timedelta(minutes=15)
     datetime_job_id = await soniq.schedule(
-        scheduled_job, run_at=future_datetime, message="scheduled with datetime"
+        "scheduled_job",
+        args={"message": "scheduled with datetime"},
+        run_at=future_datetime,
     )
 
     # Test with integer seconds (relative time)
     seconds_job_id = await soniq.schedule(
-        scheduled_job,
-        run_in=900,  # 15 minutes in seconds
-        message="scheduled with seconds",
+        "scheduled_job", args={"message": "scheduled with seconds"}, run_in=900
     )
 
     # Test with float seconds (relative time)
     float_job_id = await soniq.schedule(
-        scheduled_job,
-        run_in=900.5,  # 15 minutes and 0.5 seconds
-        message="scheduled with float seconds",
+        "scheduled_job", args={"message": "scheduled with float seconds"}, run_in=900.5
     )
 
     # Test with timedelta object (relative time)
     timedelta_job_id = await soniq.schedule(
-        scheduled_job, run_in=timedelta(minutes=15), message="scheduled with timedelta"
+        "scheduled_job",
+        args={"message": "scheduled with timedelta"},
+        run_in=timedelta(minutes=15),
     )
 
     # Verify all jobs are scheduled correctly

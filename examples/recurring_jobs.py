@@ -24,7 +24,7 @@ async def cleanup():
 async def main() -> None:
     from soniq import cron, every
 
-    @soniq.job()
+    @soniq.job(name="ad_hoc_task")
     async def ad_hoc_task():
         print("Ad hoc")
 

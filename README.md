@@ -54,6 +54,32 @@ async with pool.acquire() as conn:
 
 No Redis queue can do this. Your job and your data land in the same commit. If something fails halfway through, both roll back. No stale jobs, no ghost tasks, no cleanup scripts.
 
+## Cross-service enqueue
+
+Service A enqueues; service B owns and runs the handler. Both share a Postgres database, neither imports the other's code.
+
+```python
+# Producer (service A) - no local registry
+producer = Soniq(
+    database_url="postgresql://shared-pg/jobs",
+    producer_only=True,
+    enqueue_validation="none",
+)
+await producer.enqueue("billing.invoices.send.v2", args={"order_id": "o1"})
+```
+
+```python
+# Consumer (service B) - registers and runs
+consumer = Soniq(database_url="postgresql://shared-pg/jobs")
+
+@consumer.job(name="billing.invoices.send.v2", validate=InvoiceArgs)
+async def send_invoice(order_id: str): ...
+
+await consumer.run_worker()
+```
+
+Soniq is at-least-once, not exactly-once: handlers should be idempotent. See [docs/guides/cross-service-jobs.md](docs/guides/cross-service-jobs.md) and the [migration guide](docs/migration/0.0.x-to-cross-service.md) for the full story.
+
 ## Why Soniq
 
 Most Python job queues force you to run Redis or RabbitMQ alongside your database. That's another service to deploy, monitor, back up, and debug when things go wrong at 3am.

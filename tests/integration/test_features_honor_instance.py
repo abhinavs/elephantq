@@ -115,7 +115,7 @@ async def test_global_enqueue_still_targets_global_db(two_dbs):
 
     soniq.job()(global_job)
 
-    job_id = await soniq.enqueue(global_job)
+    job_id = await soniq.enqueue("global_job")
 
     pool_a = await asyncpg.create_pool(url_a)
     pool_b = await asyncpg.create_pool(url_b)

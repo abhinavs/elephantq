@@ -37,7 +37,7 @@ async def test_snooze_requeues_with_attempts_unchanged_against_postgres():
             return Snooze(seconds=0.5, reason="first pass")
         return "ok"
 
-    job_id = await soniq.enqueue(snooze_then_succeed)
+    job_id = await soniq.enqueue("snooze_then_succeed")
 
     # First pass: the handler snoozes. Run a single worker tick.
     processed = await global_app._backend.fetch_and_lock_job(

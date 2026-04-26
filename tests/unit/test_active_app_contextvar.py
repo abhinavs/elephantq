@@ -55,16 +55,16 @@ async def test_global_enqueue_uses_active_app_when_set():
         def __init__(self):
             pass
 
-        async def enqueue(self, job_func, connection=None, **kwargs):
-            return f"fake::{job_func.__name__}"
-
-    async def task():
-        return None
+        async def enqueue(self, name_or_ref=None, **kwargs):
+            target = (
+                name_or_ref if name_or_ref is not None else kwargs.get("name_or_ref")
+            )
+            return f"fake::{target}"
 
     fake = _FakeApp()
     token = _active_app.set(fake)
     try:
-        result = await soniq.enqueue(task)
+        result = await soniq.enqueue("task")
     finally:
         _active_app.reset(token)
 
@@ -84,6 +84,6 @@ async def test_global_enqueue_falls_back_to_global_when_no_active():
         fake_global.enqueue = mock.AsyncMock(return_value="global::task")
         get_global.return_value = fake_global
 
-        result = await soniq.enqueue(task)
+        result = await soniq.enqueue("task")
 
     assert result == "global::task"

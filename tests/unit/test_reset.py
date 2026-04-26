@@ -30,7 +30,7 @@ async def test_reset_clears_jobs_via_memory_backend():
     app = Soniq(backend="memory")
     await app._ensure_initialized()
 
-    @app.job()
+    @app.job(name="dummy")
     async def dummy():
         pass
 

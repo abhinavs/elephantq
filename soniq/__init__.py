@@ -1,26 +1,26 @@
 """
 Soniq: Async Job Queue for Python (Backed by PostgreSQL)
 
-Simple global usage:
+Simple global usage::
 
     import soniq
 
-    @soniq.job()
+    @soniq.job(name="my_job")
     async def my_job(message: str):
         print(f"Processing: {message}")
 
-    await soniq.enqueue(my_job, message="Hello World")
+    await soniq.enqueue("my_job", args={"message": "Hello World"})
     await soniq.run_worker()
 
-Instance-based usage for advanced scenarios:
+Instance-based usage for advanced scenarios::
 
     app = Soniq(database_url="postgresql://localhost/myapp")
 
-    @app.job()
+    @app.job(name="my_job")
     async def my_job(message: str):
         print(f"Processing: {message}")
 
-    await app.enqueue(my_job, message="Hello World")
+    await app.enqueue("my_job", args={"message": "Hello World"})
     await app.run_worker()
 """
 
@@ -32,6 +32,7 @@ from ._active import _active_app
 from .app import Soniq
 from .job import JobContext, JobStatus, Snooze
 from .settings import configure as settings_configure
+from .task_ref import TaskRef, task_ref
 
 
 def _resolve_app() -> Soniq:
@@ -79,6 +80,8 @@ __all__ = [
     "JobContext",
     "JobStatus",
     "Snooze",
+    "TaskRef",
+    "task_ref",
     "every",
     "cron",
     "features",
@@ -195,14 +198,24 @@ def job(**kwargs):
     """
     Global job decorator.
 
-    Equivalent to app.job() but uses the global Soniq instance.
-    Jobs are automatically re-registered if the global instance is recreated.
+    Equivalent to ``app.job()`` but uses the global Soniq instance. Jobs
+    are automatically re-registered if the global instance is recreated.
+
+    Requires an explicit ``name=`` keyword argument (see ``Soniq.job`` for
+    the rationale and example). ``@soniq.job()`` without ``name=`` raises
+    ``SoniqError(SONIQ_INVALID_TASK_NAME)`` at decoration time.
     """
 
     def decorator(func):
-        _global_job_registry.append((func, kwargs))
+        # Register with the global app first so a missing/invalid name=
+        # raises before we mutate the global registry. Otherwise a test
+        # that exercises the negative path (`@soniq.job()` with no
+        # name=) would leave a poison tuple in _global_job_registry
+        # that breaks later tests when configure() iterates the list.
         app = _get_global_app()
-        return app.job(**kwargs)(func)
+        wrapped = app.job(**kwargs)(func)
+        _global_job_registry.append((func, kwargs))
+        return wrapped
 
     return decorator
 
@@ -259,42 +272,70 @@ def periodic(
         schedule_value = val * multipliers[name]  # type: ignore[operator]
 
     def decorator(func):
-        # Register as a job first
-        wrapped = job(**job_kwargs)(func)
+        # `@periodic` jobs share the mandatory-name rule with `@app.job`.
+        # If the caller didn't pass an explicit name=, derive one from the
+        # function name so existing single-repo `@periodic` users keep
+        # working. This is the one place soniq still derives a name; it's
+        # justified because `@periodic` jobs are by convention single-repo
+        # bookkeeping (cron-style maintenance) rather than cross-service
+        # protocol identifiers.
+        local_kwargs = dict(job_kwargs)
+        local_kwargs.setdefault("name", func.__name__)
 
-        # Store schedule metadata on the function
+        wrapped = job(**local_kwargs)(func)
         wrapped._soniq_periodic = {  # type: ignore[attr-defined]
             "type": schedule_type,
             "value": schedule_value,
         }
-
         return wrapped
 
     return decorator
 
 
-async def enqueue(job_func, connection=None, **kwargs):
-    """Enqueue a job, honoring an active `Soniq` instance if present.
+async def enqueue(
+    name_or_ref,
+    *,
+    args: Optional[dict] = None,
+    queue: Optional[str] = None,
+    priority: Optional[int] = None,
+    scheduled_at=None,
+    unique: Optional[bool] = None,
+    dedup_key: Optional[str] = None,
+    connection=None,
+):
+    """Enqueue a task by name (or, from phase 2, a TaskRef).
 
-    When called from inside an `Soniq(...)` instance method the active
-    instance is used; otherwise the global app handles the call.
+    Thin wrapper over ``Soniq.enqueue`` honoring an active instance via
+    the contextvar; otherwise routes through the global app. See
+    ``Soniq.enqueue`` for the full contract.
     """
     app = _resolve_app()
-    return await app.enqueue(job_func, connection=connection, **kwargs)
+    return await app.enqueue(
+        name_or_ref,
+        args=args,
+        queue=queue,
+        priority=priority,
+        scheduled_at=scheduled_at,
+        unique=unique,
+        dedup_key=dedup_key,
+        connection=connection,
+    )
 
 
 async def schedule(
-    job_func,
+    name_or_ref,
     *,
     run_at: Optional[datetime] = None,
     run_in: Optional[Union[int, float, timedelta]] = None,
+    args: Optional[dict] = None,
     connection=None,
     **kwargs,
 ):
     """
-    Schedule a job for future execution using the global Soniq instance.
+    Schedule a task for future execution using the global Soniq instance.
 
-    Use `run_at` for absolute datetime or `run_in` for relative delay.
+    Use ``run_at`` for absolute datetime or ``run_in`` for relative delay.
+    ``name_or_ref`` and ``args`` follow the same shape as ``enqueue``.
     """
     if run_at is None and run_in is None:
         raise ValueError("Must specify either run_at (absolute) or run_in (relative)")
@@ -309,7 +350,13 @@ async def schedule(
         else:
             raise ValueError("run_in must be int, float (seconds), or timedelta")
 
-    return await enqueue(job_func, connection=connection, scheduled_at=run_at, **kwargs)
+    return await enqueue(
+        name_or_ref,
+        args=args,
+        connection=connection,
+        scheduled_at=run_at,
+        **kwargs,
+    )
 
 
 async def run_worker(

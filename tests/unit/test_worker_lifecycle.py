@@ -17,10 +17,10 @@ from soniq.testing.memory_backend import MemoryBackend
 
 async def _create_jobs(backend, registry, job_func, count, args_template=None):
     """Helper: register a job and create N instances in the queue."""
-    job_name = f"{job_func.__module__}.{job_func.__name__}"
+    job_name = job_func.__name__
     # Only register if not already registered
     if registry.get_job(job_name) is None:
-        registry.register_job(job_func)
+        registry.register_job(job_func, name=job_func.__name__)
     for i in range(count):
         args = args_template or {"n": i}
         await backend.create_job(
