@@ -146,6 +146,7 @@ class Worker:
                 middleware=self._middleware,
                 retry_policy=self._retry_policy,
                 metrics_sink=self._metrics_sink,
+                settings=self._settings,
             )
 
             if processed:
@@ -211,6 +212,7 @@ class Worker:
                         middleware=self._middleware,
                         retry_policy=self._retry_policy,
                         metrics_sink=self._metrics_sink,
+                        settings=self._settings,
                     )
 
                     if not processed:

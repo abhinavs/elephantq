@@ -14,6 +14,7 @@ import traceback
 from typing import Any, List, Optional
 
 from soniq.core.registry import JobRegistry
+from soniq.settings import SoniqSettings
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ def _format_job_error(exc: BaseException) -> str:
 async def _execute_job_safely(
     job_record: dict,
     job_meta: dict,
+    settings: SoniqSettings,
     middleware: Optional[List[Any]] = None,
 ) -> tuple[bool, Optional[str], Any]:
     """
@@ -100,12 +102,10 @@ async def _execute_job_safely(
             validated_args[param_name] = ctx
             break
 
-    # Determine timeout: per-job overrides global setting
-    from soniq.settings import get_settings
-
+    # Determine timeout: per-job overrides instance setting
     timeout = job_meta.get("timeout")
     if timeout is None:
-        timeout = get_settings().job_timeout
+        timeout = settings.job_timeout
 
     async def base_handler(_ctx: JobContext) -> Any:
         # Handlers consume their kwargs by name; middleware sees only ctx.
@@ -156,6 +156,7 @@ async def process_job_via_backend(
     middleware: Optional[List[Any]] = None,
     retry_policy: Optional[Any] = None,
     metrics_sink: Optional[Any] = None,
+    settings: Optional[SoniqSettings] = None,
 ) -> bool:
     """
     Process a single job using a StorageBackend.
@@ -172,7 +173,10 @@ async def process_job_via_backend(
     Returns:
         True if a job was processed, False if no jobs available
     """
-    from soniq.settings import get_settings
+    # Settings is per-instance: callers (Soniq workers, tests) supply the
+    # resolved settings; we never reach for the cached global here.
+    if settings is None:
+        settings = SoniqSettings()
 
     _hooks = hooks or {}
 
@@ -245,7 +249,7 @@ async def process_job_via_backend(
 
     try:
         job_success, job_error, job_result = await _execute_job_safely(
-            job_record, job_meta, middleware=middleware
+            job_record, job_meta, settings=settings, middleware=middleware
         )
     except ValueError as corruption_error:
         logger.error(f"Job {job_id} has corrupted data: {corruption_error}")
@@ -263,7 +267,6 @@ async def process_job_via_backend(
         from soniq.job import Snooze
 
         if isinstance(job_result, Snooze):
-            settings = get_settings()
             requested = float(job_result.seconds)
             if requested < 0:
                 requested = 0.0
@@ -302,7 +305,6 @@ async def process_job_via_backend(
             await _emit_end("snoozed")
             return True
 
-        settings = get_settings()
         await backend.mark_job_done(
             job_id, result_ttl=settings.result_ttl, result=job_result
         )
