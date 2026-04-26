@@ -3,8 +3,6 @@ Tests for the signing feature module covering import checks, encryption
 round-trips, random salt behaviour, and PBKDF2 iteration requirements.
 """
 
-import os
-
 import pytest
 
 pytest.importorskip("cryptography")
@@ -44,13 +42,14 @@ def test_secret_manager_requires_cryptography():
     assert manager is not None
 
 
-def test_signing_manager_enabled():
-    os.environ["SONIQ_SIGNING_ENABLED"] = "true"
+def test_signing_service_property():
+    from soniq import Soniq
 
-    import soniq
-
-    manager = soniq.features.signing
-    assert manager is not None
+    app = Soniq(backend="memory")
+    service = app.signing
+    assert service is not None
+    # Lazy: same object on the next access.
+    assert app.signing is service
 
 
 # ---------------------------------------------------------------------------

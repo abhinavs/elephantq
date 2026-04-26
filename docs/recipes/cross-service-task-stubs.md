@@ -76,10 +76,7 @@ import asyncio
 from soniq import Soniq
 from myservice_tasks import send_invoice
 
-producer = Soniq(
-    database_url="postgresql://shared-pg/jobs",
-    producer_only=True,
-)
+producer = Soniq(database_url="postgresql://shared-pg/jobs")
 
 async def main():
     await producer.enqueue(
@@ -98,8 +95,8 @@ The producer:
   validates `args` against `InvoiceArgs` before writing the row.
   If a producer typo passes `order_id=123` (int), the call raises
   `SoniqError(SONIQ_TASK_ARGS_INVALID)` immediately.
-- Uses `producer_only=True` so accidental `run_worker` invocations
-  raise rather than starting a consumer-side worker.
+- Never calls `@app.job` or `run_worker`. Producer-vs-consumer is a
+  deployment convention; see [Deployment shapes](../production/deployment-shapes.md).
 
 ## The consumer
 

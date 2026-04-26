@@ -19,13 +19,24 @@ import sys
 import time
 import traceback
 import uuid
+from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncIterator,
+    Dict,
+    List,
+    Optional,
+    Protocol,
+    runtime_checkable,
+)
 
-from soniq.db.connection import get_pool
+if TYPE_CHECKING:
+    from soniq.app import Soniq
 
 
 @runtime_checkable
@@ -187,6 +198,8 @@ class DatabaseLogHandler(logging.Handler):
 
     def __init__(
         self,
+        app: Optional["Soniq"] = None,
+        *,
         table_name: str = "soniq_logs",
         batch_size: int = 100,
         queue_max: int = 10_000,
@@ -194,11 +207,32 @@ class DatabaseLogHandler(logging.Handler):
         super().__init__()
         if not _VALID_TABLE_NAME.match(table_name):
             raise ValueError(f"Invalid table name: {table_name!r}")
+        self._app = app
         self.table_name = table_name
         self.batch_size = batch_size
         self._queue: asyncio.Queue = asyncio.Queue(maxsize=queue_max)
         self._consumer_task: Optional[asyncio.Task] = None
         self._dropped_warned = False
+
+    @asynccontextmanager
+    async def _acquire(self) -> AsyncIterator[Any]:
+        """Borrow an asyncpg connection for log writes.
+
+        Falls back to the global Soniq app when no instance was wired in.
+        Tests construct the handler without an app and rely on this fallback;
+        production code passes an explicit ``Soniq``.
+        """
+        if self._app is not None:
+            await self._app.ensure_initialized()
+            async with self._app.backend.acquire() as conn:
+                yield conn
+            return
+        import soniq
+
+        app = soniq.get_global_app()
+        await app.ensure_initialized()
+        async with app.backend.acquire() as conn:
+            yield conn
 
     async def setup_database(self):
         """Tables are created by migrations. No-op."""
@@ -262,8 +296,7 @@ class DatabaseLogHandler(logging.Handler):
             return
 
         try:
-            pool = await get_pool()
-            async with pool.acquire() as conn:
+            async with self._acquire() as conn:
                 values = []
                 for entry in batch:
                     # JSONB columns: pass dict directly, the pool codec
@@ -564,17 +597,42 @@ class LoggingConfig:
 
 
 class LogAnalyzer:
-    """Log analysis and reporting tools"""
+    """Log analysis and reporting tools.
 
-    def __init__(self, table_name: str = "soniq_logs"):
+    Constructed against a ``Soniq`` instance for pool resolution. The
+    ``app`` parameter defaults to ``None`` so the legacy module-level
+    helpers can keep working through the global app; library code should
+    pass the instance.
+    """
+
+    def __init__(
+        self,
+        app: Optional["Soniq"] = None,
+        *,
+        table_name: str = "soniq_logs",
+    ):
         if not _VALID_TABLE_NAME.match(table_name):
             raise ValueError(f"Invalid table name: {table_name!r}")
+        self._app = app
         self.table_name = table_name
+
+    @asynccontextmanager
+    async def _acquire(self) -> AsyncIterator[Any]:
+        if self._app is not None:
+            await self._app.ensure_initialized()
+            async with self._app.backend.acquire() as conn:
+                yield conn
+            return
+        import soniq
+
+        app = soniq.get_global_app()
+        await app.ensure_initialized()
+        async with app.backend.acquire() as conn:
+            yield conn
 
     async def get_error_summary(self, hours: int = 24) -> Dict[str, Any]:
         """Get error summary for the specified time period"""
-        pool = await get_pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             error_counts = await conn.fetch(
                 f"""
                 SELECT
@@ -615,8 +673,7 @@ class LogAnalyzer:
         self, job_name: Optional[str] = None, hours: int = 24
     ) -> List[Dict]:
         """Get performance logs with duration metrics"""
-        pool = await get_pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             conditions = [
                 "performance_data IS NOT NULL",
                 "timestamp >= NOW() - ($1 || ' hours')::INTERVAL",
@@ -652,8 +709,7 @@ class LogAnalyzer:
         hours: int = 24,
     ) -> List[Dict]:
         """Search logs with filters"""
-        pool = await get_pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             conditions = ["timestamp >= NOW() - ($1 || ' hours')::INTERVAL"]
             params: list = [str(hours)]
             param_idx = 2
@@ -688,8 +744,57 @@ class LogAnalyzer:
             return [dict(row) for row in logs]
 
 
-# Global instances
-_log_analyzer = LogAnalyzer()
+class LogService:
+    """High-level log query service bound to a Soniq instance.
+
+    Wraps a per-app ``LogAnalyzer``. The ``LogSink`` Protocol is the
+    extension point for plugging in non-database log destinations; this
+    service is purely about *reading* the structured log table.
+    """
+
+    def __init__(self, app: "Soniq"):
+        self._app = app
+        self.analyzer = LogAnalyzer(app)
+
+    async def setup(self) -> int:
+        """Apply log migrations (``0022_*``).
+
+        Idempotent. Memory and SQLite backends are no-ops.
+        """
+        await self._app.ensure_initialized()
+        from soniq.backends.postgres import PostgresBackend
+        from soniq.backends.postgres.migration_runner import MigrationRunner
+
+        backend = self._app.backend
+        if not isinstance(backend, PostgresBackend):
+            return 0
+        return await MigrationRunner(backend=backend).run_migrations(
+            version_filter="0022"
+        )
+
+    async def get_error_summary(self, hours: int = 24) -> Dict[str, Any]:
+        return await self.analyzer.get_error_summary(hours)
+
+    async def get_performance_logs(
+        self, job_name: Optional[str] = None, hours: int = 24
+    ) -> List[Dict]:
+        return await self.analyzer.get_performance_logs(job_name, hours)
+
+    async def search_logs(
+        self,
+        query: str,
+        job_id: Optional[str] = None,
+        level: Optional[str] = None,
+        hours: int = 24,
+    ) -> List[Dict]:
+        return await self.analyzer.search_logs(query, job_id, level, hours)
+
+
+def _service() -> LogService:
+    """Build a service against the global Soniq app on demand."""
+    import soniq
+
+    return LogService(soniq.get_global_app())
 
 
 # Public API
@@ -717,14 +822,14 @@ def setup_logging(
 
 async def get_error_summary(hours: int = 24) -> Dict[str, Any]:
     """Get error summary from logs"""
-    return await _log_analyzer.get_error_summary(hours)
+    return await _service().get_error_summary(hours)
 
 
 async def get_performance_logs(
     job_name: Optional[str] = None, hours: int = 24
 ) -> List[Dict]:
     """Get performance logs"""
-    return await _log_analyzer.get_performance_logs(job_name, hours)
+    return await _service().get_performance_logs(job_name, hours)
 
 
 async def search_logs(
@@ -734,7 +839,7 @@ async def search_logs(
     hours: int = 24,
 ) -> List[Dict]:
     """Search logs with filters"""
-    return await _log_analyzer.search_logs(query, job_id, level, hours)
+    return await _service().search_logs(query, job_id, level, hours)
 
 
 def log_with_context(logger_name: str, level: str, message: str, **kwargs):

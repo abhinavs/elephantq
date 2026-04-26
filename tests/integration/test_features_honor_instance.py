@@ -18,7 +18,7 @@ import pytest
 
 import soniq
 from soniq import Soniq
-from soniq.db.migrations import run_migrations
+from soniq.backends.postgres.migration_runner import run_migrations
 from tests.db_utils import TEST_DATABASE_URL
 
 DB_A = "soniq_pr4_db_a"
@@ -115,7 +115,11 @@ async def test_global_enqueue_still_targets_global_db(two_dbs):
 
     soniq.job()(global_job)
 
-    job_id = await soniq.enqueue("global_job")
+    # Enqueue by callable so the derived `module.qualname` name matches the
+    # registration. Enqueueing the bare string `"global_job"` would not
+    # match the registered name (which includes the module prefix and the
+    # `<locals>` qualname) and trips strict validation.
+    job_id = await soniq.enqueue(global_job)
 
     pool_a = await asyncpg.create_pool(url_a)
     pool_b = await asyncpg.create_pool(url_b)

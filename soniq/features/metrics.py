@@ -8,13 +8,15 @@ import json
 import statistics
 import time
 from collections import defaultdict, deque
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional
 
 import asyncpg
 
-from soniq.db.context import get_context_pool
+if TYPE_CHECKING:
+    from soniq.app import Soniq
 
 
 @dataclass
@@ -153,15 +155,38 @@ class MetricsCollector:
 
 
 class MetricsAnalyzer:
-    """Advanced metrics analysis and reporting"""
+    """Advanced metrics analysis and reporting.
 
-    def __init__(self, collector: MetricsCollector):
+    Bound to a ``Soniq`` for pool resolution. ``app`` defaults to ``None``
+    so the legacy module-level helpers can run against the global app;
+    new code should pass the explicit instance.
+    """
+
+    def __init__(
+        self,
+        collector: MetricsCollector,
+        app: Optional["Soniq"] = None,
+    ):
         self.collector = collector
+        self._app = app
+
+    @asynccontextmanager
+    async def _acquire(self) -> AsyncIterator[Any]:
+        if self._app is not None:
+            await self._app.ensure_initialized()
+            async with self._app.backend.acquire() as conn:
+                yield conn
+            return
+        import soniq
+
+        app = soniq.get_global_app()
+        await app.ensure_initialized()
+        async with app.backend.acquire() as conn:
+            yield conn
 
     async def get_system_metrics(self, timeframe_hours: int = 1) -> SystemMetrics:
         """Get comprehensive system metrics"""
-        pool = await get_context_pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             # Get job counts by status
             status_counts = await conn.fetch(
                 """
@@ -324,8 +349,7 @@ class MetricsAnalyzer:
         system_metrics = await self.get_system_metrics(timeframe_hours)
 
         # Analyze trends
-        pool = await get_context_pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             # Get hourly job completion trends
             hourly_trends = await conn.fetch(
                 """
@@ -487,7 +511,48 @@ class AlertManager:
         return False
 
 
-# Global instances
+class MetricsService:
+    """High-level metrics interface bound to a Soniq instance.
+
+    Bundles a ``MetricsCollector``, ``MetricsAnalyzer``, and ``AlertManager``
+    against a single app. The collector is in-memory only; the analyzer and
+    alert manager use ``app.backend.acquire()`` for queries.
+    """
+
+    def __init__(self, app: "Soniq", *, retention_hours: int = 24):
+        self._app = app
+        self.collector = MetricsCollector(retention_hours=retention_hours)
+        self.analyzer = MetricsAnalyzer(self.collector, app=app)
+        self.alerts = AlertManager(self.analyzer)
+
+    async def record_job_start(self, job_id: str, job_name: str, queue: str):
+        await self.collector.record_job_start(job_id, job_name, queue)
+
+    async def record_job_completion(
+        self,
+        job_id: str,
+        status: str,
+        duration_ms: float,
+        memory_usage_mb: Optional[float] = None,
+        cpu_usage_percent: Optional[float] = None,
+    ):
+        await self.collector.record_job_completion(
+            job_id, status, duration_ms, memory_usage_mb, cpu_usage_percent
+        )
+
+    async def get_system_metrics(self, timeframe_hours: int = 1) -> SystemMetrics:
+        return await self.analyzer.get_system_metrics(timeframe_hours)
+
+    async def generate_performance_report(self, timeframe_hours: int = 24) -> Dict:
+        return await self.analyzer.generate_performance_report(timeframe_hours)
+
+    async def check_alerts(self) -> List[Dict]:
+        return await self.alerts.check_alerts()
+
+
+# Module-level collector/analyzer kept as the global app's instances. They
+# back the convenience wrappers below so existing import-and-call usage
+# keeps working; library code should construct ``MetricsService(app)``.
 _metrics_collector = MetricsCollector()
 _metrics_analyzer = MetricsAnalyzer(_metrics_collector)
 _alert_manager = AlertManager(_metrics_analyzer)

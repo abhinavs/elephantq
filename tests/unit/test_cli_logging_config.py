@@ -1,5 +1,5 @@
 """
-CLI logging configuration: `_configure_cli_logging` attaches a single
+CLI logging configuration: ``configure_cli_logging`` attaches a single
 StreamHandler so worker / scheduler commands emit job logs to the terminal.
 """
 
@@ -7,7 +7,7 @@ import logging
 
 import pytest
 
-from soniq.cli.commands.core import _configure_cli_logging
+from soniq.cli._helpers import configure_cli_logging as _configure_cli_logging
 
 
 @pytest.fixture

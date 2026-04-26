@@ -10,6 +10,7 @@ import logging
 import time
 from typing import Any, List, Optional
 
+from ..backends import StorageBackend
 from ..settings import SoniqSettings, get_settings
 from .processor import process_job_via_backend
 from .registry import JobRegistry
@@ -28,18 +29,20 @@ class Worker:
 
     def __init__(
         self,
-        backend: Any,
+        backend: StorageBackend,
         registry: JobRegistry,
         settings: Optional[SoniqSettings] = None,
         hooks: Optional[dict] = None,
+        middleware: Optional[List[Any]] = None,
         retry_policy: Optional[Any] = None,
         metrics_sink: Optional[Any] = None,
     ):
-        self._backend = backend
+        self._backend: StorageBackend = backend
         self._registry = registry
         self._settings = settings or get_settings()
         self._last_cleanup = 0.0
         self._hooks = hooks or {}
+        self._middleware = middleware or []
         self._retry_policy = retry_policy
         self._metrics_sink = metrics_sink
 
@@ -140,6 +143,7 @@ class Worker:
                 job_registry=self._registry,
                 queues=queues,
                 hooks=self._hooks,
+                middleware=self._middleware,
                 retry_policy=self._retry_policy,
                 metrics_sink=self._metrics_sink,
             )
@@ -204,7 +208,9 @@ class Worker:
                         queues=queues,
                         worker_id=worker_id,
                         hooks=self._hooks,
+                        middleware=self._middleware,
                         retry_policy=self._retry_policy,
+                        metrics_sink=self._metrics_sink,
                     )
 
                     if not processed:
@@ -286,25 +292,10 @@ class Worker:
                         exc_info=True,
                     )
 
-            # Clean up LISTEN connection
+            # Tear down the LISTEN handle. The handle owns its connection
+            # and removes the listener + releases to the pool internally.
             if listen_handle is not None:
-                try:
-                    await listen_handle.remove_listener(
-                        "soniq_new_job", on_notification
-                    )
-                except Exception:
-                    # Connection may already be broken during shutdown.
-                    logger.debug(
-                        "remove_listener failed during shutdown", exc_info=True
-                    )
-                try:
-                    if self._backend.supports_connection_pool:
-                        await self._backend.pool.release(listen_handle)
-                except Exception:
-                    logger.debug(
-                        "LISTEN connection release failed during shutdown",
-                        exc_info=True,
-                    )
+                await listen_handle.close()
 
         return True
 

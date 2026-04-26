@@ -1,12 +1,23 @@
 """
 Pluggable storage backends for Soniq.
 
-StorageBackend defines the interface. Production-tier implementations:
-- PostgresBackend (production)
-- SQLiteBackend (local dev, zero setup)
+The backend interface is split into three Protocols, each describing
+one capability surface:
 
-The in-memory backend (`MemoryBackend`) lives under `soniq.testing` to
-make its scope obvious at the import site - it is for tests, examples,
+- ``JobStore``: enqueue, dequeue, status transitions, queries, listen
+  / notify, lifecycle. Required of every backend.
+- ``WorkerStore``: worker tracking and heartbeat housekeeping.
+- ``TaskRegistryStore``: observability metadata about which workers
+  handle which task names.
+
+``StorageBackend`` is the marker Protocol for backends that implement
+all three. Production-tier implementations:
+
+- ``PostgresBackend`` (production)
+- ``SQLiteBackend`` (local dev, zero setup)
+
+The in-memory backend (``MemoryBackend``) lives under ``soniq.testing``
+to make its scope obvious at the import site - it is for tests, examples,
 and quick scripts only.
 """
 
@@ -15,16 +26,30 @@ from typing import Any, Optional, Protocol, runtime_checkable
 
 
 @runtime_checkable
-class StorageBackend(Protocol):
+class ListenerHandle(Protocol):
+    """Opaque handle returned by ``listen_for_jobs``.
+
+    Backends own the underlying transport (asyncpg connection,
+    in-process callback registry, etc.) and expose only ``close()`` so
+    callers cannot reach in and leak the connection. The worker shutdown
+    path calls ``await handle.close()``; backends without push-notify
+    return a no-op handle.
     """
-    Interface for all storage operations Soniq needs.
 
-    Every method is async. Backends handle their own connection
-    management internally — callers never see connections or pools.
+    async def close(self) -> None:
+        """Tear down the listener and release any held resources."""
+        ...
 
-    Transactional enqueue is NOT part of this interface.
-    It is a PostgreSQL-specific capability exposed directly on
-    PostgresBackend. See PostgresBackend.create_job_transactional().
+
+@runtime_checkable
+class JobStore(Protocol):
+    """Enqueue, dequeue, status transitions, queries, listen/notify.
+
+    Required of every backend. Capability flags here describe job-path
+    behavior (push notify, transactional enqueue, advisory locks);
+    callers gate on Protocol membership for everything else and on
+    ``isinstance(backend, PostgresBackend)`` for the two genuinely
+    Postgres-only paths (migrations, dashboard data).
     """
 
     # --- Capabilities ---
@@ -40,30 +65,11 @@ class StorageBackend(Protocol):
         ...
 
     @property
-    def supports_connection_pool(self) -> bool:
-        """Whether this backend exposes an asyncpg-style connection pool.
-
-        True for Postgres; False for SQLite and Memory. Callers that need
-        raw pool access (worker shutdown listener release, advanced
-        integration paths) gate on this rather than `hasattr(backend, 'pool')`.
-        """
-        ...
-
-    @property
     def supports_advisory_locks(self) -> bool:
         """Whether this backend supports Postgres-style advisory locks.
 
         True only for Postgres. Leadership election (`with_advisory_lock`)
         falls back to always-leader when this is False.
-        """
-        ...
-
-    @property
-    def supports_migrations(self) -> bool:
-        """Whether this backend uses the file-based migration runner.
-
-        True for Postgres. SQLite creates its schema inside `initialize()`
-        with ad-hoc DDL. Memory has no schema at all.
         """
         ...
 
@@ -90,8 +96,9 @@ class StorageBackend(Protocol):
         priority: int,
         queue: str,
         unique: bool,
-        dedup_key: Optional[str],
-        scheduled_at: Optional[datetime],
+        dedup_key: Optional[str] = None,
+        scheduled_at: Optional[datetime] = None,
+        producer_id: Optional[str] = None,
     ) -> Optional[str]:
         """
         Insert a job. Return job_id on success.
@@ -132,12 +139,13 @@ class StorageBackend(Protocol):
         self,
         callback: Any,
         channel: str = "soniq_new_job",
-    ) -> Any:
+    ) -> "ListenerHandle":
         """
         Start listening for job notifications.
 
-        Returns a listener handle (for cleanup).
-        Backends without push notification return a no-op handle.
+        Returns a ``ListenerHandle`` whose ``close()`` tears down both
+        the subscription and any held connection. Backends without push
+        notification return a no-op handle.
         """
         ...
 
@@ -228,7 +236,30 @@ class StorageBackend(Protocol):
         """Aggregate job counts grouped by queue and status."""
         ...
 
-    # --- Worker tracking ---
+    # --- Maintenance ---
+
+    async def delete_expired_jobs(self) -> int:
+        """Delete done jobs past their expires_at. Return count."""
+        ...
+
+    async def reset(self) -> None:
+        """
+        Delete all jobs and workers. Used in test fixtures.
+
+        Memory: clear dicts. Postgres: TRUNCATE. SQLite: DELETE FROM.
+        """
+        ...
+
+
+@runtime_checkable
+class WorkerStore(Protocol):
+    """Worker tracking and heartbeat housekeeping.
+
+    Backends that surface "which workers are alive" implement this. The
+    worker run loop requires it; broker-only backends that want to skip
+    worker tracking can implement ``JobStore`` alone and the
+    ``Worker.run()`` path will refuse to start against them.
+    """
 
     async def register_worker(
         self,
@@ -266,16 +297,38 @@ class StorageBackend(Protocol):
         """
         ...
 
-    # --- Maintenance ---
 
-    async def delete_expired_jobs(self) -> int:
-        """Delete done jobs past their expires_at. Return count."""
+@runtime_checkable
+class TaskRegistryStore(Protocol):
+    """Observability metadata: which workers handle which task names.
+
+    Optional. Used by the dashboard and ``soniq tasks check`` to surface
+    deploy-skew (jobs queued under names no live worker registers).
+    """
+
+    async def register_task_name(
+        self,
+        *,
+        task_name: str,
+        worker_id: str,
+        args_model_repr: Optional[str] = None,
+    ) -> None:
+        """Upsert a worker's registration for ``task_name``."""
         ...
 
-    async def reset(self) -> None:
-        """
-        Delete all jobs and workers. Used in test fixtures.
-
-        Memory: clear dicts. Postgres: TRUNCATE. SQLite: DELETE FROM.
-        """
+    async def list_registered_task_names(self) -> list[dict]:
+        """Return all (task_name, worker_id, last_seen_at, ...) rows."""
         ...
+
+
+@runtime_checkable
+class StorageBackend(JobStore, WorkerStore, TaskRegistryStore, Protocol):
+    """Marker Protocol for backends that implement every capability.
+
+    Production-tier backends (Postgres, SQLite, Memory) compose all
+    three Protocols. Library code that needs the full surface types
+    its argument as ``StorageBackend``; code that only needs one slice
+    types it as the narrower Protocol.
+    """
+
+    ...

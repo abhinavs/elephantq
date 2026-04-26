@@ -15,7 +15,7 @@ async def send_welcome_email(user_id: int):
 async def charge_subscription(account_id: str, amount: int):
     ...
 
-@app.job()  # defaults to "default" queue
+@app.job  # defaults to "default" queue
 async def process_thumbnail(image_id: str):
     ...
 ```
@@ -35,7 +35,7 @@ Within a queue, jobs are processed by priority. Lower number means higher priori
 | 1 | Urgent -- user-facing, time-sensitive |
 | 10 | High -- important but not blocking |
 | 50 | Normal -- default for most workloads |
-| 100 | Default -- the `@app.job()` default |
+| 100 | Default -- the `@app.job` default |
 
 ```python
 @app.job(queue="billing", priority=10)
@@ -58,10 +58,11 @@ soniq start --queues emails,billing
 soniq start --queues urgent --concurrency 8
 ```
 
-Programmatically:
+Run two distinct worker processes, one per queue group:
 
-```python
-await app.run_worker(queues=["emails", "billing"], concurrency=4)
+```bash
+soniq start --queues emails,billing --concurrency 4
+soniq start --queues urgent --concurrency 8
 ```
 
 This lets you scale queue capacity independently. Run more email workers during peak hours, or dedicate a fast machine to your billing queue.

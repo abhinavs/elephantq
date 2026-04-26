@@ -60,37 +60,3 @@ class TestNormalizeScheduledTime:
         with pytest.raises(ValueError) as exc_info:
             _normalize_scheduled_time(naive)
         assert "timezone.utc" in str(exc_info.value) or "tzinfo" in str(exc_info.value)
-
-
-class TestSchedulingBuilderTimezones:
-    """Verify JobScheduleBuilder produces timezone-aware UTC datetimes internally."""
-
-    def test_in_seconds_produces_utc_aware(self):
-        """in_seconds() should produce a UTC-aware datetime."""
-        from soniq.features.scheduling import JobScheduleBuilder
-
-        async def dummy():
-            pass
-
-        dummy._soniq_name = "test.dummy"
-
-        builder = JobScheduleBuilder(dummy)
-        builder.in_seconds(30)
-        assert builder._scheduled_at.tzinfo is not None
-
-    def test_in_seconds_normalizes_to_correct_utc(self):
-        """After normalization, in_seconds() result should be correct UTC."""
-        from soniq.features.scheduling import JobScheduleBuilder
-
-        async def dummy():
-            pass
-
-        dummy._soniq_name = "test.dummy"
-
-        builder = JobScheduleBuilder(dummy)
-        builder.in_seconds(60)
-
-        result = _normalize_scheduled_time(builder._scheduled_at)
-        utc_now = datetime.now(timezone.utc)
-        diff = abs((result - utc_now).total_seconds() - 60)
-        assert diff < 2

@@ -25,7 +25,7 @@ async def test_pool_exhaustion_blocks_then_succeeds():
     await app._ensure_initialized()
 
     try:
-        pool = app._pool
+        pool = await app._get_pool()
 
         # Hold both connections
         conn1 = await pool.acquire()

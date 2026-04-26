@@ -5,38 +5,31 @@ Instance-based architecture to replace global state patterns.
 Enables multiple isolated Soniq instances with independent configurations.
 """
 
-import functools
 import logging
-from pathlib import Path
-from typing import Any, List, Optional
+from datetime import datetime, timedelta
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Awaitable,
+    Callable,
+    List,
+    Optional,
+    ParamSpec,
+    Union,
+    overload,
+)
 
-from ._active import _active_app
+from .backends import StorageBackend
 from .core.registry import JobRegistry
 from .errors import SoniqError
 from .settings import SoniqSettings
 
+if TYPE_CHECKING:
+    from .task_ref import TaskRef
+
+_P = ParamSpec("_P")
+
 logger = logging.getLogger(__name__)
-
-
-def _with_active_app(method):
-    """Decorator that attaches `self` to the active-app contextvar for the
-    duration of an async instance method. Feature helpers read this to honor
-    the caller's `Soniq` instead of silently using the global app.
-
-    Resets on exit so the var does not leak across tasks: because
-    `ContextVar` is task-local, restoration via `reset(token)` is safe even
-    when multiple calls happen concurrently on different instances.
-    """
-
-    @functools.wraps(method)
-    async def wrapper(self, *args, **kwargs):
-        token = _active_app.set(self)
-        try:
-            return await method(self, *args, **kwargs)
-        finally:
-            _active_app.reset(token)
-
-    return wrapper
 
 
 def _pool_sizing_error(
@@ -97,65 +90,68 @@ class Soniq:
     def __init__(
         self,
         database_url: Optional[str] = None,
-        config_file: Optional[Path] = None,
         backend: Optional[Any] = None,
         retry_policy: Optional[Any] = None,
         serializer: Optional[Any] = None,
         log_sink: Optional[Any] = None,
         metrics_sink: Optional[Any] = None,
-        producer_only: bool = False,
-        **settings_overrides,
-    ):
+        plugins: Optional[List[Any]] = None,
+        autoload_plugins: bool = False,
+        **settings_overrides: Any,
+    ) -> None:
         """
         Initialize Soniq application instance.
 
         Args:
             database_url: PostgreSQL connection URL
-            config_file: Optional configuration file path
             backend: Optional StorageBackend instance. If not provided,
                 creates a PostgresBackend from the database_url.
             retry_policy: Optional `soniq.core.retry.RetryPolicy` instance.
                 Defaults to `ExponentialBackoff()` which honors per-job
                 `retry_delay` / `retry_backoff` / `retry_max_delay` /
                 `retry_jitter` set via the `@app.job(...)` decorator.
+                Also settable post-construct via ``app.retry_policy = ...``
+                up until ``await app.setup()`` runs.
             serializer: Optional `soniq.utils.serialization.Serializer`
                 instance. Defaults to `JSONSerializer`. Custom serializers
                 are advisory only at present: backends store via JSONB /
                 JSON-text and read via the same path, so non-JSON formats
                 require a serializer-aware backend.
+                Also settable post-construct via ``app.serializer = ...``.
             log_sink: Optional `soniq.features.logging.LogSink` instance.
-                When provided and `logging_enabled = true`, log records
-                flow into this sink instead of (or in addition to) the
-                built-in `DatabaseLogHandler`.
+                When provided, log records flow into this sink instead of
+                (or in addition to) the built-in ``DatabaseLogHandler``.
+                Also settable post-construct via ``app.log_sink = ...``.
             metrics_sink: Optional `soniq.observability.MetricsSink`
                 instance. Defaults to `NoopMetricsSink`. Pass
                 `PrometheusMetricsSink()` to expose per-job metrics
                 via `prometheus_client`. The sink is invoked by the
                 worker around each job's execution.
-            producer_only: When True, this instance can enqueue and
-                manage jobs but cannot run a worker or scheduler.
-                ``run_worker(...)`` and the recurring scheduler entry
-                point raise ``SoniqError(SONIQ_PRODUCER_ONLY)``.
-                ``@app.job`` registration is also refused (per plan
-                section 15: with the back-compat constraint dropped
-                there is no single-repo convenience to preserve, so a
-                producer-only instance has no business registering job
-                handlers). The recurring-scheduler startup warning is
-                suppressed. Use this in pure-producer services that
-                should not accidentally consume.
+                Also settable post-construct via ``app.metrics_sink = ...``.
+            plugins: Optional list of ``SoniqPlugin`` instances to install
+                during construction. Equivalent to calling ``app.use(p)``
+                for each in order. ``SONIQ_PLUGIN_DUPLICATE`` is raised on
+                a name collision.
+            autoload_plugins: When True, resolve plugins via the
+                ``soniq.plugins`` entry-point group and install them
+                after the explicit ``plugins=`` list. Off by default so
+                imports never have side effects; opt in per instance,
+                or via the ``SONIQ_PLUGINS`` env var / ``--plugins`` CLI
+                flag.
             **settings_overrides: Override any SoniqSettings field
         """
         # Core instance state
         self._initialized = False
         self._closed = False
-        self._producer_only = bool(producer_only)
 
         # Resolve backend: explicit string name, auto-detect from URL, or None (lazy Postgres)
         if isinstance(backend, str):
             backend = self._resolve_backend_name(backend, database_url)
         elif backend is None and database_url:
             backend = self._auto_detect_backend(database_url)
-        self._backend = backend
+        # Typed as Optional[StorageBackend]: None until _ensure_initialized()
+        # constructs a lazy PostgresBackend.
+        self._backend: Optional[StorageBackend] = backend
 
         # Pluggable extension points. Defaults are wired so callers that
         # never touch these fields keep the existing behavior verbatim.
@@ -174,23 +170,99 @@ class Soniq:
         if database_url and self._backend is None:
             settings_overrides["database_url"] = database_url
 
-        if config_file:
-            self._settings = SoniqSettings(
-                _env_file=str(config_file), **settings_overrides  # type: ignore[call-arg]
-            )
-        else:
-            self._settings = SoniqSettings(**settings_overrides)
+        self._settings = SoniqSettings(**settings_overrides)
 
         # Instance components (initialized lazily)
-        self._pool: Optional[Any] = None
         self._job_registry = JobRegistry()
-        self._hooks: dict[str, list] = {
+        self._hooks: dict[str, list[Any]] = {
             "before_job": [],
             "after_job": [],
             "on_error": [],
         }
+        self._middleware: list[Any] = []
+        self._scheduler: Optional[Any] = None
+        self._webhooks: Optional[Any] = None
+        self._dead_letter: Optional[Any] = None
+        self._logs: Optional[Any] = None
+        self._signing: Optional[Any] = None
+        self._dashboard_data: Optional[Any] = None
+
+        # Plugin infrastructure. ``cli`` / ``dashboard`` / ``migrations``
+        # are lazy handles plugins reach for in their ``install()``; the
+        # built-in CLI and dashboard read these to discover plugin
+        # contributions at parse / render time.
+        from .plugin import (
+            PluginCLI,
+            PluginDashboard,
+            PluginMigrations,
+            discover_plugins,
+        )
+
+        self._plugins: list[Any] = []
+        self._cli = PluginCLI()
+        self._dashboard = PluginDashboard()
+        self._migrations = PluginMigrations()
+
+        for plugin in plugins or []:
+            self.use(plugin)
+        if autoload_plugins:
+            for plugin in discover_plugins():
+                self.use(plugin)
 
         logger.debug("Created Soniq instance")
+
+    def _check_setup_frozen(self, attr: str) -> None:
+        """Refuse to mutate a pluggable extension point after setup() ran.
+
+        ``retry_policy`` / ``serializer`` / ``metrics_sink`` / ``log_sink``
+        are read by the worker construction path. Letting callers swap them
+        after the worker has captured a reference would silently fork
+        behavior between in-flight and future jobs; per O.4 they are
+        settable up until ``_ensure_initialized()`` runs.
+        """
+        if self._initialized:
+            raise SoniqError(
+                f"Cannot set {attr} after Soniq.setup() has run. "
+                f"Configure pluggable extension points before the first "
+                f"async call (or ``await app.setup()``).",
+                "SONIQ_APP_FROZEN",
+            )
+
+    @property
+    def retry_policy(self) -> Any:
+        return self._retry_policy
+
+    @retry_policy.setter
+    def retry_policy(self, value: Any) -> None:
+        self._check_setup_frozen("retry_policy")
+        self._retry_policy = value
+
+    @property
+    def serializer(self) -> Any:
+        return self._serializer
+
+    @serializer.setter
+    def serializer(self, value: Any) -> None:
+        self._check_setup_frozen("serializer")
+        self._serializer = value
+
+    @property
+    def metrics_sink(self) -> Any:
+        return self._metrics_sink
+
+    @metrics_sink.setter
+    def metrics_sink(self, value: Any) -> None:
+        self._check_setup_frozen("metrics_sink")
+        self._metrics_sink = value
+
+    @property
+    def log_sink(self) -> Any:
+        return self._log_sink
+
+    @log_sink.setter
+    def log_sink(self, value: Any) -> None:
+        self._check_setup_frozen("log_sink")
+        self._log_sink = value
 
     @staticmethod
     def _auto_detect_backend(database_url: str) -> Any:
@@ -236,16 +308,53 @@ class Soniq:
         return self._settings
 
     @property
+    def backend(self) -> Any:
+        """Public accessor for the storage backend.
+
+        Feature services (`WebhookService`, `DeadLetterService`, ...) take a
+        `Soniq` and reach the database through `app.backend.acquire()`. Returns
+        `None` until `_ensure_initialized()` has run; lazy backends create
+        their pool there. The accessor is intentionally untyped because
+        `StorageBackend` becomes a Protocol in a later session.
+        """
+        return self._backend
+
+    @property
+    def registry(self) -> JobRegistry:
+        """Public accessor for this instance's job registry."""
+        return self._job_registry
+
+    @property
+    def is_initialized(self) -> bool:
+        """Whether the app has been initialized (backend connected)."""
+        return self._initialized
+
+    @property
+    def is_closed(self) -> bool:
+        """Whether the app has been closed."""
+        return self._closed
+
+    # Underscore-prefixed aliases kept for back-compat within the package
+    # while call sites are migrated. Public callers should read
+    # ``is_initialized`` / ``is_closed``.
+    @property
     def _is_initialized(self) -> bool:
-        """Check if app is initialized."""
         return self._initialized
 
     @property
     def _is_closed(self) -> bool:
-        """Check if app is closed."""
         return self._closed
 
-    async def _ensure_initialized(self):
+    async def ensure_initialized(self) -> None:
+        """Public idempotent init.
+
+        Plugins, feature services, and library code that may run before
+        an explicit ``await app.setup()`` call this to guarantee the
+        backend is connected. Returns immediately on subsequent calls.
+        """
+        await self._ensure_initialized()
+
+    async def _ensure_initialized(self) -> None:
         """
         Auto-initialize Soniq on first use.
 
@@ -272,11 +381,6 @@ class Soniq:
 
             await self._backend.initialize()
 
-            # Expose the backend's pool for code paths that need raw access
-            # (migration runner, dashboard data layer, listener cleanup).
-            if self._backend.supports_connection_pool:
-                self._pool = self._backend.pool
-
             self._initialized = True
             logger.debug("Soniq application initialized successfully")
 
@@ -290,13 +394,15 @@ class Soniq:
     def _check_pool_sizing(self, concurrency: int) -> None:
         """Refuse to start a worker that would deadlock on a too-small pool.
 
-        Only applies to backends that use an asyncpg connection pool. Memory
-        and SQLite backends have no pool and skip the check. A warning here
-        was what we had before; operators missed it and workers stalled in
-        production. Promoting to a hard error puts the misconfiguration in
-        front of them at startup instead of at 3am.
+        Only applies to ``PostgresBackend``. Memory and SQLite backends
+        have no asyncpg pool and skip the check. A warning here was what
+        we had before; operators missed it and workers stalled in
+        production. Promoting to a hard error puts the misconfiguration
+        in front of them at startup instead of at 3am.
         """
-        if not self._backend.supports_connection_pool:  # type: ignore[union-attr]
+        from .backends.postgres import PostgresBackend
+
+        if not isinstance(self._backend, PostgresBackend):
             return
         err = _pool_sizing_error(
             concurrency=concurrency,
@@ -306,19 +412,27 @@ class Soniq:
         if err is not None:
             raise err
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "Soniq":
         await self._ensure_initialized()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: Any,
+        exc_val: Any,
+        exc_tb: Any,
+    ) -> bool:
         await self.close()
         return False
 
-    async def close(self):
+    async def close(self) -> None:
         """
         Close the Soniq application and cleanup resources.
 
-        Closes database connection pool and cleans up all resources.
+        Plugin ``on_shutdown`` hooks fire first, in reverse install
+        order. Failures during shutdown are logged and swallowed -
+        cleanup is best-effort and one plugin's bug must not block the
+        next from running.
         """
         if self._closed:
             logger.warning("Soniq already closed")
@@ -326,11 +440,25 @@ class Soniq:
 
         logger.info("Closing Soniq application...")
 
+        # Plugin shutdown - reverse install order so the last-installed
+        # plugin sees teardown first, mirroring stack semantics.
+        for plugin in reversed(self._plugins):
+            hook = getattr(plugin, "on_shutdown", None)
+            if hook is None:
+                continue
+            try:
+                await hook(self)
+            except Exception:
+                logger.warning(
+                    "Plugin %s on_shutdown failed; continuing.",
+                    plugin.name,
+                    exc_info=True,
+                )
+
         try:
             # Close backend (which closes its pool)
             if self._backend:
                 await self._backend.close()
-                self._pool = None
                 logger.debug("Closed backend")
 
             self._closed = True
@@ -343,7 +471,6 @@ class Soniq:
             self._closed = True
             self._initialized = False
 
-    @_with_active_app
     async def _reset(self) -> None:
         """
         Delete all jobs and workers. Used in test fixtures.
@@ -353,23 +480,32 @@ class Soniq:
         await self._ensure_initialized()
         await self._backend.reset()  # type: ignore[union-attr]
 
-    def job(self, **kwargs):
+    def job(self, _func: Optional[Callable[..., Any]] = None, /, **kwargs: Any) -> Any:
         """
         Job decorator for this Soniq instance.
 
-        Requires an explicit ``name=`` keyword argument: a stable, dotted
-        protocol identifier (e.g. ``billing.invoices.send.v2``) validated
-        against ``SONIQ_TASK_NAME_PATTERN``. Module-derived names were
-        removed because the name is the wire protocol once queues cross
-        repo boundaries.
+        Celery-style name resolution: when ``name=`` is omitted the task
+        name is derived as ``f"{module}.{qualname}"``. Pass ``name=``
+        explicitly for cross-service deployments where the name is a
+        stable wire-protocol identifier; explicit names are validated
+        against ``SONIQ_TASK_NAME_PATTERN``.
 
-        Example::
+        Supports both ``@app.job`` (no parens) and ``@app.job(...)``
+        (with kwargs).
+
+        Example - single-repo, derived name::
+
+            @app.job
+            async def send_welcome(user_id: int): ...
+            # registers as "myapp.tasks.send_welcome"
+
+        Example - explicit name (recommended cross-service)::
 
             @app.job(name="billing.invoices.send.v2", validate=InvoiceArgs)
             async def send_v2(order_id: str, customer: str): ...
 
         Args:
-            **kwargs: Job configuration options. ``name`` is required;
+            **kwargs: Job configuration options. ``name`` is optional;
                 see ``JobRegistry.register_job`` for the full list.
 
         Returns:
@@ -377,24 +513,13 @@ class Soniq:
             original signature via ParamSpec on the inner type annotation.
 
         Raises:
-            SoniqError(SONIQ_INVALID_TASK_NAME): ``name`` missing or
-                violating the configured task name pattern.
+            SoniqError(SONIQ_INVALID_TASK_NAME): explicit ``name=`` was
+                passed and violates the configured task name pattern.
         """
-        from typing import Callable, ParamSpec, TypeVar
+        from typing import Awaitable, Callable, ParamSpec, TypeVar
 
-        from .errors import SONIQ_PRODUCER_ONLY, SoniqError
-
-        if self._producer_only:
-            raise SoniqError(
-                "Cannot register @app.job on a producer_only=True instance. "
-                "Producer-only instances exist to enqueue and manage jobs, "
-                "not to run handlers; if you need to register, drop the "
-                "producer_only flag.",
-                SONIQ_PRODUCER_ONLY,
-            )
-
-        _P = ParamSpec("_P")
-        _R = TypeVar("_R")
+        _JP = ParamSpec("_JP")
+        _JR = TypeVar("_JR")
 
         # Hand the per-instance route_map to register_job so consumer-
         # side prefix routing is resolved against this Soniq's settings,
@@ -402,61 +527,346 @@ class Soniq:
         # different maps).
         route_map = dict(self._settings.route_map or {})
 
-        def decorator(func: Callable[_P, _R]) -> Callable[_P, _R]:
+        def decorator(
+            func: Callable[_JP, Awaitable[_JR]],
+        ) -> Callable[_JP, Awaitable[_JR]]:
             return self._job_registry.register_job(func, _route_map=route_map, **kwargs)
+
+        # `@app.job` (no parens) - Python passed the function in directly.
+        if _func is not None:
+            return decorator(_func)
+        return decorator
+
+    @property
+    def scheduler(self) -> Any:
+        """Lazy per-app `Scheduler` service.
+
+        Constructed once and reused for the life of the Soniq instance.
+        Stays cheap to access from sync code: `Scheduler.__init__` does no
+        I/O and never touches the backend until an async method runs.
+        """
+        if self._scheduler is None:
+            from .features.scheduler import Scheduler
+
+            self._scheduler = Scheduler(self)
+        return self._scheduler
+
+    @property
+    def webhooks(self) -> Any:
+        """Lazy per-app `WebhookService` (HTTP transport by default).
+
+        Construct ``WebhookService(app, transport=...)`` directly and assign
+        to ``app._webhooks`` if you want a non-HTTP transport (e.g. tests).
+        """
+        if self._webhooks is None:
+            from .features.webhooks import HTTPTransport, WebhookService
+
+            self._webhooks = WebhookService(self, transport=HTTPTransport())
+        return self._webhooks
+
+    @property
+    def dead_letter(self) -> Any:
+        """Lazy per-app `DeadLetterService`."""
+        if self._dead_letter is None:
+            from .features.dead_letter import DeadLetterService
+
+            self._dead_letter = DeadLetterService(self)
+        return self._dead_letter
+
+    @property
+    def logs(self) -> Any:
+        """Lazy per-app structured-log query service."""
+        if self._logs is None:
+            from .features.logging import LogService
+
+            self._logs = LogService(self)
+        return self._logs
+
+    @property
+    def signing(self) -> Any:
+        """Lazy per-app `SigningService` (Fernet encryption helpers)."""
+        if self._signing is None:
+            from .features.signing import SigningService
+
+            self._signing = SigningService(self)
+        return self._signing
+
+    @property
+    def dashboard_data(self) -> Any:
+        """Lazy per-app `DashboardService` (the data layer for the dashboard).
+
+        The HTML/FastAPI surface is constructed by
+        ``soniq.dashboard.fastapi_app.create_dashboard_app(app)``; this
+        property is the underlying data accessor that FastAPI handlers use.
+        """
+        if self._dashboard_data is None:
+            from .dashboard.app import DashboardService
+
+            self._dashboard_data = DashboardService(self)
+        return self._dashboard_data
+
+    def periodic(
+        self,
+        *,
+        cron: Any = None,
+        every: Any = None,
+        **job_kwargs: Any,
+    ) -> Callable[..., Any]:
+        """Register a recurring job in one decorator.
+
+        Stamps `_soniq_periodic` on the wrapped callable so
+        `Scheduler.start()` (called by `soniq scheduler`) finds it on
+        startup, and registers the function with `@app.job` in the same
+        pass so callers don't need to stack two decorators. `name=` is
+        optional - falls back to `f"{module}.{qualname}"`, same as
+        `@app.job`.
+
+        Pass `cron=` for cron expressions (5 fields, or any object whose
+        `__str__` is a cron expression like the builders in
+        ``soniq.schedules``) and `every=` for an interval (a
+        ``timedelta`` or seconds as int/float). They are mutually
+        exclusive.
+        """
+        if cron is None and every is None:
+            raise ValueError("@app.periodic requires either cron= or every=")
+        if cron is not None and every is not None:
+            raise ValueError("@app.periodic cannot accept both cron= and every=")
+
+        # Normalize the schedule shape now so the error surfaces at import
+        # time rather than at scheduler.start(). The Scheduler service
+        # re-validates on add() in case a caller hand-builds the spec.
+        from .features.scheduler import _coerce_schedule
+
+        schedule_type, schedule_value = _coerce_schedule(cron=cron, every=every)
+
+        # Capture args / queue / priority / max_attempts off the @app.job
+        # kwargs so the scheduler can use them when materializing the
+        # schedule on startup. The remaining kwargs flow to @app.job.
+        sched_args = job_kwargs.pop("schedule_args", None)
+
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+            wrapped: Any = self.job(**job_kwargs)(func)
+            retries = job_kwargs.get("retries")
+            wrapped._soniq_periodic = {
+                "cron": schedule_value if schedule_type == "cron" else None,
+                "every": int(schedule_value) if schedule_type == "interval" else None,
+                "args": sched_args or {},
+                "queue": job_kwargs.get("queue"),
+                "priority": job_kwargs.get("priority"),
+                "max_attempts": (retries + 1) if retries is not None else None,
+            }
+            return wrapped  # type: ignore[no-any-return]
 
         return decorator
 
-    def before_job(self, fn):
+    def before_job(self, fn: Callable[..., Any]) -> Callable[..., Any]:
         """Register a hook called before each job executes."""
         self._hooks["before_job"].append(fn)
         return fn
 
-    def after_job(self, fn):
+    def after_job(self, fn: Callable[..., Any]) -> Callable[..., Any]:
         """Register a hook called after each job completes successfully."""
         self._hooks["after_job"].append(fn)
         return fn
 
-    def on_error(self, fn):
+    def on_error(self, fn: Callable[..., Any]) -> Callable[..., Any]:
         """Register a hook called when a job fails."""
         self._hooks["on_error"].append(fn)
         return fn
 
-    @_with_active_app
+    def middleware(self, fn: Callable[..., Any]) -> Callable[..., Any]:
+        """Register a middleware that wraps every job's execution.
+
+        Middleware are async callables matching the
+        ``soniq.core.middleware.Middleware`` Protocol::
+
+            @app.middleware
+            async def trace(ctx, call_next):
+                with tracer.start_span(ctx.job_name):
+                    return await call_next(ctx)
+
+        Middleware run in registration order (first registered is the
+        outermost wrapper). The handler return value flows back through
+        the chain. For one-shot side effects without wrapping, prefer
+        ``before_job`` / ``after_job`` / ``on_error``.
+        """
+        self._middleware.append(fn)
+        return fn
+
+    # ------------------------------------------------------------------
+    # Plugin lifecycle
+    # ------------------------------------------------------------------
+
+    def use(self, plugin: Any) -> Any:
+        """Install a plugin against this Soniq instance.
+
+        Idempotent on ``plugin.name``: a second installation of the same
+        name raises ``SoniqError(SONIQ_PLUGIN_DUPLICATE)`` so two
+        deployments accidentally pulling the same plugin twice fail
+        loud rather than registering hooks twice.
+
+        ``install`` runs synchronously and must not perform I/O. Plugins
+        with deferred work implement ``on_startup`` / ``on_shutdown``,
+        which the lifecycle in ``setup()`` / ``close()`` invokes.
+        """
+        if any(p.name == plugin.name for p in self._plugins):
+            raise SoniqError(
+                f"Plugin {plugin.name!r} is already installed.",
+                "SONIQ_PLUGIN_DUPLICATE",
+                context={
+                    "name": plugin.name,
+                    "version": getattr(plugin, "version", "unknown"),
+                },
+            )
+        plugin.install(self)
+        self._plugins.append(plugin)
+        logger.debug("Installed plugin %s (version %s)", plugin.name, plugin.version)
+        return plugin
+
+    @property
+    def plugins(self) -> Any:
+        """Read-only registry of installed plugins.
+
+        ``app.plugins["stripe"]`` returns the installed instance,
+        ``"stripe" in app.plugins`` and iteration both work. Use this
+        to ask "is plugin X installed and at what version?"
+        """
+        from .plugin import PluginRegistry
+
+        return PluginRegistry(self._plugins)
+
+    @property
+    def cli(self) -> Any:
+        """Plugin-facing CLI registry.
+
+        Plugins call ``app.cli.add_command(spec)`` in ``install()``;
+        ``soniq.cli.main`` reads the registered specs at parse time and
+        wires them as additional argparse subparsers.
+        """
+        return self._cli
+
+    @property
+    def dashboard(self) -> Any:
+        """Plugin-facing dashboard registry.
+
+        Plugins call ``app.dashboard.add_panel(spec)`` in ``install()``;
+        the dashboard server iterates registered panels alongside the
+        built-ins. For the data layer (queries against the jobs table),
+        see ``app.dashboard_data``.
+        """
+        return self._dashboard
+
+    @property
+    def migrations(self) -> Any:
+        """Plugin-facing migration source registry.
+
+        Plugins ship their own ``.sql`` files and register the
+        directory: ``app.migrations.register_source(<path>, prefix="0100")``.
+        The migration runner discovers plugin sources at ``app.setup()``
+        and applies them under the same advisory lock as core.
+        """
+        return self._migrations
+
+    @overload
     async def enqueue(
         self,
-        name_or_ref,
+        target: Callable[_P, Awaitable[Any]],
+        /,
         *,
-        args: Optional[dict] = None,
+        queue: Optional[str] = ...,
+        priority: Optional[int] = ...,
+        scheduled_at: Union[datetime, timedelta, int, float, None] = ...,
+        unique: Optional[bool] = ...,
+        dedup_key: Optional[str] = ...,
+        connection: Optional[Any] = ...,
+        **func_kwargs: Any,
+    ) -> str: ...
+
+    @overload
+    async def enqueue(
+        self,
+        target: str,
+        /,
+        *,
+        args: Optional[dict[str, Any]] = ...,
+        queue: Optional[str] = ...,
+        priority: Optional[int] = ...,
+        scheduled_at: Union[datetime, timedelta, int, float, None] = ...,
+        unique: Optional[bool] = ...,
+        dedup_key: Optional[str] = ...,
+        connection: Optional[Any] = ...,
+    ) -> str: ...
+
+    @overload
+    async def enqueue(
+        self,
+        target: "TaskRef",
+        /,
+        *,
+        args: Optional[dict[str, Any]] = ...,
+        queue: Optional[str] = ...,
+        priority: Optional[int] = ...,
+        scheduled_at: Union[datetime, timedelta, int, float, None] = ...,
+        unique: Optional[bool] = ...,
+        dedup_key: Optional[str] = ...,
+        connection: Optional[Any] = ...,
+    ) -> str: ...
+
+    async def enqueue(
+        self,
+        target: Any,
+        /,
+        *,
+        args: Optional[dict[str, Any]] = None,
         queue: Optional[str] = None,
         priority: Optional[int] = None,
-        scheduled_at=None,
+        scheduled_at: Any = None,
         unique: Optional[bool] = None,
         dedup_key: Optional[str] = None,
-        connection=None,
+        connection: Any = None,
+        **func_kwargs: Any,
     ) -> str:
         """
-        Enqueue a task for processing.
+        Enqueue a task for processing. Three input shapes:
 
-        The cross-service producer primitive. Takes a string task name (or,
-        from phase 2, a ``TaskRef``) and an explicit ``args`` dict. The old
-        callable form ``enqueue(my_func, x=1, y=2)`` was removed; see the
-        migration guide and the ``soniq migrate-enqueue`` codemod.
+        1. **Callable** (single-repo, Celery-style)::
 
-        When ``name_or_ref`` is a string:
+               await app.enqueue(send_welcome, user_id=42)
 
-        - The name is validated against ``SONIQ_TASK_NAME_PATTERN``.
-        - Behaviour for an unregistered name is governed by
-          ``SONIQ_ENQUEUE_VALIDATION``: ``"strict"`` (default) raises
-          ``SONIQ_UNKNOWN_TASK_NAME`` and writes nothing; ``"warn"`` logs
-          and proceeds; ``"none"`` is silent. Producer services that have
-          no local registry by design should set ``=warn`` or ``=none``
-          explicitly in their environment.
+           The task name is read from ``func._soniq_name`` (set by
+           ``@app.job``) or derived as ``f"{module}.{qualname}"``.
+           Function arguments travel as ``**func_kwargs``. ``args=`` must
+           NOT be passed in this form.
+
+        2. **String task name** (cross-service, by-name)::
+
+               await app.enqueue("users.send_welcome", args={"user_id": 42})
+
+           The name is validated against ``SONIQ_TASK_NAME_PATTERN``.
+           Function arguments travel in the explicit ``args=`` dict.
+           Behaviour for an unregistered name is governed by
+           ``SONIQ_ENQUEUE_VALIDATION``: ``"strict"`` (default) raises
+           ``SONIQ_UNKNOWN_TASK_NAME``; ``"warn"`` logs and proceeds;
+           ``"none"`` is silent.
+
+        3. **TaskRef** (typed cross-service stub)::
+
+               await app.enqueue(send_welcome_ref, args={"user_id": 42})
+
+           Validates ``args`` against ``ref.args_model`` and uses
+           ``ref.default_queue`` if no explicit ``queue=``.
+
+        The shape is disambiguated by the type of ``target``: callable,
+        ``str``, or ``TaskRef``. Mixing ``args=`` with ``**func_kwargs``
+        raises ``TypeError``; mixing a string ``target`` with
+        ``**func_kwargs`` raises ``TypeError`` (kwargs would collide with
+        enqueue options - use ``args=dict``).
 
         Args:
-            name_or_ref: Dotted task name string. (``TaskRef`` support
-                lands in phase 2.)
-            args: Task arguments as a dict. Defaults to ``{}``.
+            target: Callable, string task name, or ``TaskRef``.
+            args: Task arguments as a dict. For string / TaskRef shapes.
+                Defaults to ``{}``. Cannot be combined with
+                ``**func_kwargs``.
             queue: Optional queue override. Advisory; the consumer owns
                 routing. Falls back to the registered queue, then
                 ``"default"``.
@@ -468,18 +878,25 @@ class Soniq:
             dedup_key: Explicit dedup key (overrides args-hash dedup).
             connection: Asyncpg connection for transactional enqueue
                 (Postgres only).
+            **func_kwargs: Function arguments when ``target`` is a
+                callable. If your function has parameters that collide
+                with the enqueue options above, pass them via
+                ``args=dict`` instead.
 
         Returns:
             Job UUID (non-empty string).
 
         Raises:
-            SoniqError(SONIQ_INVALID_TASK_NAME): name violates the
-                configured pattern, or `name_or_ref` is the wrong type.
+            SoniqError(SONIQ_INVALID_TASK_NAME): string name violates
+                the configured pattern.
             SoniqError(SONIQ_UNKNOWN_TASK_NAME):
                 ``SONIQ_ENQUEUE_VALIDATION="strict"`` and the name is not
                 registered locally.
             SoniqError(SONIQ_TASK_ARGS_INVALID): args fail the
-                registered ``args_model`` validation.
+                registered or TaskRef ``args_model`` validation.
+            TypeError: ``args=`` mixed with ``**func_kwargs``, or
+                string ``target`` with ``**func_kwargs``, or ``target``
+                is not a callable / str / TaskRef.
         """
         from .core.naming import validate_task_name
         from .core.queue import _normalize_scheduled_time
@@ -496,19 +913,49 @@ class Soniq:
 
         from pydantic import ValidationError
 
-        # Resolve the task name and any TaskRef-supplied defaults. The
-        # TaskRef arm short-circuits the registry-validation step entirely:
-        # the ref *is* the local declaration of the name, so registry-based
-        # validation is replaced by the ref's own args_model check.
+        # Three-way dispatch on the type of `target`. The TaskRef arm
+        # short-circuits the registry-validation step (the ref *is* the
+        # local declaration of the name); the callable arm derives the
+        # name and uses **func_kwargs as the function args; the string
+        # arm requires args=dict.
         from .task_ref import TaskRef
         from .utils.hashing import compute_args_hash
 
         ref: Optional[TaskRef] = None
-        if isinstance(name_or_ref, TaskRef):
-            ref = name_or_ref
+        if isinstance(target, TaskRef):
+            ref = target
             job_name = ref.name
+            if func_kwargs:
+                raise TypeError(
+                    "enqueue(TaskRef, ...) cannot accept **kwargs as function "
+                    "arguments; pass args=dict instead."
+                )
+        elif isinstance(target, str):
+            job_name = validate_task_name(target)
+            if func_kwargs:
+                raise TypeError(
+                    "enqueue('name', ...) cannot accept **kwargs as function "
+                    "arguments (they would collide with enqueue options "
+                    "like queue=, priority=); pass args=dict instead."
+                )
+        elif callable(target):
+            # Callable form: derive name from the registration metadata,
+            # use **func_kwargs as function args.
+            if args is not None:
+                raise TypeError(
+                    "enqueue(callable, ...) cannot mix args=dict with "
+                    "**kwargs; use one or the other."
+                )
+            job_name = (
+                getattr(target, "_soniq_name", None)
+                or f"{target.__module__}.{target.__name__}"
+            )
+            args = func_kwargs
         else:
-            job_name = validate_task_name(name_or_ref)
+            raise TypeError(
+                f"enqueue() target must be a callable, string, or TaskRef; "
+                f"got {type(target).__name__}"
+            )
 
         if args is None:
             args = {}
@@ -616,8 +1063,10 @@ class Soniq:
         producer_id = resolve_producer_id(self._settings.producer_id)
 
         if connection is not None:
-            if self._backend.supports_transactional_enqueue:
-                txn_id: str = await self._backend.create_job_transactional(
+            from .backends.postgres import PostgresBackend
+
+            if isinstance(self._backend, PostgresBackend):
+                txn_id = await self._backend.create_job_transactional(
                     connection=connection,
                     job_id=job_id,
                     job_name=job_name,
@@ -631,7 +1080,7 @@ class Soniq:
                     scheduled_at=scheduled_at,
                     producer_id=producer_id,
                 )
-                return txn_id
+                return txn_id or job_id
             raise ValueError(
                 f"Transactional enqueue (connection=) is not supported by "
                 f"{type(self._backend).__name__}. Use PostgresBackend for this feature."
@@ -663,31 +1112,46 @@ class Soniq:
 
         return result_id or job_id
 
-    @_with_active_app
-    async def schedule(self, name_or_ref, run_at, *, args=None, **kwargs):
+    async def schedule(
+        self,
+        target: Any,
+        run_at: Any,
+        *,
+        args: Optional[dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> str:
         """Schedule a task for future execution.
 
         Thin wrapper over ``enqueue`` that sets ``scheduled_at=run_at``.
-        ``name_or_ref`` and ``args`` follow the same shape as ``enqueue``.
+        ``target`` and ``args`` (or ``**kwargs`` for the callable form)
+        follow the same shape as ``enqueue``.
         """
-        return await self.enqueue(name_or_ref, args=args, scheduled_at=run_at, **kwargs)
+        return await self.enqueue(target, args=args, scheduled_at=run_at, **kwargs)
 
-    async def get_pool(self) -> Any:
-        """Get database connection pool."""
+    async def _get_pool(self) -> Any:
+        """Internal: get the underlying asyncpg pool, if any.
+
+        Reserved for the few internal call sites that need raw pool
+        access (test fixtures, advanced integration). Public callers
+        should go through ``app.backend.acquire()``.
+        """
+        from .backends.postgres import PostgresBackend
+
         await self._ensure_initialized()
-        return self._pool  # type: ignore[return-value]
+        if not isinstance(self._backend, PostgresBackend):
+            return None
+        return self._backend._pool
 
     def _get_job_registry(self) -> JobRegistry:
         """Get job registry."""
         return self._job_registry
 
-    @_with_active_app
     async def run_worker(
         self,
         concurrency: int = 4,
         run_once: bool = False,
         queues: Optional[List[str]] = None,
-    ):
+    ) -> Any:
         """
         Run a worker for this Soniq instance.
 
@@ -700,17 +1164,8 @@ class Soniq:
             app = Soniq(database_url="postgresql://localhost/myapp")
             await app.run_worker(concurrency=2, queues=["high", "default"])
         """
-        from .errors import SONIQ_PRODUCER_ONLY, SoniqError
-
-        if self._producer_only:
-            raise SoniqError(
-                "run_worker is not allowed on a producer_only=True instance. "
-                "Producer-only instances cannot consume jobs; drop the flag "
-                "to start a worker.",
-                SONIQ_PRODUCER_ONLY,
-            )
-
         await self._ensure_initialized()
+        assert self._backend is not None  # narrowed after _ensure_initialized
 
         self._check_pool_sizing(concurrency)
 
@@ -721,6 +1176,7 @@ class Soniq:
             registry=self._job_registry,
             settings=self._settings,
             hooks=self._hooks,
+            middleware=self._middleware,
             retry_policy=self._retry_policy,
             metrics_sink=self._metrics_sink,
         )
@@ -746,14 +1202,7 @@ class Soniq:
         Suppressible with `SONIQ_SCHEDULER_SUPPRESS_WARNING=1` for
         deployments that intentionally split scheduler and worker but
         don't want this WARN cluttering the worker's logs.
-
-        Also suppressed unconditionally when ``producer_only=True`` -
-        such instances refuse ``@app.job`` and ``run_worker`` outright
-        so a periodic-without-scheduler warning would be redundant noise.
         """
-        if self._producer_only:
-            return
-
         import os
 
         if os.environ.get("SONIQ_SCHEDULER_SUPPRESS_WARNING", "").lower() in {
@@ -785,8 +1234,7 @@ class Soniq:
 
     # Job Management API
 
-    @_with_active_app
-    async def get_job(self, job_id: str):
+    async def get_job(self, job_id: str) -> Optional[dict[str, Any]]:
         """
         Get status information for a specific job.
 
@@ -799,13 +1247,12 @@ class Soniq:
         await self._ensure_initialized()
         return await self._backend.get_job(job_id)  # type: ignore[union-attr]
 
-    @_with_active_app
     async def get_result(
         self,
         job_id: str,
         *,
         result_model: Optional[Any] = None,
-    ):
+    ) -> Any:
         """Get the return value of a completed job, or None.
 
         When `result_model` is provided, the stored value is constructed
@@ -832,8 +1279,7 @@ class Soniq:
             return result_model(**result)
         return result_model(result)
 
-    @_with_active_app
-    async def cancel_job(self, job_id: str):
+    async def cancel_job(self, job_id: str) -> bool:
         """
         Cancel a queued job.
 
@@ -846,8 +1292,7 @@ class Soniq:
         await self._ensure_initialized()
         return await self._backend.cancel_job(job_id)  # type: ignore[union-attr]
 
-    @_with_active_app
-    async def retry_job(self, job_id: str):
+    async def retry_job(self, job_id: str) -> bool:
         """
         Retry a failed job.
 
@@ -860,8 +1305,7 @@ class Soniq:
         await self._ensure_initialized()
         return await self._backend.retry_job(job_id)  # type: ignore[union-attr]
 
-    @_with_active_app
-    async def delete_job(self, job_id: str):
+    async def delete_job(self, job_id: str) -> bool:
         """
         Delete a job from the queue.
 
@@ -874,14 +1318,13 @@ class Soniq:
         await self._ensure_initialized()
         return await self._backend.delete_job(job_id)  # type: ignore[union-attr]
 
-    @_with_active_app
     async def list_jobs(
         self,
         queue: Optional[str] = None,
         status: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
-    ):
+    ) -> List[dict[str, Any]]:
         """
         List jobs with optional filtering.
 
@@ -899,8 +1342,7 @@ class Soniq:
             queue=queue, status=status, limit=limit, offset=offset
         )
 
-    @_with_active_app
-    async def get_queue_stats(self):
+    async def get_queue_stats(self) -> List[dict[str, Any]]:
         """
         Get statistics for all queues.
 
@@ -908,27 +1350,45 @@ class Soniq:
             List of dictionaries with queue statistics
         """
         await self._ensure_initialized()
+        assert self._backend is not None
         return await self._backend.get_queue_stats()
 
-    async def _get_migration_status(self) -> dict:
+    async def _get_migration_status(
+        self, version_filter: str | None = None
+    ) -> dict[str, Any]:
         """
         Get current database migration status for this instance.
+
+        Args:
+            version_filter: Optional 4-digit version prefix; ``"000"``
+                limits the report to the core ``0001``-``0009`` slice
+                that ``setup()`` applies.
 
         Returns:
             Dictionary with migration status information
         """
         await self._ensure_initialized()
 
-        # Use the migration runner with our instance's connection pool
-        from .db.migrations import MigrationRunner
+        from .backends.postgres.migration_runner import MigrationRunner
 
-        migration_runner = MigrationRunner()
-        async with self._pool.acquire() as conn:  # type: ignore[union-attr]
-            return await migration_runner._get_migration_status_with_connection(conn)
+        migration_runner = MigrationRunner(
+            plugin_sources=self._migrations.list_sources()
+        )
+        async with self._backend.acquire() as conn:  # type: ignore[union-attr]
+            return await migration_runner._get_migration_status_with_connection(
+                conn, version_filter=version_filter
+            )
 
-    async def _run_migrations(self) -> int:
+    async def _run_migrations(self, version_filter: str | None = None) -> int:
         """
         Run all pending database migrations for this instance.
+
+        Args:
+            version_filter: Optional 4-digit version prefix. ``"000"``
+                applies the core ``0001``-``0009`` slice; ``"0010"``
+                applies only the scheduler slice. ``None`` applies
+                everything (used by tests; production uses the scoped
+                form so each feature opts in).
 
         Returns:
             Number of migrations applied
@@ -938,15 +1398,17 @@ class Soniq:
         """
         await self._ensure_initialized()
 
-        # Use the migration runner with our instance's connection pool
-        from .db.migrations import MigrationRunner
+        from .backends.postgres.migration_runner import MigrationRunner
 
-        migration_runner = MigrationRunner()
-        async with self._pool.acquire() as conn:  # type: ignore[union-attr]
-            return await migration_runner._run_migrations_with_connection(conn)
+        migration_runner = MigrationRunner(
+            plugin_sources=self._migrations.list_sources()
+        )
+        async with self._backend.acquire() as conn:  # type: ignore[union-attr]
+            return await migration_runner._run_migrations_with_connection(
+                conn, version_filter=version_filter
+            )
 
-    @_with_active_app
-    async def _setup(self) -> int:
+    async def setup(self) -> int:
         """
         Set up Soniq — create database (if needed) and run migrations.
 
@@ -954,19 +1416,44 @@ class Soniq:
         - SQLite: tables created automatically by SQLiteBackend.initialize()
         - Memory: no-op
 
+        After migrations, plugin ``on_startup`` hooks fire in install
+        order. Failures propagate so a misconfigured plugin can't be
+        ignored at boot time.
+
         Returns:
             Number of migrations applied (0 for SQLite/Memory)
         """
+        from .backends.postgres import PostgresBackend
+
         await self._ensure_initialized()
         assert self._backend is not None  # narrow type after init
 
-        # SQLite and Memory backends create tables on initialize() - nothing to migrate
-        if not self._backend.supports_migrations:
-            return 0
+        applied = 0
+        if isinstance(self._backend, PostgresBackend):
+            # PostgreSQL: attempt to create the database, then run migrations.
+            # Only the core 0001-0009 slice runs here; optional features
+            # (scheduler, dead_letter, webhooks, logs) opt in via their
+            # own setup() call or `soniq setup --features=...`.
+            await self._ensure_postgres_database_exists()
+            applied = await self._run_migrations(version_filter="000")
+        # else: SQLite / Memory create tables on initialize() - skip.
 
-        # PostgreSQL: attempt to create the database, then run migrations
-        await self._ensure_postgres_database_exists()
-        return await self._run_migrations()
+        await self._run_plugin_startup_hooks()
+        return applied
+
+    async def _run_plugin_startup_hooks(self) -> None:
+        """Invoke ``on_startup(self)`` on every installed plugin in install
+        order. Failures propagate; plugins are load-bearing."""
+        for plugin in self._plugins:
+            hook = getattr(plugin, "on_startup", None)
+            if hook is None:
+                continue
+            await hook(self)
+
+    # Underscore-prefixed alias preserved for in-package callers and the
+    # global module facade. Public callers should use ``setup()``.
+    async def _setup(self) -> int:
+        return await self.setup()
 
     async def _ensure_postgres_database_exists(self) -> None:
         """Create the PostgreSQL database if it doesn't exist."""
@@ -1021,11 +1508,10 @@ class Soniq:
             # Either way, we'll find out when migrations run
             logger.debug(f"Could not auto-create database: {e}")
 
-    async def _cleanup_on_error(self):
+    async def _cleanup_on_error(self) -> None:
         """Cleanup resources after initialization error."""
         try:
-            if self._pool:
-                await self._pool.close()
-                self._pool = None
+            if self._backend is not None:
+                await self._backend.close()
         except Exception as e:
             logger.debug(f"Error during cleanup: {e}")

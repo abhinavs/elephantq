@@ -50,10 +50,14 @@ async def test_run_worker_raises_when_pool_too_small(monkeypatch):
     """End-to-end: run_worker refuses to start with an undersized pool."""
     monkeypatch.setenv("SONIQ_DATABASE_URL", "postgresql://localhost/soniq")
 
+    from soniq.backends.postgres import PostgresBackend
+
     app = Soniq(pool_max_size=2, pool_headroom=2)
-    # Attach a dummy postgres-looking backend so the check fires without
-    # requiring a real database.
-    app._backend = _FakePoolBackend()
+    # Attach a real PostgresBackend (without initializing it) so the
+    # isinstance check in `_check_pool_sizing` fires without requiring a
+    # live database. The check reads pool_max_size off settings only.
+    app._backend = PostgresBackend.__new__(PostgresBackend)
+    app._backend._pool = None  # type: ignore[union-attr]
     app._initialized = True
 
     with pytest.raises(SoniqError, match="SONIQ_POOL_TOO_SMALL"):
@@ -76,26 +80,3 @@ async def test_run_worker_ok_with_adequate_pool(monkeypatch):
     # run_once processes no jobs (empty backend) and returns False.
     result = await app.run_worker(concurrency=4, run_once=True)
     assert result is False
-
-
-class _FakePoolBackend:
-    """Minimal stand-in for PostgresBackend used to trigger the pool-size check.
-
-    `supports_connection_pool = True` is the signal that this backend is
-    backed by an asyncpg pool, i.e. the sizing check is meaningful. No real
-    pool is needed for the arithmetic.
-    """
-
-    pool = object()  # truthy, but not actually used
-
-    supports_push_notify = False
-    supports_transactional_enqueue = False
-    supports_connection_pool = True
-    supports_advisory_locks = True
-    supports_migrations = True
-
-    async def fetch_and_lock_job(self, **kwargs):
-        return None
-
-    async def close(self):
-        pass

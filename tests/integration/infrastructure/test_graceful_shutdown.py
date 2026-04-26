@@ -10,44 +10,6 @@ import logging
 
 import pytest
 
-from soniq.core.heartbeat import cleanup_stale_workers
-
-# Use global API or Soniq instance for worker functionality
-from soniq.db.connection import create_pool
-
-
-@pytest.mark.asyncio
-async def test_cleanup_stale_workers_with_closing_pool():
-    """Test that cleanup_stale_workers handles closing pool gracefully"""
-    from soniq.settings import get_settings
-
-    pool = await create_pool(get_settings().database_url)
-
-    # Mock the pool as closing
-    pool._closing = True
-
-    # Should not raise exception and return 0
-    result = await cleanup_stale_workers(pool)
-    assert result == 0
-
-    await pool.close()
-
-
-@pytest.mark.asyncio
-async def test_cleanup_stale_workers_with_pool_closing_error():
-    """Test that cleanup_stale_workers handles InterfaceError gracefully"""
-    # Test the specific exception handling by triggering it with a closed pool
-    from soniq.settings import get_settings
-
-    pool = await create_pool(get_settings().database_url)
-
-    # Close the pool first to trigger InterfaceError
-    await pool.close()
-
-    # Now calling cleanup_stale_workers should handle the error gracefully
-    result = await cleanup_stale_workers(pool)
-    assert result == 0
-
 
 @pytest.mark.asyncio
 async def test_worker_cancellation_no_pool_errors(caplog):
@@ -133,34 +95,27 @@ async def test_multiple_rapid_worker_cancellations(caplog):
 @pytest.mark.asyncio
 async def test_worker_listener_cleanup_handles_errors():
     """Test that the worker's listener cleanup code handles connection errors gracefully"""
-    # This test verifies the error handling code we added to processor.py
-    # The actual scenario is tested in the processor's finally block
+    import soniq
 
-    from soniq.db.connection import create_pool
-    from soniq.settings import get_settings
-
-    pool = await create_pool(get_settings().database_url)
+    app = soniq._get_global_app()
+    await app._ensure_initialized()
+    pool = app.backend._pool
     conn = await pool.acquire()
 
-    # Create a scenario similar to what happens in the worker
     try:
-        # This simulates the pattern in processor.py lines 604-614
         try:
             await conn.remove_listener("nonexistent_channel", lambda *args: None)
         except Exception as e:
-            # Should handle gracefully (like our fix does)
             assert "does not have" in str(e) or "listener" in str(e)
 
         try:
             await pool.release(conn)
         except Exception:
-            # Should handle gracefully (like our fix does)
             pass
-
     finally:
-        await pool.close()
+        # Pool is owned by the global app; do not close it here.
+        pass
 
-    # Test passes if no unhandled exceptions occur
     assert True
 
 

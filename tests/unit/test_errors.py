@@ -7,7 +7,6 @@ import pytest
 from soniq import errors as errors_mod
 from soniq.errors import (
     SONIQ_INVALID_TASK_NAME,
-    SONIQ_PRODUCER_ONLY,
     SONIQ_TASK_ARGS_INVALID,
     SONIQ_UNKNOWN_TASK_NAME,
     MigrationError,
@@ -91,7 +90,6 @@ class TestCrossServiceErrorCodes:
             (SONIQ_UNKNOWN_TASK_NAME, "SONIQ_UNKNOWN_TASK_NAME"),
             (SONIQ_INVALID_TASK_NAME, "SONIQ_INVALID_TASK_NAME"),
             (SONIQ_TASK_ARGS_INVALID, "SONIQ_TASK_ARGS_INVALID"),
-            (SONIQ_PRODUCER_ONLY, "SONIQ_PRODUCER_ONLY"),
         ],
     )
     def test_constant_value_matches_identifier(self, code, expected):
@@ -103,7 +101,6 @@ class TestCrossServiceErrorCodes:
             SONIQ_UNKNOWN_TASK_NAME,
             SONIQ_INVALID_TASK_NAME,
             SONIQ_TASK_ARGS_INVALID,
-            SONIQ_PRODUCER_ONLY,
         ],
     )
     def test_constructible_with_each_code(self, code):
@@ -116,7 +113,6 @@ class TestCrossServiceErrorCodes:
             "SONIQ_UNKNOWN_TASK_NAME",
             "SONIQ_INVALID_TASK_NAME",
             "SONIQ_TASK_ARGS_INVALID",
-            "SONIQ_PRODUCER_ONLY",
         ):
             assert hasattr(errors_mod, name)
             assert isinstance(getattr(errors_mod, name), str)

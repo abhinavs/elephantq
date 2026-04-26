@@ -10,19 +10,30 @@ import json
 import logging
 import time
 import uuid
+from contextlib import asynccontextmanager
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncIterator,
+    Dict,
+    List,
+    Optional,
+    Protocol,
+    runtime_checkable,
+)
 
 try:
     import aiohttp
 except ImportError:
     aiohttp = None  # type: ignore[assignment]
 
-from soniq.db.connection import get_pool
-
 from .signing import SecureWebhookSecret
+
+if TYPE_CHECKING:
+    from soniq.app import Soniq
 
 logger = logging.getLogger(__name__)
 
@@ -140,12 +151,103 @@ class WebhookSigner:
         return hmac.compare_digest(signature, expected_signature)
 
 
-class WebhookRegistry:
-    """Registry for webhook endpoints"""
+@dataclass
+class WebhookResult:
+    """Outcome of a single transport ``deliver`` call.
 
-    def __init__(self):
+    ``ok`` is True iff the remote responded with a 2xx; the dispatcher
+    treats anything else as a delivery failure and schedules a retry.
+    ``status`` and ``body`` are echoed into the persisted delivery record
+    so operators can debug 5xx without re-fetching the upstream.
+    """
+
+    ok: bool
+    status: Optional[int] = None
+    body: Optional[str] = None
+    error: Optional[str] = None
+
+
+@runtime_checkable
+class WebhookTransport(Protocol):
+    """Pluggable webhook delivery mechanism.
+
+    Storage (which endpoints exist, retry state) stays tied to the queue's
+    database. Delivery (the actual outbound request) is the seam: tests
+    swap in an in-memory transport, ops can route through Lambda / SQS /
+    SNS / a vault-aware HTTP client by implementing this single method.
+    """
+
+    async def deliver(
+        self,
+        *,
+        url: str,
+        payload: bytes,
+        headers: Dict[str, str],
+    ) -> WebhookResult: ...
+
+
+class HTTPTransport:
+    """Default ``WebhookTransport`` backed by ``aiohttp``.
+
+    A new ``ClientSession`` is opened per delivery so the transport stays
+    safe to construct from sync code (no event loop bound at import time).
+    Connection reuse is on the to-do list; the dispatcher already caps
+    concurrency via a semaphore so this is rarely the bottleneck.
+    """
+
+    def __init__(self, *, timeout_seconds: int = 30):
+        self._default_timeout = timeout_seconds
+
+    async def deliver(
+        self,
+        *,
+        url: str,
+        payload: bytes,
+        headers: Dict[str, str],
+    ) -> WebhookResult:
+        _require_aiohttp()
+        timeout = aiohttp.ClientTimeout(total=self._default_timeout)
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(url, data=payload, headers=headers) as response:
+                    # Cap response body at 4KB to prevent OOM from large responses
+                    body = (await response.content.read(4096)).decode(
+                        "utf-8", errors="replace"
+                    )
+                    return WebhookResult(
+                        ok=200 <= response.status < 300,
+                        status=response.status,
+                        body=body,
+                        error=(
+                            None
+                            if 200 <= response.status < 300
+                            else f"HTTP {response.status}"
+                        ),
+                    )
+        except Exception as e:
+            return WebhookResult(ok=False, status=None, body=None, error=str(e))
+
+
+class WebhookRegistry:
+    """Registry for webhook endpoints.
+
+    Holds the in-memory endpoint cache and persists changes to Postgres
+    through ``self._app.backend.acquire()``. Constructed by
+    ``WebhookService``; code that wants to drop in a custom backend can
+    pass any ``Soniq``-like object whose ``backend`` exposes
+    ``acquire()``.
+    """
+
+    def __init__(self, app: "Soniq"):
+        self._app = app
         self.endpoints: Dict[str, WebhookEndpoint] = {}
         self._lock = asyncio.Lock()
+
+    @asynccontextmanager
+    async def _acquire(self) -> AsyncIterator[Any]:
+        await self._app.ensure_initialized()
+        async with self._app.backend.acquire() as conn:
+            yield conn
 
     async def register_endpoint(self, endpoint: WebhookEndpoint) -> str:
         """Register a webhook endpoint"""
@@ -205,8 +307,7 @@ class WebhookRegistry:
 
     async def _save_endpoint_to_db(self, endpoint: WebhookEndpoint):
         """Save endpoint configuration to database"""
-        pool = await get_pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             await conn.execute(
                 """
                 INSERT INTO soniq_webhook_endpoints (
@@ -234,8 +335,7 @@ class WebhookRegistry:
 
     async def _delete_endpoint_from_db(self, endpoint_id: str):
         """Delete endpoint from database"""
-        pool = await get_pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             await conn.execute(
                 "DELETE FROM soniq_webhook_endpoints WHERE id = $1", endpoint_id
             )
@@ -243,8 +343,7 @@ class WebhookRegistry:
     async def load_endpoints_from_db(self):
         """Load endpoints from database on startup"""
         try:
-            pool = await get_pool()
-            async with pool.acquire() as conn:
+            async with self._acquire() as conn:
                 endpoints = await conn.fetch(
                     """
                     SELECT * FROM soniq_webhook_endpoints WHERE active = true
@@ -273,15 +372,30 @@ class WebhookRegistry:
 
 
 class WebhookDispatcher:
-    """Webhook event dispatcher and delivery manager"""
+    """Webhook event dispatcher and delivery manager.
 
-    def __init__(self, registry: WebhookRegistry, max_concurrent_deliveries: int = 10):
+    Pool access for retry-processor reads and delivery-record writes is
+    routed through the same ``Soniq`` instance the registry was bound to,
+    via ``self.registry._app``.
+    """
+
+    def __init__(
+        self,
+        registry: WebhookRegistry,
+        max_concurrent_deliveries: int = 10,
+        *,
+        transport: Optional[WebhookTransport] = None,
+    ):
         self.registry = registry
         self.max_concurrent_deliveries = max_concurrent_deliveries
         self.delivery_queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
         self.delivery_semaphore = asyncio.Semaphore(max_concurrent_deliveries)
         self._delivery_workers: List[asyncio.Task] = []
         self._running = False
+        self.transport: WebhookTransport = transport or HTTPTransport()
+
+    def _acquire(self):
+        return self.registry._acquire()
 
     async def start(self):
         """Start webhook delivery workers"""
@@ -402,7 +516,6 @@ class WebhookDispatcher:
 
     async def _process_delivery(self, delivery: WebhookDelivery):
         """Process a single webhook delivery"""
-        _require_aiohttp()
         endpoint = await self.registry.get_endpoint(delivery.endpoint_id)
         if not endpoint or not endpoint.active:
             logger.warning(f"Endpoint {delivery.endpoint_id} not found or inactive")
@@ -410,81 +523,56 @@ class WebhookDispatcher:
 
         delivery.attempts += 1
 
-        try:
-            # Prepare payload
-            payload_json = json.dumps(delivery.payload)
+        # Prepare payload
+        payload_json = json.dumps(delivery.payload)
 
-            # Prepare headers
-            headers = {
-                "Content-Type": "application/json",
-                "User-Agent": "Soniq-Webhook/1.0",
-                "X-Webhook-Event": delivery.event,
-                "X-Webhook-Delivery": delivery.id,
-                "X-Webhook-Timestamp": str(int(time.time())),
-            }
+        # Prepare headers
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "Soniq-Webhook/1.0",
+            "X-Webhook-Event": delivery.event,
+            "X-Webhook-Delivery": delivery.id,
+            "X-Webhook-Timestamp": str(int(time.time())),
+        }
+        if endpoint.headers:
+            headers.update(endpoint.headers)
+        if endpoint.plaintext_secret:
+            headers["X-Webhook-Signature"] = WebhookSigner.sign_payload(
+                payload_json, endpoint.plaintext_secret
+            )
 
-            # Add custom headers
-            if endpoint.headers:
-                headers.update(endpoint.headers)
+        result = await self.transport.deliver(
+            url=endpoint.url,
+            payload=payload_json.encode("utf-8"),
+            headers=headers,
+        )
+        delivery.response_status = result.status
+        delivery.response_body = result.body
 
-            # Add signature if secret is configured
-            if endpoint.plaintext_secret:
-                signature = WebhookSigner.sign_payload(
-                    payload_json, endpoint.plaintext_secret
-                )
-                headers["X-Webhook-Signature"] = signature
-
-            # Send webhook
-            timeout = aiohttp.ClientTimeout(total=endpoint.timeout_seconds)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(
-                    endpoint.url, data=payload_json, headers=headers
-                ) as response:
-                    delivery.response_status = response.status
-                    # Cap response body at 4KB to prevent OOM from large responses
-                    delivery.response_body = (await response.content.read(4096)).decode(
-                        "utf-8", errors="replace"
-                    )
-
-                    if 200 <= response.status < 300:
-                        # Success
-                        delivery.status = "delivered"
-                        delivery.delivered_at = datetime.now(timezone.utc)
-                        logger.info(
-                            f"Webhook delivered: {delivery.id} -> {endpoint.url}"
-                        )
-                    else:
-                        # HTTP error
-                        raise aiohttp.ClientResponseError(
-                            request_info=response.request_info,
-                            history=response.history,
-                            status=response.status,
-                            message=f"HTTP {response.status}",
-                        )
-
-        except Exception as e:
-            # Delivery failed
-            delivery.last_error = str(e)
-
+        if result.ok:
+            delivery.status = "delivered"
+            delivery.delivered_at = datetime.now(timezone.utc)
+            logger.info(f"Webhook delivered: {delivery.id} -> {endpoint.url}")
+        else:
+            delivery.last_error = result.error or "delivery failed"
             if delivery.attempts >= delivery.max_attempts:
                 delivery.status = "failed"
                 logger.error(
-                    f"Webhook delivery failed permanently: {delivery.id} -> {endpoint.url}: {e}"
+                    f"Webhook delivery failed permanently: {delivery.id} -> "
+                    f"{endpoint.url}: {delivery.last_error}"
                 )
             else:
-                # Schedule retry with exponential backoff
-                delay_seconds = min(
-                    300, 2 ** (delivery.attempts - 1) * 60
-                )  # Max 5 minutes
+                # Exponential backoff capped at 5 minutes
+                delay_seconds = min(300, 2 ** (delivery.attempts - 1) * 60)
                 delivery.next_retry_at = datetime.now(timezone.utc).replace(
                     microsecond=0
                 ) + timedelta(seconds=delay_seconds)
                 delivery.status = "pending"
                 logger.warning(
-                    f"Webhook delivery failed, will retry: {delivery.id} -> {endpoint.url}: {e}"
+                    f"Webhook delivery failed, will retry: {delivery.id} -> "
+                    f"{endpoint.url}: {delivery.last_error}"
                 )
 
-        # Save delivery record
         await self._save_delivery_record(delivery)
 
     async def _retry_processor(self):
@@ -492,8 +580,7 @@ class WebhookDispatcher:
         while self._running:
             try:
                 # Find deliveries ready for retry
-                pool = await get_pool()
-                async with pool.acquire() as conn:
+                async with self._acquire() as conn:
                     deliveries = await conn.fetch(
                         """
                         SELECT * FROM soniq_webhook_deliveries
@@ -535,8 +622,7 @@ class WebhookDispatcher:
     async def _save_delivery_record(self, delivery: WebhookDelivery):
         """Save delivery record to database"""
         try:
-            pool = await get_pool()
-            async with pool.acquire() as conn:
+            async with self._acquire() as conn:
                 await conn.execute(
                     """
                     INSERT INTO soniq_webhook_deliveries (
@@ -571,13 +657,50 @@ class WebhookDispatcher:
             logger.error(f"Failed to save delivery record: {e}")
 
 
-class WebhookManager:
-    """High-level webhook management interface"""
+class WebhookService:
+    """High-level webhook interface bound to a Soniq instance.
 
-    def __init__(self):
-        self.registry = WebhookRegistry()
-        self.dispatcher = WebhookDispatcher(self.registry)
+    Owns the per-app ``WebhookRegistry`` and ``WebhookDispatcher``. Replaces
+    the old global ``WebhookManager`` whose pool access reached for the
+    global app. The legacy class name is kept as an alias below.
+    """
+
+    def __init__(
+        self,
+        app: "Soniq",
+        *,
+        transport: Optional[WebhookTransport] = None,
+    ):
+        self._app = app
+        self.registry = WebhookRegistry(app)
+        self.dispatcher = WebhookDispatcher(
+            self.registry, transport=transport or HTTPTransport()
+        )
         self._started = False
+
+    @property
+    def transport(self) -> WebhookTransport:
+        """The transport this service routes deliveries through."""
+        return self.dispatcher.transport
+
+    async def setup(self) -> int:
+        """Apply webhook migrations (``0021_*``).
+
+        Idempotent. Memory and SQLite backends are no-ops.
+        """
+        await self._app.ensure_initialized()
+        from soniq.backends.postgres import PostgresBackend
+        from soniq.backends.postgres.migration_runner import MigrationRunner
+
+        backend = self._app.backend
+        if not isinstance(backend, PostgresBackend):
+            return 0
+        return await MigrationRunner(backend=backend).run_migrations(
+            version_filter="0021"
+        )
+
+    def _acquire(self):
+        return self.registry._acquire()
 
     async def start(self):
         """Start webhook system"""
@@ -598,22 +721,26 @@ class WebhookManager:
         self._started = False
         logger.info("Webhook system stopped")
 
-    async def register_webhook(
+    async def register(
         self,
         url: str,
         events: Optional[List[str]] = None,
         secret: Optional[str] = None,
         **kwargs,
     ) -> str:
-        """Register a new webhook endpoint"""
+        """Register a new webhook endpoint."""
         endpoint = WebhookEndpoint(
             id=str(uuid.uuid4()), url=url, secret=secret, events=events, **kwargs
         )
         return await self.registry.register_endpoint(endpoint)  # type: ignore[no-any-return]
 
-    async def unregister_webhook(self, endpoint_id: str) -> bool:
-        """Unregister a webhook endpoint"""
+    async def unregister(self, endpoint_id: str) -> bool:
+        """Unregister a webhook endpoint."""
         return await self.registry.unregister_endpoint(endpoint_id)  # type: ignore[no-any-return]
+
+    # Backwards-compat aliases for the module-level helper names.
+    register_webhook = register
+    unregister_webhook = unregister
 
     async def send_webhook(
         self,
@@ -630,8 +757,7 @@ class WebhookManager:
 
     async def get_delivery_stats(self, hours: int = 24) -> Dict[str, Any]:
         """Get webhook delivery statistics"""
-        pool = await get_pool()
-        async with pool.acquire() as conn:
+        async with self._acquire() as conn:
             stats = await conn.fetchrow(
                 """
                 SELECT
@@ -667,123 +793,6 @@ class WebhookManager:
             }
 
 
-# Global webhook manager instance
-_webhook_manager = WebhookManager()
-
-
-# Public API
-async def start_webhook_system():
-    """Start the webhook system"""
-    await _webhook_manager.start()
-
-
-async def stop_webhook_system():
-    """Stop the webhook system"""
-    await _webhook_manager.stop()
-
-
-async def register_webhook(
-    url: str, events: Optional[List[str]] = None, secret: Optional[str] = None, **kwargs
-) -> str:
-    """Register a webhook endpoint"""
-    return await _webhook_manager.register_webhook(url, events, secret, **kwargs)
-
-
-async def unregister_webhook(endpoint_id: str) -> bool:
-    """Unregister a webhook endpoint"""
-    return await _webhook_manager.unregister_webhook(endpoint_id)
-
-
-async def send_job_queued(job_id: str, job_name: str, queue: str, **kwargs):
-    """Send job queued webhook"""
-    await _webhook_manager.send_webhook(
-        WebhookEvent.JOB_QUEUED,
-        {"job_id": job_id, "job_name": job_name, "queue": queue, **kwargs},
-    )
-
-
-async def send_job_started(
-    job_id: str, job_name: str, queue: str, attempt: int, **kwargs
-):
-    """Send job started webhook"""
-    await _webhook_manager.send_webhook(
-        WebhookEvent.JOB_STARTED,
-        {
-            "job_id": job_id,
-            "job_name": job_name,
-            "queue": queue,
-            "attempt": attempt,
-            **kwargs,
-        },
-    )
-
-
-async def send_job_completed(
-    job_id: str, job_name: str, queue: str, duration_ms: float, **kwargs
-):
-    """Send job completed webhook"""
-    await _webhook_manager.send_webhook(
-        WebhookEvent.JOB_COMPLETED,
-        {
-            "job_id": job_id,
-            "job_name": job_name,
-            "queue": queue,
-            "duration_ms": duration_ms,
-            **kwargs,
-        },
-    )
-
-
-async def send_job_failed(
-    job_id: str,
-    job_name: str,
-    queue: str,
-    error: str,
-    attempt: int,
-    will_retry: bool,
-    **kwargs,
-):
-    """Send job failed webhook"""
-    await _webhook_manager.send_webhook(
-        WebhookEvent.JOB_FAILED,
-        {
-            "job_id": job_id,
-            "job_name": job_name,
-            "queue": queue,
-            "error": error,
-            "attempt": attempt,
-            "will_retry": will_retry,
-            **kwargs,
-        },
-    )
-
-
-async def send_job_dead_letter(
-    job_id: str, job_name: str, queue: str, final_error: str, **kwargs
-):
-    """Send job moved to dead letter webhook"""
-    await _webhook_manager.send_webhook(
-        WebhookEvent.JOB_DEAD_LETTER,
-        {
-            "job_id": job_id,
-            "job_name": job_name,
-            "queue": queue,
-            "final_error": final_error,
-            **kwargs,
-        },
-    )
-
-
-async def get_webhook_endpoints() -> List[WebhookEndpoint]:
-    """Get all registered webhook endpoints"""
-    return await _webhook_manager.registry.list_endpoints()  # type: ignore[no-any-return]
-
-
-async def get_delivery_stats(hours: int = 24) -> Dict[str, Any]:
-    """Get webhook delivery statistics"""
-    return await _webhook_manager.get_delivery_stats(hours)
-
-
 def verify_webhook_signature(payload: str, signature: str, secret: str) -> bool:
-    """Verify webhook signature"""
+    """Verify webhook signature with HMAC-SHA256."""
     return WebhookSigner.verify_signature(payload, signature, secret)

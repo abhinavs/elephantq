@@ -25,7 +25,6 @@ async def main() -> None:
 
     producer = Soniq(
         database_url=db_url,
-        producer_only=True,
         enqueue_validation="none",
         producer_id="example-producer",
     )

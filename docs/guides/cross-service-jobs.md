@@ -14,7 +14,6 @@ from soniq import Soniq
 
 producer = Soniq(
     database_url="postgresql://shared-pg/jobs",
-    producer_only=True,
     enqueue_validation="none",  # producer has no local registry
 )
 
@@ -24,9 +23,10 @@ await producer.enqueue(
 )
 ```
 
-**Consumer (service B)** registers and runs:
+**Consumer (service B)** registers the handler:
 
 ```python
+# myservice/tasks.py
 from soniq import Soniq
 from pydantic import BaseModel
 
@@ -39,8 +39,14 @@ class InvoiceArgs(BaseModel):
 @consumer.job(name="billing.invoices.send.v2", validate=InvoiceArgs)
 async def send_invoice(order_id: str, customer: str):
     ...
+```
 
-await consumer.run_worker()
+And starts the worker with the CLI:
+
+```bash
+export SONIQ_DATABASE_URL="postgresql://shared-pg/jobs"
+export SONIQ_JOBS_MODULES="myservice.tasks"
+soniq start
 ```
 
 Two repositories, one shared Postgres, one task name. The producer
@@ -66,17 +72,23 @@ deployment environment.
 
 ## Naming conventions
 
-Names are protocol identifiers. The recommended format is dotted
-lowercase with a version suffix:
+Names are protocol identifiers. By default `@app.job` derives a name
+from `f"{module}.{qualname}"` (Celery-style) - that's fine for
+single-repo usage. Cross-service deployments should pass `name=`
+explicitly so the wire identifier doesn't rot when functions get
+renamed:
 
 ```
 billing.invoices.send.v2
 ```
 
+The recommended format is dotted lowercase with a version suffix.
 The default pattern (`SONIQ_TASK_NAME_PATTERN`) enforces ASCII,
 dot-separated, lowercase, no whitespace, no leading or trailing
-dots. Names that violate this raise `SONIQ_INVALID_TASK_NAME` at
-both registration time and enqueue time.
+dots when an explicit `name=` is passed. Module-derived names skip
+pattern validation since the user did not pick them. Explicit names
+that violate the pattern raise `SONIQ_INVALID_TASK_NAME` at
+registration time.
 
 ## Failure semantics
 
@@ -117,27 +129,13 @@ async def send_invoice(order_id: str, customer: str):
 `dedup_key` and `unique=True` are operational helpers, not delivery
 guarantees. They reduce duplicate work; they do not eliminate it.
 
-## Producer-only mode
+## Producer / consumer split
 
-Pass `producer_only=True` on a producer-side `Soniq` instance to
-prevent accidental consumption:
-
-```python
-producer = Soniq(database_url="...", producer_only=True)
-```
-
-What this changes:
-
-- `run_worker(...)` raises `SONIQ_PRODUCER_ONLY`.
-- The recurring scheduler entry point raises `SONIQ_PRODUCER_ONLY`.
-- `@app.job(name=...)` registration raises `SONIQ_PRODUCER_ONLY`.
-- The "@periodic jobs detected without scheduler" startup warning
-  is suppressed.
-
-Everything else (enqueue, schedule, get_job, list_jobs, retry, cancel,
-delete, get_queue_stats, _setup) works normally. A producer service
-may legitimately own its half of the shared DB and run migrations
-via `_setup()`.
+Producer-vs-consumer is a deployment convention, not a class. The same
+`Soniq` runs in both roles; what differs is whether the deployment
+imports handler modules and runs `run_worker(...)`. See
+[Deployment shapes](../production/deployment-shapes.md) for the
+producer service, consumer service, and shared-library patterns.
 
 ## Migrating from earlier versions
 

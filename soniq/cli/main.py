@@ -1,76 +1,175 @@
 """
-Soniq CLI - Simplified main module with consolidated commands
+Soniq CLI - flat dispatch.
+
+Each subcommand lives in its own module and exposes one
+``add_X_cmd(subparsers)`` function that creates the subparser and
+attaches its handler via ``parser.set_defaults(func=...)``. ``main``
+just lists them and dispatches whichever the user picked.
+
+Plugin commands. Plugins register CLI specs in their ``install()``
+via ``app.cli.add_command(spec)``. Because the CLI starts before any
+``Soniq`` instance exists in the user's program, the parser builder
+itself constructs a bootstrap ``Soniq``, loads plugins from the
+``soniq.plugins`` entry-point group when the operator opted in via
+``--plugins=...`` / ``SONIQ_PLUGINS=...``, then folds the registered
+``CommandSpec`` instances into the argparse subparsers alongside the
+built-ins. Discovery is opt-in - the parser does no entry-point work
+unless the operator asked for it.
 """
 
 import argparse
 import asyncio
+import os
+import sys
+from typing import List, Optional
 
 from .colors import print_status
+from .dashboard import add_dashboard_cmd
+from .dead_letter import add_dead_letter_cmd
+from .metrics import add_metrics_cmd
+from .migrate_status import add_migrate_status_cmd
+from .scheduler import add_scheduler_cmd
+from .setup import add_setup_cmd
+from .start import add_start_cmd
+from .status import add_status_cmd
+from .tasks import add_tasks_cmd
+from .workers import add_workers_cmd
 
-# Import extensible command system
-from .commands.core import register_core_commands
-from .commands.database import register_database_commands
-from .commands.features import register_feature_commands
-from .commands.migrate_enqueue import register_migrate_enqueue_command
-from .commands.tasks import register_tasks_commands
-from .registry import get_cli_registry
 
+def build_parser(plugin_app: Optional[object] = None) -> argparse.ArgumentParser:
+    """Construct the top-level parser with every subcommand wired in.
 
-def main():
-    """Main CLI entry point with organized command structure"""
+    When ``plugin_app`` is provided, plugin-registered ``CommandSpec``
+    instances are folded into the parser after the built-ins. Tests
+    pass a pre-configured ``Soniq`` here to assert that
+    ``app.cli.add_command`` plumbs through. ``main`` resolves the app
+    from CLI flags / env and reuses this entry point.
+    """
     parser = argparse.ArgumentParser(
-        description="Soniq CLI - Unified Interface",
+        description="Soniq CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  soniq start --concurrency 4 --queues default,urgen
+  soniq start --concurrency 4 --queues default,urgent
   soniq setup
   soniq status --verbose --jobs
 
 For more information, visit: https://github.com/abhinavs/soniq
         """,
     )
+    # Surface the plugin discovery flag at the top level so the parser
+    # itself accepts it; ``parse_known_args`` reads it before we know
+    # which subcommand the operator wants.
+    parser.add_argument(
+        "--plugins",
+        default=None,
+        metavar="NAMES",
+        help=(
+            "Comma-separated soniq plugin names to load via the "
+            "'soniq.plugins' entry-point group. Same as SONIQ_PLUGINS."
+        ),
+    )
 
-    subparsers = parser.add_subparsers(dest="command", title="Available commands")
+    sub = parser.add_subparsers(dest="command", title="Commands")
 
-    # Register core commands (start, status, workers, cli-debug)
-    register_core_commands()
+    add_start_cmd(sub)
+    add_setup_cmd(sub)
+    add_status_cmd(sub)
+    add_workers_cmd(sub)
+    add_migrate_status_cmd(sub)
+    add_dashboard_cmd(sub)
+    add_scheduler_cmd(sub)
+    add_metrics_cmd(sub)
+    add_dead_letter_cmd(sub)
+    add_tasks_cmd(sub)
 
-    # Register database commands (setup, migrate-status)
-    register_database_commands()
+    if plugin_app is not None:
+        _register_plugin_commands(sub, plugin_app)
 
-    # Register feature commands (dashboard, scheduler, metrics, dead-letter)
-    register_feature_commands()
+    return parser
 
-    # Register migration commands (migrate-enqueue codemod)
-    register_migrate_enqueue_command()
 
-    # Register task observability commands (tasks list / tasks check)
-    register_tasks_commands()
+def _resolve_plugin_names(argv: List[str]) -> Optional[List[str]]:
+    """Read ``--plugins`` / ``SONIQ_PLUGINS`` without consuming argv.
 
-    # Add all registered commands to the parser
-    registry = get_cli_registry()
-    registry.add_to_parser(subparsers)
+    The CLI needs to know which plugins to load *before* ``parse_args``
+    runs (plugins may register subcommands). This pre-parse uses a tiny
+    side parser with ``parse_known_args`` so we don't accidentally
+    error on subcommand-specific flags the main parser hasn't seen yet.
+    """
+    pre = argparse.ArgumentParser(add_help=False)
+    pre.add_argument("--plugins", default=None)
+    ns, _ = pre.parse_known_args(argv)
+    raw = ns.plugins or os.environ.get("SONIQ_PLUGINS")
+    if not raw:
+        return None
+    names = [n.strip() for n in raw.split(",") if n.strip()]
+    return names or None
 
-    # Parse arguments
-    args = parser.parse_args()
+
+def _build_plugin_app(plugin_names: List[str]) -> object:
+    """Build a bootstrap ``Soniq`` and install the named plugins.
+
+    The app is *not* initialized (no DB connection); plugins only run
+    their synchronous ``install()`` so they can register CLI specs.
+    Deferred work (``on_startup``) waits for ``soniq setup``.
+    """
+    from soniq import Soniq
+    from soniq.plugin import discover_plugins
+
+    app = Soniq()
+    for plugin in discover_plugins(plugin_names):
+        app.use(plugin)
+    return app
+
+
+def _register_plugin_commands(subparsers, plugin_app: object) -> None:
+    """Fold CommandSpecs registered by plugins into the parser."""
+    cli = getattr(plugin_app, "cli", None)
+    if cli is None:
+        return
+    for spec in cli._commands:
+        sub_parser = subparsers.add_parser(
+            spec.name,
+            help=spec.help,
+            description=spec.description or spec.help,
+        )
+        for arg in spec.arguments:
+            args = arg.get("args", [])
+            kwargs = arg.get("kwargs", {})
+            sub_parser.add_argument(*args, **kwargs)
+        sub_parser.set_defaults(func=spec.handler)
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+
+    plugin_names = _resolve_plugin_names(argv)
+    plugin_app = None
+    if plugin_names is not None:
+        try:
+            plugin_app = _build_plugin_app(plugin_names)
+        except Exception as e:
+            print_status(f"Plugin discovery failed: {e}", "error")
+            return 1
+
+    parser = build_parser(plugin_app=plugin_app)
+    args = parser.parse_args(argv)
 
     if not args.command:
         parser.print_help()
         return 1
 
-    # Execute the command
     try:
         if hasattr(args, "func"):
-            # Core command handler
             if asyncio.iscoroutinefunction(args.func):
-                return asyncio.run(args.func(args))
+                rc = asyncio.run(args.func(args))
             else:
-                return args.func(args)
-        else:
-            print_status(f"Command '{args.command}' has no handler", "error")
-            return 1
-
+                rc = args.func(args)
+            return int(rc) if rc is not None else 0
+        print_status(f"Command '{args.command}' has no handler", "error")
+        return 1
     except KeyboardInterrupt:
         print_status("Operation interrupted by user", "info")
         return 0
@@ -80,4 +179,4 @@ For more information, visit: https://github.com/abhinavs/soniq
 
 
 if __name__ == "__main__":
-    exit(main())
+    raise SystemExit(main())

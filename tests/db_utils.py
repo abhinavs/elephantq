@@ -5,7 +5,7 @@ from urllib.parse import urlparse, urlunparse
 import asyncpg
 from asyncpg.pool import Pool
 
-from soniq.db.migrations import run_migrations
+from soniq.backends.postgres.migration_runner import run_migrations
 
 TEST_DB_NAME = "soniq_test"
 DEFAULT_TEST_URL = f"postgresql://postgres@localhost/{TEST_DB_NAME}"
@@ -70,8 +70,7 @@ async def create_test_database():
         # Drop migration tracking so all migrations re-apply cleanly
         await conn.execute("DROP TABLE IF EXISTS soniq_migrations CASCADE")
         # Drop all soniq tables to start fresh
-        await conn.execute("DROP TABLE IF EXISTS soniq_job_timeouts CASCADE")
-        await conn.execute("DROP TABLE IF EXISTS soniq_config CASCADE")
+        await conn.execute("DROP TABLE IF EXISTS soniq_task_registry CASCADE")
         await conn.execute("DROP TABLE IF EXISTS soniq_webhook_deliveries CASCADE")
         await conn.execute("DROP TABLE IF EXISTS soniq_webhook_endpoints CASCADE")
         await conn.execute("DROP TABLE IF EXISTS soniq_dead_letter_jobs CASCADE")

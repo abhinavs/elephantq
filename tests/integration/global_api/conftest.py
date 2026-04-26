@@ -34,13 +34,13 @@ async def clean_global_api_state():
     try:
         global_app = soniq._get_global_app()
         if global_app._is_initialized:
-            app_pool = await global_app.get_pool()
+            app_pool = await global_app._get_pool()
             await clear_table(app_pool)
         else:
             # Initialize once if needed
             await soniq.configure(database_url=TEST_DATABASE_URL)
             global_app = soniq._get_global_app()
-            app_pool = await global_app.get_pool()
+            app_pool = await global_app._get_pool()
             await clear_table(app_pool)
     except Exception:
         # Fallback - just configure without clearing
@@ -62,6 +62,6 @@ async def clean_db():
     import soniq
 
     global_app = soniq._get_global_app()
-    app_pool = await global_app.get_pool()
+    app_pool = await global_app._get_pool()
     await clear_table(app_pool)
     return None

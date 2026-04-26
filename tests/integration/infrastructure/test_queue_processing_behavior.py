@@ -39,7 +39,7 @@ async def app():
     """Create an Soniq app instance for testing"""
     _app = Soniq(database_url=TEST_DATABASE_URL)
     await _app._ensure_initialized()
-    pool = await _app.get_pool()
+    pool = await _app._get_pool()
     await clear_table(pool)
     clear_registry()
     yield _app

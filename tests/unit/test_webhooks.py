@@ -8,7 +8,6 @@ responses, and enforces queue limits to prevent OOM under load.
 """
 
 import inspect
-import os
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -16,9 +15,8 @@ import pytest
 
 pytest.importorskip("aiohttp")
 
-os.environ.setdefault("SONIQ_WEBHOOKS_ENABLED", "true")
-
 from soniq.features.webhooks import (  # noqa: E402
+    HTTPTransport,
     WebhookDelivery,
     WebhookDispatcher,
     WebhookEndpoint,
@@ -101,23 +99,28 @@ async def test_delivery_failure_sets_next_retry_at(dispatcher):
 
 
 class TestWebhookResponseCap:
-    """Verify webhook response body reads are bounded."""
+    """Verify webhook response body reads are bounded.
+
+    The size cap moved from ``WebhookDispatcher._process_delivery`` into
+    the default ``HTTPTransport.deliver`` when delivery became pluggable
+    (the dispatcher no longer talks HTTP directly). Custom transports are
+    responsible for their own bounds; the default transport must keep
+    its 4 KB cap so the in-tree webhook delivery cannot OOM on a chatty
+    upstream.
+    """
 
     def test_no_unbounded_response_text(self):
-        """_process_delivery should not use await response.text() unbounded."""
-        source = inspect.getsource(WebhookDispatcher._process_delivery)
-        # response.text() reads the entire body with no limit
+        source = inspect.getsource(HTTPTransport.deliver)
         assert "response.text()" not in source, (
-            "Webhook response body is read with unbounded response.text(). "
-            "Must use response.content.read(N) with a size cap."
+            "Default HTTPTransport must not read the body with unbounded "
+            "response.text(); use response.content.read(N) instead."
         )
 
     def test_response_read_has_size_limit(self):
-        """_process_delivery should use response.content.read with a size limit."""
-        source = inspect.getsource(WebhookDispatcher._process_delivery)
+        source = inspect.getsource(HTTPTransport.deliver)
         assert (
             "content.read(" in source
-        ), "Webhook response body should use response.content.read(N) with a cap"
+        ), "Default HTTPTransport must read response body with a size cap"
 
 
 # ---------------------------------------------------------------------------

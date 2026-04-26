@@ -56,15 +56,7 @@ class SQLiteBackend:
         return False
 
     @property
-    def supports_connection_pool(self) -> bool:
-        return False
-
-    @property
     def supports_advisory_locks(self) -> bool:
-        return False
-
-    @property
-    def supports_migrations(self) -> bool:
         return False
 
     # --- Lifecycle ---
@@ -506,6 +498,26 @@ class SQLiteBackend:
         )
         await self._conn.commit()
         return len(stale)
+
+    # --- Task registry (observability metadata only) ---
+    #
+    # SQLite is the local-dev backend; the task registry is observability
+    # metadata surfaced through the dashboard / `soniq tasks check`, both
+    # of which target Postgres deployments. The methods exist so SQLite
+    # satisfies the ``TaskRegistryStore`` Protocol but do not persist
+    # anything - operators on SQLite read task names from logs.
+
+    async def register_task_name(
+        self,
+        *,
+        task_name: str,
+        worker_id: str,
+        args_model_repr: Optional[str] = None,
+    ) -> None:
+        return None
+
+    async def list_registered_task_names(self) -> list[dict]:
+        return []
 
     # --- Maintenance ---
 

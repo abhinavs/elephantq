@@ -9,13 +9,29 @@ from soniq import Soniq
 
 app = Soniq(database_url="postgresql://localhost/myapp")
 
-@app.job(name="users.send_welcome_email")
+@app.job
 async def send_welcome_email(user_id: int, template: str = "default"):
     user = await get_user(user_id)
     await send_email(user.email, template)
 ```
 
-The `@app.job(name=...)` decorator registers the function under an explicit, dotted task name. The name is the wire protocol once queues cross repo boundaries; module-derived names are not supported.
+The `@app.job` decorator registers the function. By default the task name is derived from `f"{module}.{qualname}"` (Celery-style), so the example above registers as `myapp.tasks.send_welcome_email`. The empty-parens form `@app.job()` works the same way (and is what you'll often see in code that started without kwargs and later grew them):
+
+```python
+@app.job()
+async def cleanup_session(session_id: str):
+    ...
+```
+
+Pass `name=` explicitly to override:
+
+```python
+@app.job(name="users.send_welcome_email")
+async def send_welcome_email(user_id: int, template: str = "default"):
+    ...
+```
+
+For cross-service deployments the explicit form is recommended — the name is the wire protocol, and module-derived names rot when functions are renamed.
 
 ## Decorator options
 
@@ -53,11 +69,11 @@ Soniq provides two ways to register jobs.
 ```python
 import soniq
 
-@soniq.job(name="users.send_welcome_email")
+@soniq.job
 async def send_welcome_email(user_id: int):
     ...
 
-await soniq.enqueue("users.send_welcome_email", args={"user_id": 42})
+await soniq.enqueue(send_welcome_email, user_id=42)
 ```
 
 **Instance API** -- explicit app object, recommended for FastAPI and multi-instance setups:
@@ -65,7 +81,7 @@ await soniq.enqueue("users.send_welcome_email", args={"user_id": 42})
 ```python
 app = Soniq(database_url="postgresql://localhost/myapp")
 
-@app.job()
+@app.job
 async def send_welcome_email(user_id: int):
     ...
 
@@ -76,8 +92,17 @@ await app.enqueue(send_welcome_email, user_id=42)
 
 ## Enqueuing jobs
 
+`enqueue` accepts three input shapes:
+
 ```python
+# 1. Pass the function directly (most common, single-repo)
 job_id = await app.enqueue(send_welcome_email, user_id=42)
+
+# 2. Pass the task name as a string (cross-service / by-name)
+job_id = await app.enqueue("users.send_welcome_email", args={"user_id": 42})
+
+# 3. Pass a TaskRef (typed cross-repo stub - see the cross-service guide)
+job_id = await app.enqueue(send_welcome_ref, args={"user_id": 42})
 ```
 
 You can override decorator defaults at enqueue time:
@@ -111,7 +136,7 @@ Declare a parameter typed as `JobContext` and Soniq injects runtime metadata aut
 ```python
 from soniq import JobContext
 
-@app.job()
+@app.job
 async def process_invoice(invoice_id: str, ctx: JobContext):
     print(f"Job {ctx.job_id}, attempt {ctx.attempt} of {ctx.max_attempts}")
     print(f"Running on worker {ctx.worker_id}, queue: {ctx.queue}")

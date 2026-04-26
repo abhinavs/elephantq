@@ -1,15 +1,12 @@
 import pytest
 
 from soniq.dashboard.fastapi_app import FASTAPI_AVAILABLE, create_dashboard_app
-from soniq.settings import configure, get_settings
 
 
 @pytest.mark.skipif(not FASTAPI_AVAILABLE, reason="FastAPI not installed")
 @pytest.mark.asyncio
-async def test_dashboard_api_smoke(monkeypatch):
+async def test_dashboard_api_smoke():
     httpx = pytest.importorskip("httpx")
-    monkeypatch.setenv("SONIQ_DASHBOARD_ENABLED", "true")
-    get_settings(reload=True)
 
     app = create_dashboard_app()
 
@@ -24,6 +21,3 @@ async def test_dashboard_api_smoke(monkeypatch):
         resp = await client.get("/api/jobs")
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
-
-    configure(dashboard_enabled=False)
-    get_settings(reload=True)

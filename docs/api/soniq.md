@@ -11,7 +11,6 @@ from soniq import Soniq
 
 app = Soniq(
     database_url="postgresql://localhost/myapp",
-    config_file=None,
     backend=None,
     **settings_overrides,
 )
@@ -20,7 +19,6 @@ app = Soniq(
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `database_url` | `str \| None` | `None` (falls back to `SONIQ_DATABASE_URL` or `postgresql://postgres@localhost/soniq`) | PostgreSQL connection URL. Also accepts paths ending in `.db`/`.sqlite`/`.sqlite3` for SQLite. |
-| `config_file` | `Path \| None` | `None` | Path to a `.env`-style config file. |
 | `backend` | `StorageBackend \| str \| None` | `None` | Storage backend instance, or one of `"postgres"`, `"sqlite"`, `"memory"`. When `None`, auto-detected from `database_url`. |
 | `**settings_overrides` | | | Any field from `SoniqSettings` (see below). |
 
@@ -47,19 +45,22 @@ Common settings you can pass as keyword arguments:
 | `debug` | `bool` | `False` | `SONIQ_DEBUG` |
 | `environment` | `str` | `"production"` | `SONIQ_ENVIRONMENT` |
 
-Feature flags (all `False` by default):
+Optional features no longer require `*_enabled` flags. Each feature is
+"on" iff the user wires it up by accessing the corresponding lazy
+property on the app:
 
-| Keyword | Env var | Unlocks |
-|---|---|---|
-| `dashboard_enabled` | `SONIQ_DASHBOARD_ENABLED` | Web dashboard |
-| `dashboard_write_enabled` | `SONIQ_DASHBOARD_WRITE_ENABLED` | Retry/delete/cancel buttons in dashboard |
-| `scheduling_enabled` | `SONIQ_SCHEDULING_ENABLED` | Advanced scheduling and recurring jobs |
-| `dead_letter_queue_enabled` | `SONIQ_DEAD_LETTER_QUEUE_ENABLED` | Dead-letter queue management |
-| `metrics_enabled` | `SONIQ_METRICS_ENABLED` | Metrics collection |
-| `logging_enabled` | `SONIQ_LOGGING_ENABLED` | Structured logging features |
-| `webhooks_enabled` | `SONIQ_WEBHOOKS_ENABLED` | Webhook notifications |
-| `timeouts_enabled` | `SONIQ_TIMEOUTS_ENABLED` | Job timeout processing |
-| `signing_enabled` | `SONIQ_SIGNING_ENABLED` | Signing and secret helpers |
+```python
+await app.webhooks.register(url="https://...")     # webhooks
+await app.dead_letter.list_jobs()                  # dead-letter queue
+await app.scheduler.add(name=..., cron="0 9 * * *")
+await app.signing.encrypt("plaintext")
+await app.logs.search_logs("error")
+```
+
+The dashboard is wired up by running the dashboard process
+(`soniq dashboard` or `create_dashboard_app(app)`); HTTP-level write
+authorization is enforced by `SONIQ_DASHBOARD_API_KEY` or by being a
+loopback caller.
 
 
 ## Global configure()
@@ -176,7 +177,7 @@ defaults. The full priority order:
 
 1. Keyword arguments passed to the constructor
 2. Environment variables (`SONIQ_*`)
-3. `.env` file (or custom `config_file`)
+3. `.env` file
 4. Default values
 
 Example `.env` file:
@@ -187,5 +188,4 @@ SONIQ_CONCURRENCY=8
 SONIQ_MAX_RETRIES=5
 SONIQ_QUEUES=default,urgent,background
 SONIQ_LOG_LEVEL=DEBUG
-SONIQ_DASHBOARD_ENABLED=true
 ```

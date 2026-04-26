@@ -5,13 +5,13 @@ import pytest
 
 
 class TestCleanupStaleWorkersParameterized:
-    """Verify cleanup_stale_workers uses parameterized INTERVAL."""
+    """Verify PostgresBackend.cleanup_stale_workers uses parameterized INTERVAL."""
 
     @pytest.mark.asyncio
     async def test_interval_is_parameterized(self):
         from contextlib import asynccontextmanager
 
-        from soniq.core.heartbeat import cleanup_stale_workers
+        from soniq.backends.postgres import PostgresBackend
 
         mock_conn = AsyncMock()
         mock_conn.fetch = AsyncMock(return_value=[])
@@ -21,10 +21,19 @@ class TestCleanupStaleWorkersParameterized:
         async def _acquire():
             yield mock_conn
 
+        @asynccontextmanager
+        async def _txn():
+            yield
+
+        mock_conn.transaction = MagicMock(return_value=_txn())
+
         mock_pool = MagicMock()
         mock_pool.acquire = _acquire
 
-        await cleanup_stale_workers(mock_pool, stale_threshold_seconds=120)
+        backend = PostgresBackend.__new__(PostgresBackend)
+        backend._pool = mock_pool
+
+        await backend.cleanup_stale_workers(120)
 
         fetch_call = mock_conn.fetch.call_args
         sql = fetch_call.args[0]
@@ -41,6 +50,7 @@ class TestGetDeliveryStatsParameterized:
         from contextlib import asynccontextmanager
 
         from soniq.features import webhooks
+        from soniq.testing.helpers import make_app
 
         mock_conn = AsyncMock()
         mock_conn.fetchrow = AsyncMock(
@@ -55,16 +65,15 @@ class TestGetDeliveryStatsParameterized:
         mock_conn.fetch = AsyncMock(return_value=[])
 
         @asynccontextmanager
-        async def _acquire():
+        async def fake_acquire():
             yield mock_conn
 
-        mock_pool = MagicMock()
-        mock_pool.acquire = _acquire
-
-        monkeypatch.setattr(webhooks, "get_pool", AsyncMock(return_value=mock_pool))
-
-        manager = webhooks.WebhookManager()
-        await manager.get_delivery_stats(hours=48)
+        # The service borrows connections through ``WebhookService._acquire``
+        # (an async context manager). Replace that hop with a mock so the
+        # SQL under test runs against ``mock_conn`` without touching Postgres.
+        service = webhooks.WebhookService(make_app())
+        monkeypatch.setattr(service, "_acquire", fake_acquire)
+        await service.get_delivery_stats(hours=48)
 
         fetchrow_call = mock_conn.fetchrow.call_args
         sql = fetchrow_call.args[0]

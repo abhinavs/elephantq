@@ -9,7 +9,6 @@ import os
 
 import pytest
 
-from soniq.db.connection import close_pool
 from tests.db_utils import TEST_DATABASE_URL, clear_table, create_test_database
 
 # Ensure test database URL is set
@@ -25,14 +24,27 @@ async def setup_instance_test_database():
 
 @pytest.fixture(autouse=True)
 async def clean_instance_api_state():
-    """Clean instance API state before each test - FAST VERSION."""
-    # Just close existing connections - database setup handled by session fixture
-    await close_pool()
+    """Close the global app between instance-API tests so a stale pool from a
+    previous test does not leak."""
+    import soniq
+
+    global_app = soniq._global_app
+    if (
+        global_app is not None
+        and global_app._is_initialized
+        and not global_app._is_closed
+    ):
+        await global_app.close()
 
     yield
 
-    # Clean up after test - close connections
-    await close_pool()
+    global_app = soniq._global_app
+    if (
+        global_app is not None
+        and global_app._is_initialized
+        and not global_app._is_closed
+    ):
+        await global_app.close()
 
 
 @pytest.fixture
@@ -42,7 +54,7 @@ async def clean_db():
     from soniq.app import Soniq
 
     app = Soniq(database_url=TEST_DATABASE_URL)
-    pool = await app.get_pool()
+    pool = await app._get_pool()
     await clear_table(pool)
     await app.close()
     return None

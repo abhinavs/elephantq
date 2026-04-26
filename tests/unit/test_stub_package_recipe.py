@@ -49,7 +49,7 @@ send_invoice = task_ref(
 async def test_stub_package_recipe_end_to_end():
     backend = MemoryBackend()
 
-    producer = Soniq(backend=backend, producer_only=True)
+    producer = Soniq(backend=backend)
     consumer = Soniq(backend=backend)
 
     received = []
@@ -85,7 +85,7 @@ async def test_stub_package_recipe_args_model_protects_producer():
     side via the TaskRef's args_model, before any row is written."""
     from soniq.errors import SONIQ_TASK_ARGS_INVALID, SoniqError
 
-    producer = Soniq(backend=MemoryBackend(), producer_only=True)
+    producer = Soniq(backend=MemoryBackend())
     with pytest.raises(SoniqError) as exc_info:
         await producer.enqueue(send_invoice, args={"order_id": 123, "customer": "acme"})
     assert exc_info.value.error_code == SONIQ_TASK_ARGS_INVALID

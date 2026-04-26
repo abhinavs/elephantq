@@ -4,18 +4,11 @@ A worker is a long-running process that fetches jobs from the database and execu
 
 ## Starting a worker
 
-**CLI** (most common):
+The primary way to run a worker is the CLI:
 
 ```bash
 soniq start
 soniq start --concurrency 8 --queues emails,billing
-```
-
-**Programmatic** (useful for testing or embedding):
-
-```python
-app = Soniq(database_url="postgresql://localhost/myapp")
-await app.run_worker(concurrency=4, queues=["emails", "billing"])
 ```
 
 **Run-once mode** processes all available jobs and exits. Useful for testing and cron-style batch processing:
@@ -23,6 +16,8 @@ await app.run_worker(concurrency=4, queues=["emails", "billing"])
 ```bash
 soniq start --run-once
 ```
+
+Each invocation supervises one worker process. Run it from your process manager (systemd, Kubernetes Deployment, supervisord) and let the manager handle restarts and scaling. The programmatic `app.run_worker(...)` entry point exists for tests and embedded scenarios but is not the recommended deploy path.
 
 ## Concurrency model
 
@@ -32,7 +27,7 @@ Each worker runs a configurable number of asyncio tasks (default: 4). These task
 - CPU-bound jobs block the event loop. Wrap them in `asyncio.to_thread()`:
 
 ```python
-@app.job()
+@app.job
 async def generate_pdf(report_id: str):
     report = await fetch_report(report_id)
     # Offload CPU work to a thread

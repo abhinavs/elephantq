@@ -12,11 +12,6 @@ from datetime import datetime, timezone
 import pytest
 
 import soniq
-from soniq.db.context import (
-    DatabaseContext,
-    get_context_pool,
-    set_current_context,
-)
 from soniq.job import Snooze
 from tests.db_utils import TEST_DATABASE_URL
 
@@ -25,7 +20,6 @@ from tests.db_utils import TEST_DATABASE_URL
 async def test_snooze_requeues_with_attempts_unchanged_against_postgres():
     await soniq.configure(database_url=TEST_DATABASE_URL)
     global_app = soniq._get_global_app()
-    set_current_context(DatabaseContext.from_instance(global_app))
     await global_app._ensure_initialized()
 
     calls = {"n": 0}
@@ -50,7 +44,7 @@ async def test_snooze_requeues_with_attempts_unchanged_against_postgres():
 
     # Reset and requeue via full processor path instead - need to unclaim first.
     # Roll back the claim so we can re-drive through the processor cleanly.
-    async with (await get_context_pool()).acquire() as conn:
+    async with global_app.backend._pool.acquire() as conn:
         await conn.execute(
             "UPDATE soniq_jobs SET status='queued', attempts=0 WHERE id=$1",
             job_id,
@@ -61,7 +55,7 @@ async def test_snooze_requeues_with_attempts_unchanged_against_postgres():
     )
     assert result is True
 
-    async with (await get_context_pool()).acquire() as conn:
+    async with global_app.backend._pool.acquire() as conn:
         row = await conn.fetchrow(
             "SELECT status, attempts, scheduled_at, last_error FROM soniq_jobs WHERE id=$1",
             job_id,
@@ -81,7 +75,7 @@ async def test_snooze_requeues_with_attempts_unchanged_against_postgres():
     )
     assert result is True
 
-    async with (await get_context_pool()).acquire() as conn:
+    async with global_app.backend._pool.acquire() as conn:
         row = await conn.fetchrow(
             "SELECT status, attempts FROM soniq_jobs WHERE id=$1", job_id
         )

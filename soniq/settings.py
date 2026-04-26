@@ -9,15 +9,16 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import Field, ValidationError, field_validator
+from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic_settings.sources import EnvSettingsSource
+from pydantic_settings.sources import EnvSettingsSource, PydanticBaseSettingsSource
 
 
 class CustomEnvSource(EnvSettingsSource):
     """Custom environment source that handles comma-separated lists without JSON parsing."""
 
     def prepare_field_value(
-        self, field_name: str, field: Any, value: Any, value_is_complex: bool
+        self, field_name: str, field: FieldInfo, value: Any, value_is_complex: bool
     ) -> Any:
         """Override to handle comma-separated lists for specific fields."""
         if field_name == "queues" and isinstance(value, str):
@@ -47,11 +48,11 @@ class SoniqSettings(BaseSettings):
     def settings_customise_sources(
         cls,
         settings_cls: type[BaseSettings],
-        init_settings,
-        env_settings,
-        dotenv_settings,
-        file_secret_settings,
-    ):
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
         """Use custom environment source."""
         return (
             init_settings,
@@ -147,36 +148,6 @@ class SoniqSettings(BaseSettings):
         ),
     )
 
-    # Feature Flags (all disabled by default)
-    dashboard_enabled: bool = Field(
-        default=False, description="Enable the Soniq dashboard"
-    )
-    dashboard_write_enabled: bool = Field(
-        default=False,
-        description="Enable write actions (retry/delete/cancel) in the dashboard",
-    )
-    scheduling_enabled: bool = Field(
-        default=False, description="Enable advanced scheduling and recurring jobs"
-    )
-    dead_letter_queue_enabled: bool = Field(
-        default=False, description="Enable dead-letter queue features"
-    )
-    metrics_enabled: bool = Field(
-        default=False, description="Enable metrics collection features"
-    )
-    logging_enabled: bool = Field(
-        default=False, description="Enable structured logging features"
-    )
-    webhooks_enabled: bool = Field(
-        default=False, description="Enable webhook notifications"
-    )
-    timeouts_enabled: bool = Field(
-        default=False, description="Enable job timeout processing"
-    )
-    signing_enabled: bool = Field(
-        default=False, description="Enable signing and secret helpers"
-    )
-
     # Timeouts and Intervals
     heartbeat_interval: float = Field(
         default=5.0,
@@ -220,75 +191,9 @@ class SoniqSettings(BaseSettings):
         description="Delay before retrying after worker errors (seconds)",
     )
 
-    # Health Monitoring Settings
-    health_check_timeout: float = Field(
-        default=5.0,
-        ge=0.1,
-        le=60.0,
-        description="Default timeout for health checks (seconds)",
-    )
-
-    health_monitoring_interval: float = Field(
-        default=30.0,
-        ge=1.0,
-        le=3600.0,
-        description="Interval for health monitoring loops (seconds)",
-    )
-
-    health_error_retry_delay: float = Field(
-        default=5.0,
-        ge=0.1,
-        le=300.0,
-        description="Delay before retrying health checks after errors (seconds)",
-    )
-
-    # Health Check Thresholds
-    stuck_jobs_threshold: int = Field(
-        default=100,
-        ge=1,
-        le=10000,
-        description="Number of stuck jobs that triggers health warning",
-    )
-
-    job_failure_rate_threshold: float = Field(
-        default=50.0,
-        ge=0.0,
-        le=100.0,
-        description="Job failure rate percentage that triggers health degradation",
-    )
-
-    memory_usage_threshold: float = Field(
-        default=90.0,
-        ge=50.0,
-        le=99.0,
-        description="Memory usage percentage that triggers health warning",
-    )
-
-    disk_usage_threshold: float = Field(
-        default=90.0,
-        ge=50.0,
-        le=99.0,
-        description="Disk usage percentage that triggers health warning",
-    )
-
-    cpu_usage_threshold: float = Field(
-        default=95.0,
-        ge=50.0,
-        le=99.0,
-        description="CPU usage percentage that triggers health warning",
-    )
-
-    # CLI and Display Settings
-    display_limit: int = Field(
-        default=10,
-        ge=1,
-        le=1000,
-        description="Default number of jobs to display in CLI commands",
-    )
-
     @field_validator("job_timeout", mode="before")
     @classmethod
-    def parse_job_timeout(cls, v):
+    def parse_job_timeout(cls, v: Any) -> Any:
         """Parse job timeout value, converting 0 to None (no timeout)."""
         if v == "0" or v == 0:
             return None
@@ -339,7 +244,7 @@ class SoniqSettings(BaseSettings):
 
     @field_validator("debug", mode="before")
     @classmethod
-    def parse_debug(cls, v):
+    def parse_debug(cls, v: Any) -> Any:
         """Parse debug value from environment variables, handling empty strings."""
         if isinstance(v, str):
             if v.lower() in ("", "0", "false", "f", "no", "n"):
@@ -355,7 +260,7 @@ class SoniqSettings(BaseSettings):
 
     @field_validator("log_level")
     @classmethod
-    def validate_log_level(cls, v):
+    def validate_log_level(cls, v: str) -> str:
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
         if v.upper() not in valid_levels:
             raise ValueError(f"log_level must be one of {valid_levels}")
@@ -363,7 +268,7 @@ class SoniqSettings(BaseSettings):
 
     @field_validator("log_format")
     @classmethod
-    def validate_log_format(cls, v):
+    def validate_log_format(cls, v: str) -> str:
         valid_formats = ["simple", "structured"]
         if v.lower() not in valid_formats:
             raise ValueError(f"log_format must be one of {valid_formats}")
@@ -371,7 +276,7 @@ class SoniqSettings(BaseSettings):
 
     @field_validator("database_url")
     @classmethod
-    def validate_database_url(cls, v):
+    def validate_database_url(cls, v: str) -> str:
         if not v:
             raise ValueError("database_url must not be empty")
         return v
@@ -411,12 +316,12 @@ def get_settings(
     return _settings
 
 
-def reload_settings(config_file: Optional[Path] = None):
+def reload_settings(config_file: Optional[Path] = None) -> SoniqSettings:
     """Force reload settings from environment/config file."""
     return get_settings(config_file=config_file, reload=True)
 
 
-def configure(**kwargs) -> SoniqSettings:
+def configure(**kwargs: Any) -> SoniqSettings:
     """
     Configure Soniq settings programmatically.
 
@@ -436,7 +341,7 @@ def configure(**kwargs) -> SoniqSettings:
     return _settings
 
 
-def __getattr__(name: str):
+def __getattr__(name: str) -> Any:
     """Expose SONIQ_* settings as module attributes for CLI convenience."""
     if name.startswith("SONIQ_"):
         key = name[len("SONIQ_") :].lower()

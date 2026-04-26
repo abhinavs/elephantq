@@ -8,41 +8,43 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 
 ### Breaking changes
 
-- **`Soniq.enqueue` shape replaced.** `app.enqueue(my_func, x=1)` is
-  removed; use `app.enqueue("task.name", args={"x": 1})`. Function
-  args travel as an explicit `args=` dict; enqueue options
-  (`queue`, `priority`, `scheduled_at`, `unique`, `dedup_key`,
-  `connection`) stay at the top level. Module-level
-  `soniq.enqueue` follows the same shape.
-- **`@app.job(name=...)` is mandatory.** Module-derived names
-  (`module.qualname`) are removed. `@app.job()` without `name=` raises
-  `SoniqError(SONIQ_INVALID_TASK_NAME)` at decoration time.
-  `@app.periodic` derives `name=func.__name__` when you don't pass one.
+None for single-repo users. Existing code that uses
+`@app.job(...)` and `app.enqueue(my_func, x=1)` keeps working
+unchanged.
 
 ### Added
 
-- Cross-service enqueue via task names. Service A can enqueue jobs
-  service B owns and executes; both share a Postgres database, neither
-  imports the other's code.
-- `Soniq(producer_only=True)` flag. Refuses `run_worker`, the
-  recurring scheduler entry point, and `@app.job` registration;
-  allows enqueue, schedule, and the read-only management API.
-  Suppresses the recurring-scheduler startup warning.
+- **Cross-service enqueue.** `app.enqueue` now accepts three input
+  shapes selected by the type of the first argument:
+  - **Callable** (single-repo): `app.enqueue(my_func, x=1)` -
+    unchanged from earlier versions.
+  - **String task name** (cross-service / by-name):
+    `app.enqueue("users.task", args={"x": 1})`. The producer does
+    not need to import the consumer's handler.
+  - **`TaskRef`** (typed cross-repo stub):
+    `app.enqueue(my_ref, args={"x": 1})`. Validates `args` against
+    the ref's `args_model` and uses its `default_queue` when no
+    explicit `queue=` is passed.
+- **`@app.job(name=...)` for stable wire-protocol identifiers.**
+  When omitted the task name is derived from
+  `f"{module}.{qualname}"` (matching Celery / Dramatiq / RQ).
+  Cross-service deployments should pass `name=` explicitly; explicit
+  names are validated against `SONIQ_TASK_NAME_PATTERN`.
+
 - `SONIQ_ENQUEUE_VALIDATION` setting (`"strict"` / `"warn"` /
-  `"none"`). Governs how `enqueue()` handles a string name not
-  registered locally. Default `"strict"` raises
+  `"none"`). Governs how `enqueue("string-name", ...)` handles a name
+  not registered locally. Default `"strict"` raises
   `SONIQ_UNKNOWN_TASK_NAME`. `"warn"` emits a rate-limited
   per-process warning.
 - `SONIQ_TASK_NAME_PATTERN` setting. Default rejects whitespace,
-  uppercase, and leading/trailing dots. Validates at registration and
-  enqueue time.
+  uppercase, and leading/trailing dots. Validates explicit `name=`
+  values at registration and string targets at enqueue time.
 - New error codes: `SONIQ_UNKNOWN_TASK_NAME`,
-  `SONIQ_INVALID_TASK_NAME`, `SONIQ_TASK_ARGS_INVALID`,
-  `SONIQ_PRODUCER_ONLY`.
-- `soniq migrate-enqueue` codemod. AST-based rewrite of the old
-  shapes to the new ones. Refuses to invent canonical names by
-  default; callers supply a `migrate-enqueue.toml` mapping or pass
-  `--use-derived-names` for a quick-start fallback.
+  `SONIQ_INVALID_TASK_NAME`, `SONIQ_TASK_ARGS_INVALID`.
+- `soniq migrate-enqueue` codemod for projects that want to switch
+  from the callable form to the by-name form (e.g. when carving a
+  consumer service out of a monolith). Optional - the callable form
+  keeps working.
 
 ### Documentation
 
@@ -53,6 +55,13 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - README cross-service section.
 
 ### Migration
+
+Most single-repo code does not need to change. The callable form
+of `enqueue` keeps working and `@app.job()` continues to derive task
+names automatically.
+
+For projects switching to the by-name form (e.g. carving a consumer
+service out of a monolith), the codemod handles the rewrite:
 
 ```bash
 soniq migrate-enqueue --use-derived-names .

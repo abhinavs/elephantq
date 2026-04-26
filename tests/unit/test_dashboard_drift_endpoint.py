@@ -21,17 +21,18 @@ from __future__ import annotations
 import pytest
 
 
-def test_drift_data_layer_function_importable():
-    """Importing soniq.dashboard.app.get_task_registry_drift must work
-    without requiring a live database."""
-    from soniq.dashboard.app import get_task_registry_drift
+def test_drift_data_layer_method_importable():
+    """`DashboardService.get_task_registry_drift` must import without
+    requiring a live database."""
+    from soniq.dashboard.app import DashboardService
 
-    assert callable(get_task_registry_drift)
+    assert callable(DashboardService.get_task_registry_drift)
 
 
 def test_drift_endpoint_registered_on_fastapi_app():
     """The /api/tasks/drift route is wired on the FastAPI app."""
     fastapi = pytest.importorskip("fastapi")  # noqa: F841
+
     from soniq.dashboard.fastapi_app import create_dashboard_app
 
     app = create_dashboard_app()
@@ -40,12 +41,12 @@ def test_drift_endpoint_registered_on_fastapi_app():
 
 
 def test_drift_endpoint_accepts_window_minutes_query_param():
-    """The endpoint takes window_minutes; the default is 60."""
+    """The method takes window_minutes; the default is 60."""
     fastapi = pytest.importorskip("fastapi")  # noqa: F841
     import inspect
 
-    from soniq.dashboard.app import get_task_registry_drift
+    from soniq.dashboard.app import DashboardService
 
-    sig = inspect.signature(get_task_registry_drift)
+    sig = inspect.signature(DashboardService.get_task_registry_drift)
     assert "window_minutes" in sig.parameters
     assert sig.parameters["window_minutes"].default == 60

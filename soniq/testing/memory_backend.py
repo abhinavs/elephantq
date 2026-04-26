@@ -37,15 +37,7 @@ class MemoryBackend:
         return False
 
     @property
-    def supports_connection_pool(self) -> bool:
-        return False
-
-    @property
     def supports_advisory_locks(self) -> bool:
-        return False
-
-    @property
-    def supports_migrations(self) -> bool:
         return False
 
     # --- Lifecycle ---

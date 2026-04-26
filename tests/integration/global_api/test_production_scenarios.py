@@ -6,6 +6,7 @@ correctly for Soniq to be truly production-ready.
 """
 
 import asyncio
+import contextlib
 import os
 import signal
 import subprocess
@@ -18,8 +19,21 @@ from pathlib import Path
 import pytest
 
 import soniq
-from soniq.db.context import DatabaseContext
 from soniq.settings import get_settings
+
+
+@contextlib.asynccontextmanager
+async def _global_pool():
+    """Yield the global Soniq app's asyncpg pool for production-scenario tests.
+
+    Used as ``async with _global_pool() as pool:`` or
+    ``async with _global_pool():`` where the latter form just ensures the
+    pool exists.
+    """
+    app = soniq._get_global_app()
+    await app._ensure_initialized()
+    yield app.backend._pool
+
 
 # Get project root directory dynamically
 PROJECT_ROOT = str(Path(__file__).parent.parent.parent.parent)
@@ -55,7 +69,7 @@ async def slow_test_job(duration: float, result_file: str):
 @soniq.job(name="database_intensive_job")
 async def database_intensive_job(job_id: str, iterations: int = 100):
     """Job that does database operations - useful for testing connection issues"""
-    async with DatabaseContext() as pool:
+    async with _global_pool() as pool:
         async with pool.acquire() as conn:
             results = []
             for i in range(iterations):
@@ -96,7 +110,7 @@ class TestProductionScenarios:
             result_file = os.path.join(temp_dir, "slow_job_result.txt")
 
             # Enqueue a mix of fast and slow jobs
-            async with DatabaseContext():
+            async with _global_pool():
                 job_ids = []
 
                 # Fast jobs that should complete
@@ -186,7 +200,7 @@ if __name__ == "__main__":
             success_file = os.path.join(temp_dir, "success_jobs.txt")
 
             # Create jobs that will succeed
-            async with DatabaseContext():
+            async with _global_pool():
                 job_ids_before = []
                 for i in range(3):
                     job_id = await soniq.enqueue(
@@ -208,7 +222,7 @@ if __name__ == "__main__":
 
             # Now test recovery by creating a new pool (simulating reconnection)
             # In a real scenario, the pool would auto-reconnect on error
-            async with DatabaseContext():
+            async with _global_pool():
                 # Add more jobs after "reconnection"
                 job_ids_after = []
                 for i in range(2):
@@ -244,7 +258,7 @@ if __name__ == "__main__":
             execution_log = os.path.join(temp_dir, "execution_log.txt")
 
             # Create many jobs to increase chance of race conditions
-            async with DatabaseContext() as pool:
+            async with _global_pool() as pool:
                 # Clear existing jobs to ensure clean test
                 async with pool.acquire() as conn:
                     await conn.execute("DELETE FROM soniq_jobs")
@@ -262,7 +276,7 @@ if __name__ == "__main__":
             for attempt in range(max_attempts):
                 # Check how many jobs are still queued using global app pool
                 global_app = soniq._get_global_app()
-                app_pool = await global_app.get_pool()
+                app_pool = await global_app._get_pool()
 
                 async with app_pool.acquire() as conn:
                     queued_count = await conn.fetchval(
@@ -331,7 +345,7 @@ if __name__ == "__main__":
         with tempfile.TemporaryDirectory() as temp_dir:
             success_file = os.path.join(temp_dir, "success_log.txt")
 
-            async with DatabaseContext() as pool:
+            async with _global_pool() as pool:
                 # Clear existing jobs to ensure clean test
                 async with pool.acquire() as conn:
                     await conn.execute("DELETE FROM soniq_jobs")
@@ -381,7 +395,7 @@ if __name__ == "__main__":
 
                 # Use global app pool for consistency
                 global_app = soniq._get_global_app()
-                app_pool = await global_app.get_pool()
+                app_pool = await global_app._get_pool()
 
                 async with app_pool.acquire() as verify_conn:
                     # Verify failing jobs eventually moved to failed/dead_letter status
@@ -425,7 +439,7 @@ if __name__ == "__main__":
                 return f"executed_at_{actual_time}"
 
             # Clear existing jobs to ensure clean test
-            async with DatabaseContext() as pool:
+            async with _global_pool() as pool:
                 async with pool.acquire() as conn:
                     await conn.execute("DELETE FROM soniq_jobs")
 
@@ -439,7 +453,7 @@ if __name__ == "__main__":
                 now + timedelta(seconds=3),
             ]
 
-            async with DatabaseContext() as pool:
+            async with _global_pool() as pool:
                 job_ids = []
                 for scheduled_time in scheduled_times:
                     job_id = await soniq.enqueue(
@@ -497,7 +511,7 @@ if __name__ == "__main__":
 
             # Create a large number of jobs
             job_count = 100
-            async with DatabaseContext() as pool:
+            async with _global_pool() as pool:
                 # Clear existing jobs to ensure clean test
                 async with pool.acquire() as conn:
                     await conn.execute("DELETE FROM soniq_jobs")
@@ -521,7 +535,7 @@ if __name__ == "__main__":
                 for attempt in range(max_attempts):
                     # Check remaining jobs using global app pool
                     global_app = soniq._get_global_app()
-                    app_pool = await global_app.get_pool()
+                    app_pool = await global_app._get_pool()
 
                     async with app_pool.acquire() as conn:
                         queued_count = await conn.fetchval(

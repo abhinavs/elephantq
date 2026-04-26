@@ -152,13 +152,13 @@ def test_validate_alias_for_args_model():
 
 
 # ---------------------------------------------------------------------------
-# Mandatory name= behaviour (PR 4 / TODO 1.4 / plan section 15)
+# Celery-style name= resolution
 #
-# These tests assert the new contract: register_job requires an explicit
-# `name=` kwarg, validates it against the task_name_pattern, and stores it
-# verbatim as the registry key. Tests above this section that call
-# register_job(...) without name= are expected to fail until PR 6 migrates
-# them; that breakage is accepted per impl_plan_multi.md section 3.
+# - Pass `name=` and it's used verbatim (validated against
+#   SONIQ_TASK_NAME_PATTERN; bad shapes raise SONIQ_INVALID_TASK_NAME).
+# - Omit `name=` and the name is derived as f"{module}.{qualname}",
+#   matching Celery / Dramatiq / RQ semantics. The derived name skips
+#   pattern validation since the user did not pick it.
 # ---------------------------------------------------------------------------
 
 
@@ -173,7 +173,7 @@ os.environ.setdefault("SONIQ_DATABASE_URL", TEST_DATABASE_URL)
 from soniq.errors import SONIQ_INVALID_TASK_NAME, SoniqError  # noqa: E402
 
 
-class TestMandatoryName:
+class TestNameResolution:
     def test_explicit_name_is_used_as_registry_key(self):
         registry = JobRegistry()
 
@@ -184,7 +184,7 @@ class TestMandatoryName:
         assert "billing.foo" in registry
         assert wrapped._soniq_name == "billing.foo"
 
-    def test_explicit_name_does_not_use_module_qualname(self):
+    def test_explicit_name_takes_precedence_over_derivation(self):
         registry = JobRegistry()
 
         async def some_func():
@@ -192,17 +192,21 @@ class TestMandatoryName:
 
         registry.register_job(some_func, name="billing.foo")
         derived = f"{some_func.__module__}.{some_func.__name__}"
-        # The derived module-path name must not appear in the registry.
+        # The explicit name wins; the derived name is not also registered.
         assert derived not in registry or derived == "billing.foo"
 
-    def test_missing_name_raises(self):
+    def test_missing_name_derives_from_module_qualname(self):
+        """Celery-style: register_job() without name= derives the task
+        name from f'{module}.{qualname}'."""
         registry = JobRegistry()
 
         async def some_func():
             pass
 
-        with pytest.raises(TypeError):
-            registry.register_job(some_func)  # type: ignore[call-arg]
+        wrapped = registry.register_job(some_func)
+        expected = f"{some_func.__module__}.{some_func.__name__}"
+        assert wrapped._soniq_name == expected
+        assert expected in registry
 
     def test_empty_name_raises_invalid_task_name(self):
         registry = JobRegistry()
@@ -218,7 +222,10 @@ class TestMandatoryName:
         "bad_name",
         ["Bad Name", "Has.Caps", ".leading", "trailing.", "double..dot", "dash-name"],
     )
-    def test_bad_name_format_raises_invalid_task_name(self, bad_name):
+    def test_bad_explicit_name_format_raises_invalid_task_name(self, bad_name):
+        """An explicit name= still has to match SONIQ_TASK_NAME_PATTERN.
+        A typo in the protocol identifier is the same hazard the
+        pattern was added to catch."""
         registry = JobRegistry()
 
         async def some_func():
@@ -227,6 +234,20 @@ class TestMandatoryName:
         with pytest.raises(SoniqError) as exc_info:
             registry.register_job(some_func, name=bad_name)
         assert exc_info.value.error_code == SONIQ_INVALID_TASK_NAME
+
+    def test_derived_name_skips_pattern_validation(self):
+        """Module-derived names may legitimately contain camelcase or
+        test-class chrome that the default pattern would reject; the
+        user did not pick the derived name, so we accept it as-is."""
+        registry = JobRegistry()
+
+        async def MixedCaseFunc():  # noqa: N802
+            pass
+
+        wrapped = registry.register_job(MixedCaseFunc)
+        # Derivation succeeds even though MixedCaseFunc would fail the
+        # default lowercase-segments pattern if passed explicitly.
+        assert wrapped._soniq_name in registry
 
     def test_soniq_name_attribute_matches_registry_key(self):
         registry = JobRegistry()
@@ -238,17 +259,32 @@ class TestMandatoryName:
         assert wrapped._soniq_name == "a.b.c"
         assert wrapped._soniq_name in registry
 
-    def test_app_job_decorator_requires_name(self):
-        """`@app.job(...)` without name= raises at decoration time."""
+    def test_app_job_decorator_with_no_args_derives_name(self):
+        """`@app.job` (no parens) registers with a derived name."""
         from soniq import Soniq
 
         app = Soniq(database_url=TEST_DATABASE_URL)
 
-        with pytest.raises((SoniqError, TypeError)):
+        @app.job
+        async def my_local_handler():
+            pass
 
-            @app.job()  # type: ignore[call-arg]
-            async def f():
-                pass
+        expected = f"{my_local_handler.__module__}.my_local_handler"
+        assert my_local_handler._soniq_name == expected
+        assert expected in app._job_registry
+
+    def test_app_job_decorator_with_empty_parens_derives_name(self):
+        """`@app.job()` (empty parens) registers with a derived name."""
+        from soniq import Soniq
+
+        app = Soniq(database_url=TEST_DATABASE_URL)
+
+        @app.job()
+        async def my_other_handler():
+            pass
+
+        expected = f"{my_other_handler.__module__}.my_other_handler"
+        assert expected in app._job_registry
 
     def test_app_job_decorator_accepts_explicit_name(self):
         from soniq import Soniq
@@ -262,12 +298,15 @@ class TestMandatoryName:
         assert f._soniq_name == "billing.test.foo"
         assert "billing.test.foo" in app._job_registry
 
-    def test_module_level_soniq_job_requires_name(self):
-        """Same contract for the global ``@soniq.job`` decorator."""
+    def test_module_level_soniq_job_no_args_derives_name(self):
+        """`@soniq.job` (no parens) on the global decorator works the
+        same way as `@app.job` (no parens)."""
         import soniq
 
-        with pytest.raises((SoniqError, TypeError)):
+        @soniq.job
+        async def my_global_handler():
+            pass
 
-            @soniq.job()  # type: ignore[call-arg]
-            async def f():
-                pass
+        expected = f"{my_global_handler.__module__}.my_global_handler"
+        app = soniq._get_global_app()
+        assert expected in app._job_registry

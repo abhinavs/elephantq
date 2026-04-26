@@ -190,69 +190,6 @@ class TestDatabaseUrlIntegration:
         assert "Using instance-based configuration" in result2.stdout or result2.stderr
 
 
-class TestDatabaseContextSystem:
-    """Test the database context system directly."""
-
-    def test_database_context_creation(self):
-        """Test that database context can be created for different scenarios."""
-        from soniq import Soniq
-        from soniq.db.context import DatabaseContext
-
-        # Test global API context
-        global_context = DatabaseContext.from_global_api()
-        assert global_context is not None
-
-        # Test instance context
-        instance = Soniq(database_url="postgresql://localhost/test")
-        instance_context = DatabaseContext.from_instance(instance)
-        assert instance_context is not None
-
-        # Test direct URL context
-        url_context = DatabaseContext.from_database_url("postgresql://localhost/test")
-        assert url_context is not None
-
-    @pytest.mark.asyncio
-    async def test_context_manager_integration(self):
-        """Test that context manager works with CLI commands."""
-        from soniq import Soniq
-        from soniq.db.context import (
-            DatabaseContext,
-            get_current_context,
-            set_current_context,
-        )
-
-        # Create instance and context
-        instance = Soniq(database_url=_make_test_db_url("soniq_db_url_test_1"))
-        context = DatabaseContext.from_instance(instance)
-
-        # Set context
-        set_current_context(context)
-
-        # Get context should return the same instance
-        current_context = get_current_context()
-        assert current_context is context
-
-        # Context should have the correct database URL
-        assert current_context.database_url == _make_test_db_url("soniq_db_url_test_1")
-
-    @pytest.mark.asyncio
-    async def test_context_pool_access(self):
-        """Test that context provides correct database pool access."""
-        from soniq import Soniq
-        from soniq.db.context import DatabaseContext
-
-        # Create instance and context
-        instance = Soniq(database_url=_make_test_db_url("soniq_db_url_test_1"))
-        context = DatabaseContext.from_instance(instance)
-
-        # Should be able to get pool
-        pool = await context.get_pool()
-        assert pool is not None
-
-        # Clean up
-        await instance.close()
-
-
 class TestBackwardsCompatibility:
     """Test that Global API usage is unchanged by new Instance API features."""
 
@@ -281,15 +218,9 @@ class TestBackwardsCompatibility:
 
     def test_global_api_python_imports_unchanged(self):
         """Test that Global API Python imports work unchanged."""
-        # These imports should work exactly as before
         import soniq
         from soniq import Soniq
-        from soniq.db.context import DatabaseContext
 
-        # Global API should still be available
         assert hasattr(soniq, "job")
         assert hasattr(soniq, "enqueue")
-
-        # Instance API should also be available
         assert Soniq is not None
-        assert DatabaseContext is not None

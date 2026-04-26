@@ -6,9 +6,23 @@ Supports both instance-based and global operations.
 """
 
 import functools
-from typing import Any, Callable, Dict, List, Optional, Type, Union  # noqa: F401
+from typing import (  # noqa: F401
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    ParamSpec,
+    Type,
+    TypeVar,
+    Union,
+)
 
 from pydantic import BaseModel
+
+_P = ParamSpec("_P")
+_R = TypeVar("_R")
 
 
 class JobRegistry:
@@ -19,15 +33,15 @@ class JobRegistry:
     Replaces global _registry pattern with clean instance-based architecture.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize empty job registry."""
         self._registry: Dict[str, Dict[str, Any]] = {}
 
     def register_job(
         self,
-        func: Callable[..., Any],
+        func: Callable[_P, Awaitable[_R]],
         *,
-        name: str,
+        name: Optional[str] = None,
         retries: int = 3,
         max_retries: Optional[int] = None,
         args_model: Optional[Type[BaseModel]] = None,
@@ -41,8 +55,8 @@ class JobRegistry:
         retry_jitter: bool = True,
         timeout: Optional[Union[int, float]] = None,
         _route_map: Optional[Dict[str, str]] = None,
-        **kwargs,
-    ) -> Callable[..., Any]:
+        **kwargs: Any,
+    ) -> Callable[_P, Awaitable[_R]]:
         """
         Register a job function with this registry.
 
@@ -79,12 +93,23 @@ class JobRegistry:
             SoniqError(SONIQ_INVALID_TASK_NAME): name missing, empty, or
                 violating the configured task name pattern.
         """
-        from .naming import validate_task_name
+        # Celery-style name resolution. When the caller passes name=, it is
+        # validated against SONIQ_TASK_NAME_PATTERN (the explicit name is a
+        # protocol identifier; we want the loud failure on a typo). When
+        # the caller omits name=, derive `f"{module}.{qualname}"` and
+        # accept it without pattern validation - the user did not pick the
+        # derived name, and module/qualname segments may legitimately
+        # contain camelcase or test-class chrome that the default pattern
+        # rejects.
+        if name is None:
+            job_name = f"{func.__module__}.{func.__name__}"
+        else:
+            from .naming import validate_task_name
 
-        job_name = validate_task_name(name)
+            job_name = validate_task_name(name)
 
         @functools.wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> Awaitable[_R]:
             return func(*args, **kwargs)
 
         # validate is the preferred alias for args_model
@@ -172,7 +197,7 @@ class JobRegistry:
             if config.get("queue") == queue
         ]
 
-    def clear(self):
+    def clear(self) -> None:
         """Clear all registered jobs. Primarily for testing."""
         self._registry.clear()
 
@@ -236,6 +261,6 @@ def get_global_registry() -> JobRegistry:
     return soniq._get_global_app()._get_job_registry()
 
 
-def clear_registry():
+def clear_registry() -> None:
     """Clear global registry. Used for testing."""
     get_global_registry().clear()

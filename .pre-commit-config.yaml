@@ -26,3 +26,11 @@ repos:
         - pydantic>=2.7.1
         - pydantic-settings>=2.0.0
         - asyncpg>=0.30.0
+- repo: local
+  hooks:
+    - id: features-public-api
+      name: features/dashboard public-API only
+      entry: scripts/lint_features_public_api.py
+      language: script
+      pass_filenames: false
+      files: ^soniq/(features|dashboard)/.*\.py$

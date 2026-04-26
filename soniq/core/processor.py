@@ -38,17 +38,26 @@ def _format_job_error(exc: BaseException) -> str:
 
 
 async def _execute_job_safely(
-    job_record: dict, job_meta: dict
+    job_record: dict,
+    job_meta: dict,
+    middleware: Optional[List[Any]] = None,
 ) -> tuple[bool, Optional[str], Any]:
     """
     Execute a job function safely with proper error handling.
 
+    The middleware chain is built lazily on first dispatch for this
+    ``job_meta`` and cached as ``job_meta["_middleware_chain"]`` keyed
+    by the middleware list identity. Hooks live around this call and
+    are unaffected.
+
     Args:
         job_record: Job record from database
         job_meta: Job metadata from registry
+        middleware: Per-app middleware list, in registration order.
+            ``None`` or empty means "no middleware" and skips the wrap.
 
     Returns:
-        tuple: (success: bool, error_message: Optional[str])
+        tuple: (success, error_message, return_value)
     """
     # Backends uniformly return `args` as a dict (Postgres JSONB codec,
     # SQLite json.loads on read, Memory stores dict natively). A non-dict
@@ -76,18 +85,19 @@ async def _execute_job_safely(
 
     func = job_meta["func"]
     sig = inspect.signature(func)
+    ctx = JobContext(
+        job_id=str(job_record["id"]),
+        job_name=job_record["job_name"],
+        attempt=job_record["attempts"],
+        max_attempts=job_record["max_attempts"],
+        queue=job_record.get("queue", "default"),
+        worker_id=str(job_record.get("worker_id", "")),
+        scheduled_at=job_record.get("scheduled_at"),
+        created_at=job_record.get("created_at"),
+    )
     for param_name, param in sig.parameters.items():
         if param.annotation is JobContext:
-            validated_args[param_name] = JobContext(
-                job_id=str(job_record["id"]),
-                job_name=job_record["job_name"],
-                attempt=job_record["attempts"],
-                max_attempts=job_record["max_attempts"],
-                queue=job_record.get("queue", "default"),
-                worker_id=str(job_record.get("worker_id", "")),
-                scheduled_at=job_record.get("scheduled_at"),
-                created_at=job_record.get("created_at"),
-            )
+            validated_args[param_name] = ctx
             break
 
     # Determine timeout: per-job overrides global setting
@@ -97,12 +107,25 @@ async def _execute_job_safely(
     if timeout is None:
         timeout = get_settings().job_timeout
 
-    # Execute the job function (outside transaction) with optional timeout
+    async def base_handler(_ctx: JobContext) -> Any:
+        # Handlers consume their kwargs by name; middleware sees only ctx.
+        result = func(**validated_args)
+        if inspect.iscoroutine(result):
+            return await result
+        return result
+
+    if middleware:
+        from .middleware import build_chain
+
+        invoke = build_chain(list(middleware), base_handler)
+    else:
+        invoke = base_handler
+
     try:
         if timeout:
-            result = await asyncio.wait_for(func(**validated_args), timeout=timeout)
+            result = await asyncio.wait_for(invoke(ctx), timeout=timeout)
         else:
-            result = await func(**validated_args)
+            result = await invoke(ctx)
         return True, None, result
     except asyncio.TimeoutError:
         return False, f"Job timed out after {timeout}s", None
@@ -130,6 +153,7 @@ async def process_job_via_backend(
     queues: Optional[List[str]] = None,
     worker_id: Optional[str] = None,
     hooks: Optional[dict] = None,
+    middleware: Optional[List[Any]] = None,
     retry_policy: Optional[Any] = None,
     metrics_sink: Optional[Any] = None,
 ) -> bool:
@@ -221,7 +245,7 @@ async def process_job_via_backend(
 
     try:
         job_success, job_error, job_result = await _execute_job_safely(
-            job_record, job_meta
+            job_record, job_meta, middleware=middleware
         )
     except ValueError as corruption_error:
         logger.error(f"Job {job_id} has corrupted data: {corruption_error}")

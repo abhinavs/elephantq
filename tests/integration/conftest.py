@@ -33,12 +33,6 @@ async def setup_test_database():
 @pytest.fixture(autouse=True)
 async def clean_test_state():
     """Clean test state before each test to ensure isolation."""
-    # Clean up any existing connections
-    from soniq.db.connection import close_pool
-
-    await close_pool()
-
-    # Close existing global app to allow reconfiguration
     import soniq
 
     global_app = soniq._global_app
@@ -51,14 +45,11 @@ async def clean_test_state():
 
     await soniq.configure(database_url=_TEST_DATABASE_URL)
 
-    # Get pool and clear any existing jobs (use global app's pool for consistency)
     global_app = soniq._get_global_app()
-    app_pool = await global_app.get_pool()
+    app_pool = await global_app._get_pool()
     await clear_table(app_pool)
 
     yield
 
-    # Clean up after test - close both pools
-    await close_pool()
     if global_app._is_initialized:
         await global_app.close()
