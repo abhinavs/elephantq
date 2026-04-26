@@ -34,3 +34,9 @@ repos:
       language: script
       pass_filenames: false
       files: ^soniq/(features|dashboard)/.*\.py$
+    - id: no-global-settings
+      name: no get_settings() outside constructor allowlist
+      entry: scripts/check_no_global_settings.py
+      language: script
+      pass_filenames: false
+      files: ^soniq/.*\.py$
