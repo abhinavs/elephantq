@@ -42,7 +42,7 @@ except PackageNotFoundError:
 _global_app: Optional[Soniq] = None
 
 # Global job registry to survive instance recreation
-_global_job_registry: list[tuple] = []
+_global_job_registry: list[tuple[Any, dict[str, Any]]] = []
 
 __all__ = [
     "Soniq",
@@ -116,14 +116,14 @@ async def configure(
     database_url: Optional[str] = None,
     concurrency: Optional[int] = None,
     max_retries: Optional[int] = None,
-    queues: Optional[list] = None,
+    queues: Optional[list[str]] = None,
     pool_min_size: Optional[int] = None,
     pool_max_size: Optional[int] = None,
     result_ttl: Optional[int] = None,
     debug: Optional[bool] = None,
     environment: Optional[str] = None,
-    **extra,
-):
+    **extra: Any,
+) -> None:
     """
     Configure the global Soniq instance.
 
@@ -190,7 +190,7 @@ async def configure(
         _global_app.job(**job_kwargs)(job_func)
 
 
-def job(*decorator_args, **kwargs):
+def job(*decorator_args: Any, **kwargs: Any) -> Any:
     """
     Global job decorator.
 
@@ -215,7 +215,7 @@ def job(*decorator_args, **kwargs):
         _global_job_registry.append((func, {}))
         return wrapped
 
-    def decorator(func):
+    def decorator(func: Any) -> Any:
         # Register with the global app first so a missing/invalid name=
         # raises before we mutate the global registry. Otherwise a test
         # that exercises the negative path (`@soniq.job()` with no
@@ -229,7 +229,7 @@ def job(*decorator_args, **kwargs):
     return decorator
 
 
-def periodic(*, cron: Any = None, every: Any = None, **job_kwargs):
+def periodic(*, cron: Any = None, every: Any = None, **job_kwargs: Any) -> Any:
     """
     Module-level convenience decorator that registers a recurring job
     against the global Soniq instance. Delegates to ``app.periodic(...)``.
@@ -252,7 +252,7 @@ def periodic(*, cron: Any = None, every: Any = None, **job_kwargs):
     app = _get_global_app()
     inner = app.periodic(cron=cron, every=every, **job_kwargs)
 
-    def decorator(func):
+    def decorator(func: Any) -> Any:
         wrapped = inner(func)
         # Mirror the registration into the global registry so a later
         # configure() that recreates the global app re-applies it like
@@ -264,17 +264,17 @@ def periodic(*, cron: Any = None, every: Any = None, **job_kwargs):
 
 
 async def enqueue(
-    target,
+    target: Any,
     *,
-    args: Optional[dict] = None,
+    args: Optional[dict[str, Any]] = None,
     queue: Optional[str] = None,
     priority: Optional[int] = None,
-    scheduled_at=None,
+    scheduled_at: Any = None,
     unique: Optional[bool] = None,
     dedup_key: Optional[str] = None,
-    connection=None,
-    **func_kwargs,
-):
+    connection: Any = None,
+    **func_kwargs: Any,
+) -> str:
     """Enqueue a task. Accepts a callable, a string name, or a TaskRef.
 
     Thin wrapper over ``Soniq.enqueue`` that routes through the global
@@ -297,14 +297,14 @@ async def enqueue(
 
 
 async def schedule(
-    target,
+    target: Any,
     *,
     run_at: Optional[datetime] = None,
     run_in: Optional[Union[int, float, timedelta]] = None,
-    args: Optional[dict] = None,
-    connection=None,
-    **kwargs,
-):
+    args: Optional[dict[str, Any]] = None,
+    connection: Any = None,
+    **kwargs: Any,
+) -> str:
     """
     Schedule a task for future execution using the global Soniq instance.
 
@@ -337,8 +337,8 @@ async def schedule(
 async def run_worker(
     concurrency: int = 4,
     run_once: bool = False,
-    queues: Optional[list] = None,
-):
+    queues: Optional[list[str]] = None,
+) -> Any:
     """Run a worker using the global Soniq instance."""
     app = _get_global_app()
     return await app.run_worker(
@@ -349,7 +349,7 @@ async def run_worker(
 async def setup() -> int:
     """Set up Soniq — create database (if needed) and run migrations."""
     app = _get_global_app()
-    return await app.setup()  # type: ignore[no-any-return]
+    return await app.setup()
 
 
 # Underscore alias kept for compatibility with code that imported the
@@ -363,31 +363,31 @@ async def _reset() -> None:
     await app._reset()
 
 
-async def get_job(job_id: str):
+async def get_job(job_id: str) -> Optional[dict[str, Any]]:
     """Get information for a specific job."""
     app = _get_global_app()
     return await app.get_job(job_id)
 
 
-async def get_result(job_id: str):
+async def get_result(job_id: str) -> Any:
     """Get the return value of a completed job, or None."""
     app = _get_global_app()
     return await app.get_result(job_id)
 
 
-async def cancel_job(job_id: str):
+async def cancel_job(job_id: str) -> bool:
     """Cancel a queued job."""
     app = _get_global_app()
     return await app.cancel_job(job_id)
 
 
-async def retry_job(job_id: str):
+async def retry_job(job_id: str) -> bool:
     """Retry a failed job."""
     app = _get_global_app()
     return await app.retry_job(job_id)
 
 
-async def delete_job(job_id: str):
+async def delete_job(job_id: str) -> bool:
     """Delete a job from the queue."""
     app = _get_global_app()
     return await app.delete_job(job_id)
@@ -398,13 +398,13 @@ async def list_jobs(
     status: Optional[str] = None,
     limit: int = 100,
     offset: int = 0,
-):
+) -> list[dict[str, Any]]:
     """List jobs with optional filtering."""
     app = _get_global_app()
     return await app.list_jobs(queue=queue, status=status, limit=limit, offset=offset)
 
 
-async def get_queue_stats():
+async def get_queue_stats() -> list[dict[str, Any]]:
     """Get statistics for all queues."""
     app = _get_global_app()
     return await app.get_queue_stats()

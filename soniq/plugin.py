@@ -138,7 +138,7 @@ class CommandSpec:
     help: str
     handler: Callable[..., Any]
     description: Optional[str] = None
-    arguments: List[dict] = field(default_factory=list)
+    arguments: List[dict[str, Any]] = field(default_factory=list)
 
 
 class PluginCLI:
@@ -176,7 +176,7 @@ class PanelSpec:
 
     id: str
     title: str
-    render: Callable[["Soniq"], Awaitable[Union[dict, str]]]
+    render: Callable[["Soniq"], Awaitable[Union[dict[str, Any], str]]]
 
 
 class PluginDashboard:

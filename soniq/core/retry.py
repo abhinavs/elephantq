@@ -109,7 +109,7 @@ class RetryPolicy(Protocol):
         self,
         *,
         attempt: int,
-        job_meta: dict,
+        job_meta: dict[str, Any],
         exc: BaseException,
     ) -> Optional[float]: ...
 
@@ -127,7 +127,7 @@ class ExponentialBackoff:
         self,
         *,
         attempt: int,
-        job_meta: dict,
+        job_meta: dict[str, Any],
         exc: BaseException,
     ) -> Optional[float]:
         return compute_retry_delay_seconds(

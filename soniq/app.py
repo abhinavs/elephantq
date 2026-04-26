@@ -6,12 +6,28 @@ Enables multiple isolated Soniq instances with independent configurations.
 """
 
 import logging
-from typing import Any, List, Optional
+from datetime import datetime, timedelta
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Awaitable,
+    Callable,
+    List,
+    Optional,
+    ParamSpec,
+    Union,
+    overload,
+)
 
 from .backends import StorageBackend
 from .core.registry import JobRegistry
 from .errors import SoniqError
 from .settings import SoniqSettings
+
+if TYPE_CHECKING:
+    from .task_ref import TaskRef
+
+_P = ParamSpec("_P")
 
 logger = logging.getLogger(__name__)
 
@@ -81,8 +97,8 @@ class Soniq:
         metrics_sink: Optional[Any] = None,
         plugins: Optional[List[Any]] = None,
         autoload_plugins: bool = False,
-        **settings_overrides,
-    ):
+        **settings_overrides: Any,
+    ) -> None:
         """
         Initialize Soniq application instance.
 
@@ -158,7 +174,7 @@ class Soniq:
 
         # Instance components (initialized lazily)
         self._job_registry = JobRegistry()
-        self._hooks: dict[str, list] = {
+        self._hooks: dict[str, list[Any]] = {
             "before_job": [],
             "after_job": [],
             "on_error": [],
@@ -338,7 +354,7 @@ class Soniq:
         """
         await self._ensure_initialized()
 
-    async def _ensure_initialized(self):
+    async def _ensure_initialized(self) -> None:
         """
         Auto-initialize Soniq on first use.
 
@@ -396,15 +412,20 @@ class Soniq:
         if err is not None:
             raise err
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> "Soniq":
         await self._ensure_initialized()
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
+    async def __aexit__(
+        self,
+        exc_type: Any,
+        exc_val: Any,
+        exc_tb: Any,
+    ) -> bool:
         await self.close()
         return False
 
-    async def close(self):
+    async def close(self) -> None:
         """
         Close the Soniq application and cleanup resources.
 
@@ -459,7 +480,7 @@ class Soniq:
         await self._ensure_initialized()
         await self._backend.reset()  # type: ignore[union-attr]
 
-    def job(self, _func=None, /, **kwargs):
+    def job(self, _func: Optional[Callable[..., Any]] = None, /, **kwargs: Any) -> Any:
         """
         Job decorator for this Soniq instance.
 
@@ -495,10 +516,10 @@ class Soniq:
             SoniqError(SONIQ_INVALID_TASK_NAME): explicit ``name=`` was
                 passed and violates the configured task name pattern.
         """
-        from typing import Callable, ParamSpec, TypeVar
+        from typing import Awaitable, Callable, ParamSpec, TypeVar
 
-        _P = ParamSpec("_P")
-        _R = TypeVar("_R")
+        _JP = ParamSpec("_JP")
+        _JR = TypeVar("_JR")
 
         # Hand the per-instance route_map to register_job so consumer-
         # side prefix routing is resolved against this Soniq's settings,
@@ -506,7 +527,9 @@ class Soniq:
         # different maps).
         route_map = dict(self._settings.route_map or {})
 
-        def decorator(func: Callable[_P, _R]) -> Callable[_P, _R]:
+        def decorator(
+            func: Callable[_JP, Awaitable[_JR]],
+        ) -> Callable[_JP, Awaitable[_JR]]:
             return self._job_registry.register_job(func, _route_map=route_map, **kwargs)
 
         # `@app.job` (no parens) - Python passed the function in directly.
@@ -582,7 +605,13 @@ class Soniq:
             self._dashboard_data = DashboardService(self)
         return self._dashboard_data
 
-    def periodic(self, *, cron: Any = None, every: Any = None, **job_kwargs):
+    def periodic(
+        self,
+        *,
+        cron: Any = None,
+        every: Any = None,
+        **job_kwargs: Any,
+    ) -> Callable[..., Any]:
         """Register a recurring job in one decorator.
 
         Stamps `_soniq_periodic` on the wrapped callable so
@@ -615,40 +644,37 @@ class Soniq:
         # schedule on startup. The remaining kwargs flow to @app.job.
         sched_args = job_kwargs.pop("schedule_args", None)
 
-        def decorator(func):
-            wrapped = self.job(**job_kwargs)(func)
-            wrapped._soniq_periodic = {  # type: ignore[attr-defined]
+        def decorator(func: Callable[..., Any]) -> Callable[..., Any]:
+            wrapped: Any = self.job(**job_kwargs)(func)
+            retries = job_kwargs.get("retries")
+            wrapped._soniq_periodic = {
                 "cron": schedule_value if schedule_type == "cron" else None,
                 "every": int(schedule_value) if schedule_type == "interval" else None,
                 "args": sched_args or {},
                 "queue": job_kwargs.get("queue"),
                 "priority": job_kwargs.get("priority"),
-                "max_attempts": (
-                    (job_kwargs.get("retries") + 1)
-                    if job_kwargs.get("retries") is not None
-                    else None
-                ),
+                "max_attempts": (retries + 1) if retries is not None else None,
             }
-            return wrapped
+            return wrapped  # type: ignore[no-any-return]
 
         return decorator
 
-    def before_job(self, fn):
+    def before_job(self, fn: Callable[..., Any]) -> Callable[..., Any]:
         """Register a hook called before each job executes."""
         self._hooks["before_job"].append(fn)
         return fn
 
-    def after_job(self, fn):
+    def after_job(self, fn: Callable[..., Any]) -> Callable[..., Any]:
         """Register a hook called after each job completes successfully."""
         self._hooks["after_job"].append(fn)
         return fn
 
-    def on_error(self, fn):
+    def on_error(self, fn: Callable[..., Any]) -> Callable[..., Any]:
         """Register a hook called when a job fails."""
         self._hooks["on_error"].append(fn)
         return fn
 
-    def middleware(self, fn):
+    def middleware(self, fn: Callable[..., Any]) -> Callable[..., Any]:
         """Register a middleware that wraps every job's execution.
 
         Middleware are async callables matching the
@@ -741,18 +767,64 @@ class Soniq:
         """
         return self._migrations
 
+    @overload
     async def enqueue(
         self,
-        target,
+        target: Callable[_P, Awaitable[Any]],
+        /,
         *,
-        args: Optional[dict] = None,
+        queue: Optional[str] = ...,
+        priority: Optional[int] = ...,
+        scheduled_at: Union[datetime, timedelta, int, float, None] = ...,
+        unique: Optional[bool] = ...,
+        dedup_key: Optional[str] = ...,
+        connection: Optional[Any] = ...,
+        **func_kwargs: Any,
+    ) -> str: ...
+
+    @overload
+    async def enqueue(
+        self,
+        target: str,
+        /,
+        *,
+        args: Optional[dict[str, Any]] = ...,
+        queue: Optional[str] = ...,
+        priority: Optional[int] = ...,
+        scheduled_at: Union[datetime, timedelta, int, float, None] = ...,
+        unique: Optional[bool] = ...,
+        dedup_key: Optional[str] = ...,
+        connection: Optional[Any] = ...,
+    ) -> str: ...
+
+    @overload
+    async def enqueue(
+        self,
+        target: "TaskRef",
+        /,
+        *,
+        args: Optional[dict[str, Any]] = ...,
+        queue: Optional[str] = ...,
+        priority: Optional[int] = ...,
+        scheduled_at: Union[datetime, timedelta, int, float, None] = ...,
+        unique: Optional[bool] = ...,
+        dedup_key: Optional[str] = ...,
+        connection: Optional[Any] = ...,
+    ) -> str: ...
+
+    async def enqueue(
+        self,
+        target: Any,
+        /,
+        *,
+        args: Optional[dict[str, Any]] = None,
         queue: Optional[str] = None,
         priority: Optional[int] = None,
-        scheduled_at=None,
+        scheduled_at: Any = None,
         unique: Optional[bool] = None,
         dedup_key: Optional[str] = None,
-        connection=None,
-        **func_kwargs,
+        connection: Any = None,
+        **func_kwargs: Any,
     ) -> str:
         """
         Enqueue a task for processing. Three input shapes:
@@ -1040,7 +1112,14 @@ class Soniq:
 
         return result_id or job_id
 
-    async def schedule(self, target, run_at, *, args=None, **kwargs):
+    async def schedule(
+        self,
+        target: Any,
+        run_at: Any,
+        *,
+        args: Optional[dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> str:
         """Schedule a task for future execution.
 
         Thin wrapper over ``enqueue`` that sets ``scheduled_at=run_at``.
@@ -1072,7 +1151,7 @@ class Soniq:
         concurrency: int = 4,
         run_once: bool = False,
         queues: Optional[List[str]] = None,
-    ):
+    ) -> Any:
         """
         Run a worker for this Soniq instance.
 
@@ -1155,7 +1234,7 @@ class Soniq:
 
     # Job Management API
 
-    async def get_job(self, job_id: str):
+    async def get_job(self, job_id: str) -> Optional[dict[str, Any]]:
         """
         Get status information for a specific job.
 
@@ -1173,7 +1252,7 @@ class Soniq:
         job_id: str,
         *,
         result_model: Optional[Any] = None,
-    ):
+    ) -> Any:
         """Get the return value of a completed job, or None.
 
         When `result_model` is provided, the stored value is constructed
@@ -1200,7 +1279,7 @@ class Soniq:
             return result_model(**result)
         return result_model(result)
 
-    async def cancel_job(self, job_id: str):
+    async def cancel_job(self, job_id: str) -> bool:
         """
         Cancel a queued job.
 
@@ -1213,7 +1292,7 @@ class Soniq:
         await self._ensure_initialized()
         return await self._backend.cancel_job(job_id)  # type: ignore[union-attr]
 
-    async def retry_job(self, job_id: str):
+    async def retry_job(self, job_id: str) -> bool:
         """
         Retry a failed job.
 
@@ -1226,7 +1305,7 @@ class Soniq:
         await self._ensure_initialized()
         return await self._backend.retry_job(job_id)  # type: ignore[union-attr]
 
-    async def delete_job(self, job_id: str):
+    async def delete_job(self, job_id: str) -> bool:
         """
         Delete a job from the queue.
 
@@ -1245,7 +1324,7 @@ class Soniq:
         status: Optional[str] = None,
         limit: int = 100,
         offset: int = 0,
-    ):
+    ) -> List[dict[str, Any]]:
         """
         List jobs with optional filtering.
 
@@ -1263,7 +1342,7 @@ class Soniq:
             queue=queue, status=status, limit=limit, offset=offset
         )
 
-    async def get_queue_stats(self):
+    async def get_queue_stats(self) -> List[dict[str, Any]]:
         """
         Get statistics for all queues.
 
@@ -1271,9 +1350,12 @@ class Soniq:
             List of dictionaries with queue statistics
         """
         await self._ensure_initialized()
+        assert self._backend is not None
         return await self._backend.get_queue_stats()
 
-    async def _get_migration_status(self, version_filter: str | None = None) -> dict:
+    async def _get_migration_status(
+        self, version_filter: str | None = None
+    ) -> dict[str, Any]:
         """
         Get current database migration status for this instance.
 
@@ -1426,7 +1508,7 @@ class Soniq:
             # Either way, we'll find out when migrations run
             logger.debug(f"Could not auto-create database: {e}")
 
-    async def _cleanup_on_error(self):
+    async def _cleanup_on_error(self) -> None:
         """Cleanup resources after initialization error."""
         try:
             if self._backend is not None:

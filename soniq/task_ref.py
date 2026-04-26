@@ -24,7 +24,7 @@ than landing in production.
 from __future__ import annotations
 
 import dataclasses
-from typing import Optional, Type
+from typing import Any, Optional, Type
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -42,7 +42,7 @@ class TaskRef:
     """
 
     name: str
-    args_model: Optional[Type] = None
+    args_model: Optional[Type[Any]] = None
     default_queue: Optional[str] = None
 
     def with_default_queue(self, queue: str) -> "TaskRef":
@@ -58,7 +58,7 @@ class TaskRef:
 def task_ref(
     *,
     name: str,
-    args_model: Optional[Type] = None,
+    args_model: Optional[Type[Any]] = None,
     default_queue: Optional[str] = None,
 ) -> TaskRef:
     """Construct a validated ``TaskRef``.
