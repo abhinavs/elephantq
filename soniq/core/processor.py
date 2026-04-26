@@ -41,7 +41,7 @@ def _format_job_error(exc: BaseException) -> str:
 async def _execute_job_safely(
     job_record: dict,
     job_meta: dict,
-    settings: SoniqSettings,
+    settings: Optional[SoniqSettings] = None,
     middleware: Optional[List[Any]] = None,
 ) -> tuple[bool, Optional[str], Any]:
     """
@@ -61,6 +61,14 @@ async def _execute_job_safely(
     Returns:
         tuple: (success, error_message, return_value)
     """
+    # Settings is optional so unit tests can drive this helper without
+    # building a Soniq instance. Production paths (`process_job_via_backend`)
+    # always thread the per-instance settings through; the fresh
+    # `SoniqSettings()` fallback only fires for the bare-helper test path
+    # and never consults the cached global.
+    if settings is None:
+        settings = SoniqSettings()
+
     # Backends uniformly return `args` as a dict (Postgres JSONB codec,
     # SQLite json.loads on read, Memory stores dict natively). A non-dict
     # at this point means a backend contract violation; surface it loudly.

@@ -89,11 +89,11 @@ async def test_snooze_without_reason_writes_bare_marker():
 
 
 @pytest.mark.asyncio
-async def test_snooze_exceeding_cap_is_clamped(monkeypatch):
+async def test_snooze_exceeding_cap_is_clamped():
     """Snooze past snooze_max_seconds is silently capped."""
-    from soniq.settings import get_settings
+    from soniq.settings import SoniqSettings
 
-    monkeypatch.setattr(get_settings(), "snooze_max_seconds", 60.0)
+    capped_settings = SoniqSettings(snooze_max_seconds=60.0)
 
     async def runaway_snooze():
         return Snooze(seconds=10_000.0, reason="ignored")
@@ -101,7 +101,9 @@ async def test_snooze_exceeding_cap_is_clamped(monkeypatch):
     backend, registry = await _setup(runaway_snooze)
 
     before = datetime.now(timezone.utc)
-    await process_job_via_backend(backend=backend, job_registry=registry)
+    await process_job_via_backend(
+        backend=backend, job_registry=registry, settings=capped_settings
+    )
     job = await backend.get_job("snooze-job")
 
     scheduled = datetime.fromisoformat(job["scheduled_at"])
