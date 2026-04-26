@@ -521,16 +521,22 @@ class Soniq:
         _JP = ParamSpec("_JP")
         _JR = TypeVar("_JR")
 
-        # Hand the per-instance route_map to register_job so consumer-
-        # side prefix routing is resolved against this Soniq's settings,
-        # not the global cache (multiple Soniq instances may have
-        # different maps).
+        # Hand the per-instance route_map and task_name_pattern to
+        # register_job so consumer-side prefix routing and name validation
+        # are resolved against this Soniq's settings, not a global cache
+        # (multiple Soniq instances may have different maps / patterns).
         route_map = dict(self._settings.route_map or {})
+        task_name_pattern = self._settings.task_name_pattern
 
         def decorator(
             func: Callable[_JP, Awaitable[_JR]],
         ) -> Callable[_JP, Awaitable[_JR]]:
-            return self._job_registry.register_job(func, _route_map=route_map, **kwargs)
+            return self._job_registry.register_job(
+                func,
+                _route_map=route_map,
+                _task_name_pattern=task_name_pattern,
+                **kwargs,
+            )
 
         # `@app.job` (no parens) - Python passed the function in directly.
         if _func is not None:
@@ -931,7 +937,7 @@ class Soniq:
                     "arguments; pass args=dict instead."
                 )
         elif isinstance(target, str):
-            job_name = validate_task_name(target)
+            job_name = validate_task_name(target, self._settings.task_name_pattern)
             if func_kwargs:
                 raise TypeError(
                     "enqueue('name', ...) cannot accept **kwargs as function "

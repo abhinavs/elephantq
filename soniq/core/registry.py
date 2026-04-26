@@ -55,6 +55,7 @@ class JobRegistry:
         retry_jitter: bool = True,
         timeout: Optional[Union[int, float]] = None,
         _route_map: Optional[Dict[str, str]] = None,
+        _task_name_pattern: Optional[str] = None,
         **kwargs: Any,
     ) -> Callable[_P, Awaitable[_R]]:
         """
@@ -106,7 +107,18 @@ class JobRegistry:
         else:
             from .naming import validate_task_name
 
-            job_name = validate_task_name(name)
+            # The pattern is threaded from the owning Soniq instance via
+            # `Soniq.job` (see app.py). Direct callers of register_job
+            # (legacy tests, ad-hoc fixtures) may pass it explicitly; if
+            # neither path supplied one, fall back to a fresh
+            # `SoniqSettings()` read of the env. We never reach for
+            # `get_settings()` here - that would re-introduce the global
+            # cache the instance-boundary contract bans.
+            if _task_name_pattern is None:
+                from soniq.settings import SoniqSettings
+
+                _task_name_pattern = SoniqSettings().task_name_pattern
+            job_name = validate_task_name(name, _task_name_pattern)
 
         @functools.wraps(func)
         def wrapper(*args: _P.args, **kwargs: _P.kwargs) -> Awaitable[_R]:

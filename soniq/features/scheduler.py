@@ -415,10 +415,11 @@ class Scheduler:
         """
         from soniq.core.naming import validate_task_name
 
+        pattern = self._app.settings.task_name_pattern
         if name is not None:
-            job_name = validate_task_name(name)
+            job_name = validate_task_name(name, pattern)
         elif isinstance(target, str):
-            job_name = validate_task_name(target)
+            job_name = validate_task_name(target, pattern)
         elif callable(target):
             job_name = (
                 getattr(target, "_soniq_name", None)
