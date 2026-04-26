@@ -13,7 +13,6 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional, Tuple
 
-from soniq.core.registry import get_job
 from soniq.db.helpers import rows_affected as _rows_affected
 
 if TYPE_CHECKING:
@@ -283,8 +282,12 @@ class DeadLetterService:
                     logger.warning(f"Dead letter job {dead_letter_id} not found")
                     return None
 
-                # Check if job function is still registered
-                job_meta = get_job(dead_job["job_name"])
+                # Check if job function is still registered on this
+                # instance's registry. Going through `self._app.registry`
+                # keeps the lookup scoped to the Soniq that owns this
+                # service - no global app fallback
+                # (`docs/contracts/instance_boundary.md`).
+                job_meta = self._app.registry.get_job(dead_job["job_name"])
                 if not job_meta:
                     logger.error(
                         f"Cannot resurrect job {dead_letter_id}: job {dead_job['job_name']} not registered"
