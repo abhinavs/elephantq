@@ -172,16 +172,22 @@ class MetricsAnalyzer:
 
     @asynccontextmanager
     async def _acquire(self) -> AsyncIterator[Any]:
-        if self._app is not None:
-            await self._app.ensure_initialized()
-            async with self._app.backend.acquire() as conn:
-                yield conn
-            return
-        import soniq
-
-        app = soniq.get_global_app()
-        await app.ensure_initialized()
-        async with app.backend.acquire() as conn:
+        # The historical fallback to `soniq.get_global_app()` is removed:
+        # the analyzer must be constructed with an explicit `app` so that
+        # multi-instance deployments don't bleed metrics queries across
+        # databases (`docs/contracts/instance_boundary.md`). Use
+        # `MetricsService(app)` from a CLI command or test fixture - the
+        # module-level `_metrics_analyzer` is still fine for in-memory
+        # collection (`record_job_start` / `record_job_completion`)
+        # because that path does not touch the DB.
+        if self._app is None:
+            raise RuntimeError(
+                "MetricsAnalyzer was constructed without a Soniq app; "
+                "DB-backed metrics require an explicit instance. Build one "
+                "via `MetricsService(app).get_system_metrics(...)`."
+            )
+        await self._app.ensure_initialized()
+        async with self._app.backend.acquire() as conn:
             yield conn
 
     async def get_system_metrics(self, timeframe_hours: int = 1) -> SystemMetrics:
