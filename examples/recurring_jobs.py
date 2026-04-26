@@ -41,7 +41,7 @@ async def main() -> None:
     async def ad_hoc_task():
         print("Ad hoc")
 
-    app = soniq._get_global_app()
+    app = soniq.get_global_app()
     await app.scheduler.add(ad_hoc_task, cron=every(5).minutes())
     await app.scheduler.add(
         ad_hoc_task,
