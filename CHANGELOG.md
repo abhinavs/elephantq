@@ -70,6 +70,55 @@ soniq migrate-enqueue --use-derived-names .
 Or supply explicit canonical names in `migrate-enqueue.toml`. See
 the migration guide for the full walkthrough.
 
+## [0.0.3] - contracts now correct (unreleased)
+
+This release tightens the contracts the 0.0.2 docs claimed but the code
+did not actually deliver. It is alpha-context: callers running 0.0.2 in
+production should read the destructive items below before upgrading.
+
+### Breaking changes
+
+- **`DeadLetterService.move()` is removed.** The DLQ contract is now a
+  table-of-record under `soniq_dead_letter_jobs`. There is no caller
+  shim - any code still calling `DeadLetterService.move()` will raise
+  `AttributeError`. That is the expected upgrade signal: switch to the
+  backend-driven DLQ transition (the worker / processor path handles
+  it), or stop calling the helper directly.
+- **Migration `0002_dead_letter_option_a.sql` is destructive and
+  one-way.** It deletes any pre-existing rows in `soniq_jobs` with
+  `status='dead_letter'` and tightens the status CHECK constraint so
+  the value is no longer accepted. Operators upgrading from 0.0.2 lose
+  those rows by design - back them up first if you need to retain
+  them. Downgrade is unsupported.
+
+### Added
+
+- `soniq.types.QueueStats` is now the canonical 6-key shape returned by
+  every backend's `queue_stats()` and surfaced in CLI / dashboard:
+  `{total, queued, processing, done, dead_letter, cancelled}`. No
+  legacy aliases, no extra keys.
+- Bounded sync handler thread pool: `sync_handler_pool_size` (default
+  `8`) caps concurrent sync handler threads per `Soniq` instance, with
+  a post-claim `asyncio.Semaphore` so claimed `processing` rows can
+  never exceed worker concurrency. Async handlers bypass the pool
+  entirely.
+- `shutdown_timeout` (default `30s`) and `sync_handler_grace_seconds`
+  settings drive the new `RUNNING -> DRAINING -> FORCE_TIMEOUT_PATH`
+  shutdown state machine. Async jobs nack on force-timeout; sync jobs
+  receive an extra grace window before the executor is torn down.
+- Two-instance isolation is now enforced: no module-level
+  `get_settings()` calls outside the constructor allowlist, validated
+  by `check_no_global_settings.py` (pre-commit + CI) and the
+  cross-instance bleed integration test.
+
+### Known limitations
+
+- Sync handler hard-kill on shutdown can re-deliver a job whose handler
+  was mid-flight when the executor was forced down. There is no
+  exactly-once guarantee for sync handlers under
+  `shutdown_timeout`-triggered force-paths; design handlers to be
+  idempotent.
+
 ## [0.0.2] - 2026-04-25
 
 First public release.
