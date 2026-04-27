@@ -142,7 +142,9 @@ async def test_get_queue_stats():
 
     await app.enqueue("my_task")
     stats = await app.get_queue_stats()
-    assert isinstance(stats, (dict, list))
+    assert stats["queued"] == 1
+    assert stats["total"] == 1
+    assert stats["dead_letter"] == 0
 
     await app.close()
 

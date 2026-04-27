@@ -115,11 +115,12 @@ async def test_failed_job_dead_letters_after_max_attempts(backend, registry):
     )
     assert (await backend.get_job(job_id))["status"] == "queued"
 
-    # Attempt 2 → dead letter
+    # Attempt 2 -> dead letter. DLQ Option A: row leaves soniq_jobs.
     await process_job_via_backend(
         backend=backend, job_registry=registry, queues=["default"]
     )
-    assert (await backend.get_job(job_id))["status"] == "dead_letter"
+    assert await backend.get_job(job_id) is None
+    assert job_id in backend._dead_letter_jobs
 
 
 @pytest.mark.asyncio
@@ -134,7 +135,11 @@ async def test_cancel_queued_job(backend, registry):
 
 
 @pytest.mark.asyncio
-async def test_retry_dead_letter_job(backend, registry):
+async def test_retry_after_dead_letter_returns_false(backend, registry):
+    """DLQ Option A: dead-lettered jobs are gone from soniq_jobs, so
+    backend.retry_job is a no-op (returns False). Resurrection happens
+    via DeadLetterService.replay (postgres-only) or by re-enqueuing."""
+
     async def always_fails():
         raise RuntimeError("boom")
 
@@ -142,11 +147,11 @@ async def test_retry_dead_letter_job(backend, registry):
     await process_job_via_backend(
         backend=backend, job_registry=registry, queues=["default"]
     )
-    assert (await backend.get_job(job_id))["status"] == "dead_letter"
+    assert await backend.get_job(job_id) is None
+    assert job_id in backend._dead_letter_jobs
 
-    result = await backend.retry_job(job_id)
-    assert result is True
-    assert (await backend.get_job(job_id))["status"] == "queued"
+    # retry_job only matches status='failed' rows in soniq_jobs.
+    assert await backend.retry_job(job_id) is False
 
 
 @pytest.mark.asyncio

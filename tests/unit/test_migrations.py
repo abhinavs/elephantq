@@ -28,6 +28,7 @@ class TestMigrationStructure:
         files = sorted(f.name for f in MIGRATIONS_DIR.glob("*.sql"))
         assert files == [
             "0001_core.sql",
+            "0002_dead_letter_option_a.sql",
             "0010_scheduler.sql",
             "0020_dead_letter.sql",
             "0021_webhooks.sql",
@@ -38,13 +39,15 @@ class TestMigrationStructure:
         runner = MigrationRunner()
         migrations = runner.discover_migrations()
         versions = [v for v, _, _ in migrations]
-        assert versions == ["0001", "0010", "0020", "0021", "0022"]
+        assert versions == ["0001", "0002", "0010", "0020", "0021", "0022"]
 
     def test_version_filter_core(self):
         runner = MigrationRunner()
-        # Core slice that Soniq.setup() applies.
+        # Core slice that Soniq.setup() applies. Core covers 0001 (schema)
+        # and 0002 (DLQ Option A schema-tightening: drops 'dead_letter'
+        # from soniq_jobs.status, see docs/contracts/dead_letter.md).
         versions = [v for v, _, _ in runner.discover_migrations(version_filter="000")]
-        assert versions == ["0001"]
+        assert versions == ["0001", "0002"]
 
     def test_version_filter_single_feature(self):
         runner = MigrationRunner()

@@ -118,32 +118,27 @@ class TestJobIntrospection:
 
     @pytest.mark.asyncio
     async def test_retry_failed_job(self):
-        """Test retrying a failed job"""
+        """DLQ Option A: dead-lettered jobs leave soniq_jobs and live in
+        soniq_dead_letter_jobs as the single source of truth. retry_job only
+        matches status='failed' rows in soniq_jobs, so it is a no-op for
+        dead-lettered jobs (returns False). Resurrection happens via
+        DeadLetterService.replay()."""
 
-        # Create a job that will fail
         @soniq.job(name="failing_task", retries=1, queue="test")
         async def failing_task():
             raise Exception("Intentional failure")
 
         job_id = await soniq.enqueue("failing_task")
 
-        # Process to make it fail - need to process twice since retries=1 means max_attempts=2
+        # Process to make it fail - retries=1 means max_attempts=2
         await process_test_jobs()  # First attempt (fails, retries)
-        await process_test_jobs()  # Second attempt (fails, goes to dead_letter)
+        await process_test_jobs()  # Second attempt (dead-letters)
 
-        # Verify it failed
-        status = await soniq.get_job(job_id)
-        assert status["status"] in ["failed", "dead_letter"]
+        # Verify it left soniq_jobs.
+        assert await soniq.get_job(job_id) is None
 
-        # Retry the job
-        success = await soniq.retry_job(job_id)
-        assert success is True
-
-        # Verify job is queued again
-        status = await soniq.get_job(job_id)
-        assert status["status"] == "queued"
-        assert status["attempts"] == 0
-        assert status["last_error"] is None
+        # retry_job is a no-op for dead-lettered jobs.
+        assert await soniq.retry_job(job_id) is False
 
     @pytest.mark.asyncio
     async def test_retry_queued_job(self):
@@ -372,13 +367,21 @@ class TestQueueStats:
 
     @pytest.mark.asyncio
     async def test_empty_queue_stats(self):
-        """Test queue stats when no jobs exist"""
+        """get_queue_stats on an empty instance returns the canonical six-key
+        zero-shape dict (per docs/contracts/queue_stats.md)."""
         stats = await soniq.get_queue_stats()
-        assert stats == []
+        assert stats == {
+            "total": 0,
+            "queued": 0,
+            "processing": 0,
+            "done": 0,
+            "dead_letter": 0,
+            "cancelled": 0,
+        }
 
     @pytest.mark.asyncio
     async def test_queue_stats_with_jobs(self):
-        """Test queue stats with various job states"""
+        """Whole-instance counts roll up across queues."""
         # Enqueue jobs in different queues
         await soniq.enqueue("simple_task", args={"message": "test1"})  # test queue
         await soniq.enqueue("simple_task", args={"message": "test2"})  # test queue
@@ -395,61 +398,27 @@ class TestQueueStats:
         # Process some jobs
         await process_test_jobs()
 
-        # Get queue stats
         stats = await soniq.get_queue_stats()
-
-        # Should have stats for both queues
-        assert len(stats) == 2
-
-        # Check test queue stats
-        test_queue = next((q for q in stats if q["queue"] == "test"), None)
-        assert test_queue is not None
-        assert test_queue["total"] >= 3
-        assert test_queue["cancelled"] >= 1
-
-        # Check priority_test queue stats
-        priority_queue = next((q for q in stats if q["queue"] == "priority_test"), None)
-        assert priority_queue is not None
-        assert priority_queue["total"] >= 1
+        assert stats["total"] >= 4
+        assert stats["cancelled"] >= 1
 
     @pytest.mark.asyncio
     async def test_queue_stats_structure(self):
-        """Test queue stats data structure"""
-        # Enqueue a job
+        """Stats are the canonical 6-key dict from soniq.types.QueueStats."""
         await soniq.enqueue("simple_task", args={"message": "stats_test"})
 
         stats = await soniq.get_queue_stats()
-        assert len(stats) == 1
-
-        queue_stat = stats[0]
-        required_fields = [
-            "queue",
+        required_fields = {
             "total",
             "queued",
             "processing",
             "done",
             "dead_letter",
             "cancelled",
-        ]
-
+        }
+        assert set(stats.keys()) == required_fields
         for field in required_fields:
-            assert field in queue_stat
+            assert isinstance(stats[field], int)
 
-        # Queue name should be a string
-        assert isinstance(queue_stat["queue"], str)
-        assert queue_stat["queue"] == "test"
-
-        # Count fields should be integers
-        count_fields = [
-            "total",
-            "queued",
-            "processing",
-            "done",
-            "dead_letter",
-            "cancelled",
-        ]
-        for field in count_fields:
-            assert isinstance(queue_stat[field], int)
-
-        assert queue_stat["total"] == 1
-        assert queue_stat["queued"] == 1
+        assert stats["total"] == 1
+        assert stats["queued"] == 1

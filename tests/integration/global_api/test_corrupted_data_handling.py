@@ -82,13 +82,18 @@ async def test_corrupted_json_data(clean_db):
 
     assert processed
 
-    # Job should complete normally (args are valid)
+    # Job should complete normally (args are valid). If the handler is
+    # missing, DLQ Option A removes the row from soniq_jobs and lands it
+    # in soniq_dead_letter_jobs.
     async with app_pool.acquire() as conn:
         job = await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
-        assert job["status"] in (
-            "done",
-            "dead_letter",
-        )  # done if handler found, dead_letter if not
+        if job is None:
+            dlq = await conn.fetchrow(
+                "SELECT * FROM soniq_dead_letter_jobs WHERE id = $1", job_id
+            )
+            assert dlq is not None
+        else:
+            assert job["status"] == "done"
 
 
 @pytest.mark.asyncio
@@ -117,12 +122,18 @@ async def test_corrupted_validation_data(clean_db):
 
     assert processed  # Job should be processed (moved to dead letter)
 
-    # Verify job was moved to dead letter
+    # Verify job was moved to dead letter (DLQ Option A: row leaves
+    # soniq_jobs and lives in soniq_dead_letter_jobs).
     async with app_pool.acquire() as conn:
-        job = await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
-        assert job["status"] == "dead_letter"
-        assert "Corrupted argument data" in job["last_error"]
-        assert job["attempts"] == 3  # Set to max attempts
+        assert (
+            await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
+        ) is None
+        dlq = await conn.fetchrow(
+            "SELECT * FROM soniq_dead_letter_jobs WHERE id = $1", job_id
+        )
+        assert dlq is not None
+        assert "Corrupted argument data" in dlq["last_error"]
+        assert dlq["attempts"] == 3  # Set to max attempts
 
 
 @pytest.mark.asyncio
@@ -151,17 +162,23 @@ async def test_missing_required_arguments(clean_db):
 
     assert processed  # Job should be processed (moved to dead letter)
 
-    # Verify job ends up in dead letter after exhausting retries
+    # Verify job ends up in dead letter after exhausting retries.
     async with app_pool.acquire() as conn:
-        job = await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
-        assert job["status"] == "dead_letter"
-        # TypeError from missing argument is now retried (not immediately dead-lettered),
-        # so after max_attempts it lands in dead letter with "Max retries exceeded"
         assert (
-            "missing" in job["last_error"].lower()
-            or "argument" in job["last_error"].lower()
+            await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
+        ) is None
+        dlq = await conn.fetchrow(
+            "SELECT * FROM soniq_dead_letter_jobs WHERE id = $1", job_id
         )
-        assert job["attempts"] == 3  # Set to max attempts
+        assert dlq is not None
+        # TypeError from missing argument is now retried (not immediately
+        # dead-lettered), so after max_attempts it lands in dead letter
+        # with "Max retries exceeded"
+        assert (
+            "missing" in dlq["last_error"].lower()
+            or "argument" in dlq["last_error"].lower()
+        )
+        assert dlq["attempts"] == 3
 
 
 @pytest.mark.asyncio
@@ -194,16 +211,21 @@ async def test_extra_unexpected_arguments(clean_db):
 
     assert processed  # Job should be processed (moved to dead letter)
 
-    # Verify job ends up in dead letter after exhausting retries
+    # Verify job ends up in dead letter after exhausting retries.
     async with app_pool.acquire() as conn:
-        job = await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
-        assert job["status"] == "dead_letter"
-        # TypeError from extra args is now retried, ending in dead letter
         assert (
-            "unexpected" in job["last_error"].lower()
-            or "argument" in job["last_error"].lower()
+            await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
+        ) is None
+        dlq = await conn.fetchrow(
+            "SELECT * FROM soniq_dead_letter_jobs WHERE id = $1", job_id
         )
-        assert job["attempts"] == 3  # Set to max attempts
+        assert dlq is not None
+        # TypeError from extra args is now retried, ending in dead letter.
+        assert (
+            "unexpected" in dlq["last_error"].lower()
+            or "argument" in dlq["last_error"].lower()
+        )
+        assert dlq["attempts"] == 3
 
 
 @pytest.mark.asyncio
@@ -234,16 +256,21 @@ async def test_invalid_json_structure(clean_db):
 
     assert processed  # Job should be processed (moved to dead letter)
 
-    # Verify job was moved to dead letter
+    # Verify job was moved to dead letter.
     async with app_pool.acquire() as conn:
-        job = await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
-        assert job["status"] == "dead_letter"
+        assert (
+            await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
+        ) is None
+        dlq = await conn.fetchrow(
+            "SELECT * FROM soniq_dead_letter_jobs WHERE id = $1", job_id
+        )
+        assert dlq is not None
         # Under the 0.0.2 backend contract, non-dict args is a contract
         # violation raised by the processor before the job function runs.
         assert (
-            "contract violation" in job["last_error"]
-            or "Corrupted" in job["last_error"]
-            or "argument" in job["last_error"]
+            "contract violation" in dlq["last_error"]
+            or "Corrupted" in dlq["last_error"]
+            or "argument" in dlq["last_error"]
         )
 
 
@@ -367,14 +394,17 @@ async def test_regular_job_exceptions_still_retry(clean_db):
 
     assert processed  # Job should be processed
 
-    # With retries=0, job goes directly to dead letter after first failure
+    # With retries=0, job goes directly to dead letter after first failure.
     async with app_pool.acquire() as conn:
-        job = await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
         assert (
-            job["status"] == "dead_letter"
-        )  # Should be in dead letter after max attempts
-        assert job["attempts"] == 1  # Single attempt made
-        assert "Intentional failure" in job["last_error"]
+            await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
+        ) is None
+        dlq = await conn.fetchrow(
+            "SELECT * FROM soniq_dead_letter_jobs WHERE id = $1", job_id
+        )
+        assert dlq is not None
+        assert dlq["attempts"] == 1
+        assert "Intentional failure" in dlq["last_error"]
 
 
 @pytest.mark.asyncio
@@ -408,12 +438,17 @@ async def test_mixed_corrupted_and_valid_jobs(clean_db):
 
     assert processed  # Jobs should be processed
 
-    # Check corrupted job is in dead letter
+    # Check corrupted job is in dead letter (DLQ Option A).
     async with app_pool.acquire() as conn:
-        corrupted_job = await conn.fetchrow(
-            "SELECT * FROM soniq_jobs WHERE id = $1", corrupted_job_id
+        assert (
+            await conn.fetchrow(
+                "SELECT * FROM soniq_jobs WHERE id = $1", corrupted_job_id
+            )
+        ) is None
+        dlq = await conn.fetchrow(
+            "SELECT * FROM soniq_dead_letter_jobs WHERE id = $1", corrupted_job_id
         )
-        assert corrupted_job["status"] == "dead_letter"
+        assert dlq is not None
 
         # Check valid job completed
         valid_job = await conn.fetchrow(

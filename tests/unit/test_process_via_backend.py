@@ -145,9 +145,10 @@ async def test_process_via_backend_dead_letters_after_max_attempts():
     job = await backend.get_job("job-dead")
     assert job["status"] == "queued"  # attempt 1, retried
 
-    # Second attempt — should dead-letter
+    # Second attempt - should dead-letter (DLQ Option A: row moves out
+    # of soniq_jobs into soniq_dead_letter_jobs in one transaction).
     await process_job_via_backend(
         backend=backend, job_registry=registry, queues=["default"]
     )
-    job = await backend.get_job("job-dead")
-    assert job["status"] == "dead_letter"
+    assert await backend.get_job("job-dead") is None
+    assert "job-dead" in backend._dead_letter_jobs

@@ -28,7 +28,7 @@ async def test_full_lifecycle_success(backend):
 
 
 async def test_failure_and_retry(backend):
-    """queued -> processing -> failed (requeued) -> processing -> dead_letter"""
+    """queued -> processing -> failed (requeued) -> processing -> dead_letter (moved out)"""
     await backend.create_job(
         job_id="j1",
         job_name="mod.func",
@@ -47,12 +47,16 @@ async def test_failure_and_retry(backend):
     job = await backend.get_job("j1")
     assert job["status"] == "queued"
 
-    # Second attempt -> dead letter
+    # Second attempt -> dead letter (row leaves soniq_jobs entirely)
     await backend.fetch_and_lock_job(queues=["default"], worker_id=None)
-    await backend.mark_job_dead_letter("j1", attempts=2, error="boom again")
+    await backend.mark_job_dead_letter(
+        "j1",
+        attempts=2,
+        error="boom again",
+        reason="max_retries_exceeded",
+    )
 
-    job = await backend.get_job("j1")
-    assert job["status"] == "dead_letter"
+    assert await backend.get_job("j1") is None
 
 
 async def test_cancel_only_works_on_queued(backend):
@@ -96,8 +100,11 @@ async def test_result_ttl_zero_deletes_immediately(backend):
     assert await backend.get_job("j1") is None
 
 
-async def test_retry_job_requeues_dead_letter(backend):
-    """retry_job should move dead_letter jobs back to queued."""
+async def test_retry_job_after_dead_letter_returns_false(backend):
+    """Under DLQ Option A the row leaves soniq_jobs on dead-letter, so
+    retry_job (which only operates on soniq_jobs) cannot resurrect it.
+    Resurrection lives on DeadLetterService.replay - see
+    docs/contracts/dead_letter.md."""
     await backend.create_job(
         job_id="j1",
         job_name="mod.func",
@@ -109,12 +116,15 @@ async def test_retry_job_requeues_dead_letter(backend):
         unique=False,
     )
     await backend.fetch_and_lock_job(queues=["default"], worker_id=None)
-    await backend.mark_job_dead_letter("j1", attempts=1, error="permanent")
+    await backend.mark_job_dead_letter(
+        "j1",
+        attempts=1,
+        error="permanent",
+        reason="max_retries_exceeded",
+    )
 
-    assert await backend.retry_job("j1") is True
-
-    job = await backend.get_job("j1")
-    assert job["status"] == "queued"
+    assert await backend.retry_job("j1") is False
+    assert await backend.get_job("j1") is None
 
 
 async def test_retry_queued_job_returns_false(backend):

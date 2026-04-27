@@ -158,13 +158,17 @@ async def test_ttl_failed_jobs_not_cleaned_up():
         app_pool = await global_app._get_pool()
 
         async with app_pool.acquire() as conn:
-            job_record = await conn.fetchrow(
+            # DLQ Option A: dead-lettered jobs leave soniq_jobs and live in
+            # soniq_dead_letter_jobs. TTL must not delete them from there.
+            in_jobs = await conn.fetchrow(
                 "SELECT status FROM soniq_jobs WHERE id = $1", uuid.UUID(job_id)
             )
-
-            # Failed jobs should still exist (not cleaned up by TTL)
-            assert job_record is not None
-            assert job_record["status"] in ["failed", "dead_letter"]
+            assert in_jobs is None
+            dlq = await conn.fetchrow(
+                "SELECT id FROM soniq_dead_letter_jobs WHERE id = $1",
+                uuid.UUID(job_id),
+            )
+            assert dlq is not None
 
     finally:
         # Restore original TTL

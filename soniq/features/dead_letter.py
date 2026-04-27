@@ -194,69 +194,11 @@ class DeadLetterService:
             version_filter="0020"
         )
 
-    async def move_job_to_dead_letter(
-        self,
-        job_id: str,
-        reason: DeadLetterReason,
-        tags: Optional[Dict[str, str]] = None,
-    ) -> bool:
-        """Move a job to the dead letter queue"""
-        async with self._acquire() as conn:
-            async with conn.transaction():
-                # Get the job record
-                job_record = await conn.fetchrow(
-                    """
-                    SELECT * FROM soniq_jobs WHERE id = $1
-                """,
-                    uuid.UUID(job_id),
-                )
-
-                if not job_record:
-                    logger.warning(f"Job {job_id} not found for dead letter move")
-                    return False
-
-                # Create dead letter record
-                dead_letter_job = DeadLetterJob.from_job_record(
-                    dict(job_record), reason
-                )
-                if tags:
-                    dead_letter_job.tags = tags
-
-                # Insert into dead letter table
-                await conn.execute(
-                    f"""
-                    INSERT INTO {self.table_name} (
-                        id, job_name, args, queue, priority, max_attempts, attempts,
-                        last_error, dead_letter_reason, original_created_at,
-                        moved_to_dead_letter_at, tags
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-                """,
-                    uuid.UUID(dead_letter_job.id),
-                    dead_letter_job.job_name,
-                    dead_letter_job.args,
-                    dead_letter_job.queue,
-                    dead_letter_job.priority,
-                    dead_letter_job.max_attempts,
-                    dead_letter_job.attempts,
-                    dead_letter_job.last_error,
-                    dead_letter_job.dead_letter_reason,
-                    dead_letter_job.original_created_at,
-                    dead_letter_job.moved_to_dead_letter_at,
-                    dead_letter_job.tags,
-                )
-
-                # Update original job status
-                await conn.execute(
-                    """
-                    UPDATE soniq_jobs 
-                    SET status = 'dead_letter', updated_at = NOW()
-                    WHERE id = $1
-                """,
-                    uuid.UUID(job_id),
-                )
-
-                logger.info(f"Moved job {job_id} to dead letter queue: {reason.value}")
-                return True
+    # NOTE: ``move_job_to_dead_letter`` was removed in 0.0.3. The DLQ move
+    # is now a backend primitive (``backend.mark_job_dead_letter``) and the
+    # processor is its only legitimate caller. Application code that needs
+    # to forcibly DLQ a job should re-enqueue with ``max_attempts=0`` or
+    # raise from a handler. See docs/contracts/dead_letter.md.
 
     async def resurrect_job(
         self,
@@ -711,13 +653,6 @@ def _service() -> DeadLetterService:
 async def setup_dead_letter_queue():
     """Setup dead letter queue database tables"""
     await _service().setup_database()
-
-
-async def move_job_to_dead_letter(
-    job_id: str, reason: DeadLetterReason, tags: Optional[Dict[str, str]] = None
-) -> bool:
-    """Move a job to the dead letter queue"""
-    return await _service().move_job_to_dead_letter(job_id, reason, tags)
 
 
 async def resurrect_job(

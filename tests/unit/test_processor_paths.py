@@ -64,8 +64,10 @@ async def test_corrupted_args_type_dead_letters():
     backend, registry = await _setup(my_task, args=12345)
     result = await process_job_via_backend(backend, registry, queues=["default"])
     assert result is True
-    job = await backend.get_job("job-1")
-    assert job["status"] == "dead_letter"
+    # DLQ Option A: dead-lettered rows move into _dead_letter_jobs and
+    # the source row is removed from soniq_jobs.
+    assert await backend.get_job("job-1") is None
+    assert "job-1" in backend._dead_letter_jobs
 
 
 @pytest.mark.asyncio
@@ -80,8 +82,8 @@ async def test_string_args_are_contract_violation():
     backend, registry = await _setup(my_task, args="not valid json{{{")
     result = await process_job_via_backend(backend, registry, queues=["default"])
     assert result is True
-    job = await backend.get_job("job-1")
-    assert job["status"] == "dead_letter"
+    assert await backend.get_job("job-1") is None
+    assert "job-1" in backend._dead_letter_jobs
 
 
 @pytest.mark.asyncio
@@ -111,8 +113,8 @@ async def test_max_attempts_exceeded_guard():
     result = await process_job_via_backend(backend, registry, queues=["default"])
     assert result is True
     assert executed == []  # Should NOT have been executed
-    job = await backend.get_job("job-1")
-    assert job["status"] == "dead_letter"
+    assert await backend.get_job("job-1") is None
+    assert "job-1" in backend._dead_letter_jobs
 
 
 @pytest.mark.asyncio
@@ -137,8 +139,8 @@ async def test_unregistered_job_dead_letters():
 
     result = await process_job_via_backend(backend, registry, queues=["default"])
     assert result is True
-    job = await backend.get_job("job-orphan")
-    assert job["status"] == "dead_letter"
+    assert await backend.get_job("job-orphan") is None
+    assert "job-orphan" in backend._dead_letter_jobs
 
 
 @pytest.mark.asyncio

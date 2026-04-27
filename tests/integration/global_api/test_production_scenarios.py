@@ -398,25 +398,20 @@ if __name__ == "__main__":
                 app_pool = await global_app._get_pool()
 
                 async with app_pool.acquire() as verify_conn:
-                    # Verify failing jobs eventually moved to failed/dead_letter status
-                    # Search for any jobs that have failed/dead_letter status (regardless of name)
+                    # DLQ Option A: dead-lettered jobs leave soniq_jobs and live
+                    # in soniq_dead_letter_jobs as the single source of truth.
                     failed_jobs = await verify_conn.fetch(
                         """
-                        SELECT id, status, attempts, last_error FROM soniq_jobs 
-                        WHERE status IN ('failed', 'dead_letter') 
+                        SELECT id, attempts, last_error FROM soniq_dead_letter_jobs
                         ORDER BY created_at
-                    """
+                        """
                     )
 
                     assert (
                         len(failed_jobs) == 3
-                    ), f"Expected 3 failing jobs, got {len(failed_jobs)} jobs with status: {[j['status'] for j in failed_jobs]}"
+                    ), f"Expected 3 dead-lettered jobs, got {len(failed_jobs)}"
 
                     for job_record in failed_jobs:
-                        assert job_record["status"] in [
-                            "failed",
-                            "dead_letter",
-                        ], f"Job status: {job_record['status']}"
                         assert (
                             job_record["attempts"] > 1
                         ), f"Job should have been retried, attempts: {job_record['attempts']}"

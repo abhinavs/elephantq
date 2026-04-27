@@ -53,9 +53,17 @@ async def test_get_queue_stats(backend):
     )
 
     stats = await backend.get_queue_stats()
-    assert len(stats) == 1
-    assert stats[0]["queue"] == "default"
-    assert stats[0]["queued"] == 2
+    assert set(stats.keys()) == {
+        "total",
+        "queued",
+        "processing",
+        "done",
+        "dead_letter",
+        "cancelled",
+    }
+    assert stats["queued"] == 2
+    assert stats["total"] == 2
+    assert stats["dead_letter"] == 0
 
 
 async def test_expires_at_set_on_done(backend):

@@ -147,12 +147,18 @@ async def test_retry_mechanism():
     await soniq.run_worker(run_once=True)
 
     async with global_pool.acquire() as conn:
-        job_record = await conn.fetchrow(
+        # DLQ Option A: dead-lettered jobs leave soniq_jobs.
+        in_jobs = await conn.fetchrow(
             "SELECT * FROM soniq_jobs WHERE id = $1", uuid.UUID(actual_job_id_2)
         )
-        assert job_record["status"] == "dead_letter"
-        assert job_record["attempts"] == 4  # retries=3 means max_attempts=4
-        assert "Always fails" in job_record["last_error"]
+        assert in_jobs is None
+        dlq_record = await conn.fetchrow(
+            "SELECT * FROM soniq_dead_letter_jobs WHERE id = $1",
+            uuid.UUID(actual_job_id_2),
+        )
+        assert dlq_record is not None
+        assert dlq_record["attempts"] == 4  # retries=3 means max_attempts=4
+        assert "Always fails" in dlq_record["last_error"]
 
     # Clean up global app
     if global_app._is_initialized:
