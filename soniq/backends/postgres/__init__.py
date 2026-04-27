@@ -12,13 +12,16 @@ import logging
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Any, AsyncIterator, Optional
+from typing import TYPE_CHECKING, Any, AsyncIterator, Optional
 
 import asyncpg
 
 from soniq.db.helpers import rows_affected as _rows_affected
 
 from ...core.leadership import advisory_key
+
+if TYPE_CHECKING:
+    from soniq.types import QueueStats
 
 logger = logging.getLogger(__name__)
 
@@ -552,21 +555,68 @@ class PostgresBackend:
         *,
         attempts: int,
         error: str,
+        reason: str,
+        tags: Optional[dict] = None,
     ) -> None:
+        # DLQ Option A: the source row in soniq_jobs is moved into
+        # soniq_dead_letter_jobs in a single transaction. Both statements
+        # share the same conn.transaction() block so a crash between them
+        # rolls back to the pre-move state. SELECT ... FOR UPDATE locks the
+        # source row to keep concurrent writers (stale-worker recovery,
+        # cancel) from racing with the move. See docs/contracts/dead_letter.md
+        # and docs/design/dlq_option_a.md.
+        uid = uuid.UUID(job_id)
+        tags_json = json.dumps(tags) if tags is not None else None
+        async with self.acquire() as conn:
+            async with conn.transaction():
+                row = await conn.fetchrow(
+                    "SELECT * FROM soniq_jobs WHERE id = $1 FOR UPDATE",
+                    uid,
+                )
+                if row is None:
+                    return
+                await conn.execute(
+                    """
+                    INSERT INTO soniq_dead_letter_jobs (
+                        id, job_name, args, queue, priority, max_attempts,
+                        attempts, last_error, dead_letter_reason,
+                        original_created_at, moved_to_dead_letter_at, tags
+                    ) VALUES (
+                        $1, $2, $3, $4, $5, $6,
+                        $7, $8, $9,
+                        $10, NOW(), $11
+                    )
+                    """,
+                    uid,
+                    row["job_name"],
+                    row["args"],
+                    row["queue"],
+                    row["priority"],
+                    row["max_attempts"],
+                    attempts,
+                    error,
+                    reason,
+                    row["created_at"],
+                    tags_json,
+                )
+                await conn.execute(
+                    "DELETE FROM soniq_jobs WHERE id = $1",
+                    uid,
+                )
+
+    async def nack_job(self, job_id: str) -> None:
         uid = uuid.UUID(job_id)
         async with self.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(
                     """
                     UPDATE soniq_jobs
-                    SET status = 'dead_letter',
-                        attempts = $1,
-                        last_error = $2,
+                    SET status = 'queued',
+                        worker_id = NULL,
+                        scheduled_at = NOW(),
                         updated_at = NOW()
-                    WHERE id = $3
+                    WHERE id = $1 AND status = 'processing'
                     """,
-                    attempts,
-                    error,
                     uid,
                 )
 
@@ -621,7 +671,7 @@ class PostgresBackend:
                 """
                 UPDATE soniq_jobs
                 SET status = 'queued', attempts = 0, last_error = NULL, updated_at = NOW()
-                WHERE id = $1 AND status IN ('dead_letter', 'failed')
+                WHERE id = $1 AND status = 'failed'
                 """,
                 uid,
             )
@@ -701,24 +751,49 @@ class PostgresBackend:
             rows = await conn.fetch(query, *params)
             return [_job_row_to_dict(row) for row in rows]
 
-    async def get_queue_stats(self) -> list[dict]:
+    async def get_queue_stats(self) -> "QueueStats":
+        # Cross-table aggregation: dead_letter is sourced from
+        # soniq_dead_letter_jobs (Option A; soniq_jobs.status='dead_letter'
+        # no longer exists). Two queries in one connection acquire to keep
+        # the count snapshot tight; the result is the canonical 6-key
+        # QueueStats dict from soniq.types. See
+        # docs/contracts/queue_stats.md.
+        from soniq.types import QueueStats
+
         async with self.acquire() as conn:
-            rows = await conn.fetch(
+            jobs_row = await conn.fetchrow(
                 """
                 SELECT
-                    queue,
-                    COUNT(*) as total,
-                    COUNT(*) FILTER (WHERE status = 'queued') as queued,
-                    COUNT(*) FILTER (WHERE status = 'processing') as processing,
-                    COUNT(*) FILTER (WHERE status = 'done') as done,
-                    COUNT(*) FILTER (WHERE status = 'dead_letter') as dead_letter,
-                    COUNT(*) FILTER (WHERE status = 'cancelled') as cancelled
+                    COUNT(*) FILTER (WHERE status = 'queued')     AS queued,
+                    COUNT(*) FILTER (WHERE status = 'processing') AS processing,
+                    COUNT(*) FILTER (WHERE status = 'done')       AS done,
+                    COUNT(*) FILTER (WHERE status = 'cancelled')  AS cancelled
                 FROM soniq_jobs
-                GROUP BY queue
-                ORDER BY queue
                 """
             )
-            return [dict(row) for row in rows]
+            # The DLQ table is created by the dead_letter feature's
+            # migration (0020); on installs that haven't opted in, treat
+            # the count as zero so get_queue_stats never raises on a fresh
+            # core-only deployment.
+            try:
+                dlq_count = await conn.fetchval(
+                    "SELECT COUNT(*) FROM soniq_dead_letter_jobs"
+                )
+            except asyncpg.UndefinedTableError:
+                dlq_count = 0
+        queued = int(jobs_row["queued"] or 0)
+        processing = int(jobs_row["processing"] or 0)
+        done = int(jobs_row["done"] or 0)
+        cancelled = int(jobs_row["cancelled"] or 0)
+        dead_letter = int(dlq_count or 0)
+        return QueueStats(
+            total=queued + processing + done + cancelled + dead_letter,
+            queued=queued,
+            processing=processing,
+            done=done,
+            dead_letter=dead_letter,
+            cancelled=cancelled,
+        )
 
     # --- Worker tracking ---
 

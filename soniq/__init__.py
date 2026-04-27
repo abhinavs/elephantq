@@ -25,7 +25,10 @@ where the name is a wire-protocol identifier)::
 
 from datetime import datetime, timedelta, timezone
 from importlib.metadata import PackageNotFoundError, version
-from typing import Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional, Union
+
+if TYPE_CHECKING:
+    from .types import QueueStats
 
 from .app import Soniq
 from .job import JobContext, JobStatus, Snooze
@@ -404,7 +407,7 @@ async def list_jobs(
     return await app.list_jobs(queue=queue, status=status, limit=limit, offset=offset)
 
 
-async def get_queue_stats() -> list[dict[str, Any]]:
-    """Get statistics for all queues."""
+async def get_queue_stats() -> "QueueStats":
+    """Whole-instance job state counts. See ``docs/contracts/queue_stats.md``."""
     app = _get_global_app()
     return await app.get_queue_stats()

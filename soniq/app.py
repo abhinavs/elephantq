@@ -5,7 +5,9 @@ Instance-based architecture to replace global state patterns.
 Enables multiple isolated Soniq instances with independent configurations.
 """
 
+import asyncio
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import (
     TYPE_CHECKING,
@@ -26,6 +28,7 @@ from .settings import SoniqSettings
 
 if TYPE_CHECKING:
     from .task_ref import TaskRef
+    from .types import QueueStats
 
 _P = ParamSpec("_P")
 
@@ -202,6 +205,14 @@ class Soniq:
         self._cli = PluginCLI()
         self._dashboard = PluginDashboard()
         self._migrations = PluginMigrations()
+
+        # P0.5: bounded executor + post-claim semaphore for sync handlers.
+        # The semaphore is loop-affine (created lazily on first use because
+        # construction can happen outside an event loop). The executor is a
+        # bounded ThreadPoolExecutor so saturation surfaces as backpressure
+        # rather than as unbounded thread spawning via asyncio.to_thread.
+        self._sync_executor: Optional[ThreadPoolExecutor] = None
+        self._sync_pool_semaphore: Optional[asyncio.Semaphore] = None
 
         for plugin in plugins or []:
             self.use(plugin)
@@ -460,6 +471,16 @@ class Soniq:
             if self._backend:
                 await self._backend.close()
                 logger.debug("Closed backend")
+
+            # Tear down the sync executor. wait=False because the worker
+            # shutdown path is responsible for waiting on in-flight sync
+            # threads (per docs/contracts/shutdown.md); blocking here a
+            # second time would just stall close() during operator-driven
+            # rebuilds in tests.
+            if self._sync_executor is not None:
+                self._sync_executor.shutdown(wait=False)
+                self._sync_executor = None
+            self._sync_pool_semaphore = None
 
             self._closed = True
             self._initialized = False
@@ -1152,6 +1173,26 @@ class Soniq:
         """Get job registry."""
         return self._job_registry
 
+    def _get_sync_dispatch(self) -> tuple[ThreadPoolExecutor, asyncio.Semaphore]:
+        """Return the per-instance sync executor and post-claim semaphore.
+
+        Lazy because constructing an `asyncio.Semaphore` requires a running
+        event loop in older asyncio versions and we do not want to force one
+        at `Soniq()` construction time. The pair is created on the first
+        worker dispatch of a sync handler and reused for the instance's
+        lifetime; `close()` shuts the executor down.
+        """
+        if self._sync_executor is None:
+            self._sync_executor = ThreadPoolExecutor(
+                max_workers=self._settings.sync_handler_pool_size,
+                thread_name_prefix="soniq-sync",
+            )
+        if self._sync_pool_semaphore is None:
+            self._sync_pool_semaphore = asyncio.Semaphore(
+                self._settings.sync_handler_pool_size
+            )
+        return self._sync_executor, self._sync_pool_semaphore
+
     async def run_worker(
         self,
         concurrency: int = 4,
@@ -1177,6 +1218,7 @@ class Soniq:
 
         from .core.worker import Worker
 
+        sync_executor, sync_pool_semaphore = self._get_sync_dispatch()
         worker = Worker(
             backend=self._backend,
             registry=self._job_registry,
@@ -1185,6 +1227,8 @@ class Soniq:
             middleware=self._middleware,
             retry_policy=self._retry_policy,
             metrics_sink=self._metrics_sink,
+            sync_executor=sync_executor,
+            sync_pool_semaphore=sync_pool_semaphore,
         )
 
         # `soniq start` only runs the worker. Recurring jobs require a
@@ -1348,12 +1392,11 @@ class Soniq:
             queue=queue, status=status, limit=limit, offset=offset
         )
 
-    async def get_queue_stats(self) -> List[dict[str, Any]]:
-        """
-        Get statistics for all queues.
+    async def get_queue_stats(self) -> "QueueStats":
+        """Whole-instance job state counts in the canonical 6-key shape.
 
-        Returns:
-            List of dictionaries with queue statistics
+        Returns a single ``QueueStats`` dict (``soniq.types.QueueStats``).
+        See ``docs/contracts/queue_stats.md``.
         """
         await self._ensure_initialized()
         assert self._backend is not None

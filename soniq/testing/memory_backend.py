@@ -7,7 +7,21 @@ Configure with: soniq.configure(backend="memory")
 
 import asyncio
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from soniq.types import QueueStats
+
+_REJECTED_JOB_STATUS = "dead_letter"
+_REJECT_DEAD_LETTER_MSG = (
+    "soniq_jobs.status=dead_letter is rejected: DLQ rows live in "
+    "soniq_dead_letter_jobs (see docs/contracts/dead_letter.md)"
+)
+
+
+def _reject_dead_letter_status(status: Any) -> None:
+    if status == _REJECTED_JOB_STATUS:
+        raise ValueError(_REJECT_DEAD_LETTER_MSG)
 
 
 class MemoryBackend:
@@ -15,12 +29,13 @@ class MemoryBackend:
     In-memory storage backend.
 
     Stores jobs and workers in Python dicts.
-    No persistence — all state is lost when the process exits.
+    No persistence - all state is lost when the process exits.
     """
 
     def __init__(self) -> None:
         self._jobs: dict[str, dict[str, Any]] = {}
         self._workers: dict[str, dict[str, Any]] = {}
+        self._dead_letter_jobs: dict[str, dict[str, Any]] = {}
         # Observability metadata only - mirrors soniq_task_registry. See
         # plan section 14.4 'Architectural boundary statement'.
         self._task_registry: dict[tuple[str, str], dict[str, Any]] = {}
@@ -219,15 +234,50 @@ class MemoryBackend:
         *,
         attempts: int,
         error: str,
+        reason: str,
+        tags: Optional[dict] = None,
     ) -> None:
+        # DLQ Option A: copy the source job into self._dead_letter_jobs and
+        # remove it from self._jobs under the same lock. There are no
+        # transactions to worry about - the lock makes the move atomic from
+        # the perspective of any other coroutine on this backend. See
+        # docs/contracts/dead_letter.md and docs/design/dlq_option_a.md.
         async with self._lock:
             job = self._jobs.get(job_id)
             if not job:
                 return
-            job["status"] = "dead_letter"
-            job["attempts"] = attempts
-            job["last_error"] = error
-            job["updated_at"] = datetime.now(timezone.utc)
+            now = datetime.now(timezone.utc)
+            self._dead_letter_jobs[job_id] = {
+                "id": job_id,
+                "job_name": job["job_name"],
+                "args": job["args"],
+                "queue": job["queue"],
+                "priority": job["priority"],
+                "max_attempts": job["max_attempts"],
+                "attempts": attempts,
+                "last_error": error,
+                "dead_letter_reason": reason,
+                "original_created_at": job.get("created_at"),
+                "moved_to_dead_letter_at": now,
+                "resurrection_count": 0,
+                "last_resurrection_at": None,
+                "tags": dict(tags) if tags is not None else None,
+                "created_at": now,
+            }
+            del self._jobs[job_id]
+
+    async def nack_job(self, job_id: str) -> None:
+        async with self._lock:
+            job = self._jobs.get(job_id)
+            if not job:
+                return
+            if job.get("status") != "processing":
+                return
+            now = datetime.now(timezone.utc)
+            job["status"] = "queued"
+            job["worker_id"] = None
+            job["scheduled_at"] = now
+            job["updated_at"] = now
 
     async def reschedule_job(
         self,
@@ -263,7 +313,7 @@ class MemoryBackend:
     async def retry_job(self, job_id: str) -> bool:
         async with self._lock:
             job = self._jobs.get(job_id)
-            if not job or job["status"] not in ("dead_letter", "failed"):
+            if not job or job["status"] != "failed":
                 return False
             job["status"] = "queued"
             job["attempts"] = 0
@@ -306,25 +356,33 @@ class MemoryBackend:
         results.sort(key=lambda j: j.get("created_at", ""), reverse=True)
         return results[offset : offset + limit]
 
-    async def get_queue_stats(self) -> list[dict]:
-        stats: dict[str, dict[str, int]] = {}
+    async def get_queue_stats(self) -> "QueueStats":
+        # Whole-instance counts. dead_letter is sourced from
+        # self._dead_letter_jobs - the in-memory mirror of
+        # soniq_dead_letter_jobs (DLQ Option A). See
+        # docs/contracts/queue_stats.md.
+        from soniq.types import QueueStats
+
+        queued = processing = done = cancelled = 0
         for job in self._jobs.values():
-            q = job["queue"]
-            if q not in stats:
-                stats[q] = {
-                    "queue": q,
-                    "total": 0,
-                    "queued": 0,
-                    "processing": 0,
-                    "done": 0,
-                    "dead_letter": 0,
-                    "cancelled": 0,
-                }
-            stats[q]["total"] += 1
             s = job["status"]
-            if s in stats[q]:
-                stats[q][s] += 1
-        return sorted(stats.values(), key=lambda x: x["queue"])
+            if s == "queued":
+                queued += 1
+            elif s == "processing":
+                processing += 1
+            elif s == "done":
+                done += 1
+            elif s == "cancelled":
+                cancelled += 1
+        dead_letter = len(self._dead_letter_jobs)
+        return QueueStats(
+            total=queued + processing + done + cancelled + dead_letter,
+            queued=queued,
+            processing=processing,
+            done=done,
+            dead_letter=dead_letter,
+            cancelled=cancelled,
+        )
 
     # --- Task registry (observability metadata only) ---
 

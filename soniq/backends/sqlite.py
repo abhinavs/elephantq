@@ -14,7 +14,10 @@ Limitations:
 import json
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from soniq.types import QueueStats
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +85,8 @@ class SQLiteBackend:
                 job_name TEXT NOT NULL,
                 args TEXT NOT NULL,
                 args_hash TEXT,
-                status TEXT NOT NULL DEFAULT 'queued',
+                status TEXT NOT NULL DEFAULT 'queued'
+                    CHECK (status IN ('queued', 'processing', 'done', 'failed', 'cancelled')),
                 attempts INTEGER DEFAULT 0,
                 max_attempts INTEGER DEFAULT 3,
                 queue TEXT DEFAULT 'default',
@@ -104,6 +108,27 @@ class SQLiteBackend:
             CREATE INDEX IF NOT EXISTS idx_eq_jobs_queue_status
                 ON soniq_jobs (queue, status);
 
+            -- Mirrors the postgres defensive CHECK from
+            -- 0002_dead_letter_option_a.sql. SQLite has no ENUM and the
+            -- column-level CHECK above already rejects the value, but a
+            -- BEFORE-trigger lets the rejection surface as an explicit
+            -- contract violation regardless of how a future column
+            -- migration touches the CHECK shape. See
+            -- docs/contracts/dead_letter.md.
+            CREATE TRIGGER IF NOT EXISTS soniq_jobs_reject_dead_letter_insert
+            BEFORE INSERT ON soniq_jobs
+            FOR EACH ROW WHEN NEW.status = 'dead_letter'
+            BEGIN
+                SELECT RAISE(ABORT, 'soniq_jobs.status=dead_letter is rejected: DLQ rows live in soniq_dead_letter_jobs');
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS soniq_jobs_reject_dead_letter_update
+            BEFORE UPDATE ON soniq_jobs
+            FOR EACH ROW WHEN NEW.status = 'dead_letter'
+            BEGIN
+                SELECT RAISE(ABORT, 'soniq_jobs.status=dead_letter is rejected: DLQ rows live in soniq_dead_letter_jobs');
+            END;
+
             CREATE TABLE IF NOT EXISTS soniq_workers (
                 id TEXT PRIMARY KEY,
                 hostname TEXT NOT NULL,
@@ -115,6 +140,33 @@ class SQLiteBackend:
                 started_at TEXT,
                 metadata TEXT
             );
+
+            CREATE TABLE IF NOT EXISTS soniq_dead_letter_jobs (
+                id TEXT PRIMARY KEY,
+                job_name TEXT NOT NULL,
+                args TEXT NOT NULL,
+                queue TEXT NOT NULL,
+                priority INTEGER NOT NULL,
+                max_attempts INTEGER NOT NULL,
+                attempts INTEGER NOT NULL,
+                last_error TEXT,
+                dead_letter_reason TEXT NOT NULL,
+                original_created_at TEXT NOT NULL,
+                moved_to_dead_letter_at TEXT NOT NULL,
+                resurrection_count INTEGER DEFAULT 0,
+                last_resurrection_at TEXT,
+                tags TEXT,
+                created_at TEXT
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_soniq_dead_letter_jobs_job_name
+                ON soniq_dead_letter_jobs (job_name);
+            CREATE INDEX IF NOT EXISTS idx_soniq_dead_letter_jobs_queue
+                ON soniq_dead_letter_jobs (queue);
+            CREATE INDEX IF NOT EXISTS idx_soniq_dead_letter_jobs_reason
+                ON soniq_dead_letter_jobs (dead_letter_reason);
+            CREATE INDEX IF NOT EXISTS idx_soniq_dead_letter_jobs_moved_at
+                ON soniq_dead_letter_jobs (moved_to_dead_letter_at);
             """
         )
 
@@ -309,12 +361,69 @@ class SQLiteBackend:
         await self._conn.commit()
 
     async def mark_job_dead_letter(
-        self, job_id: str, *, attempts: int, error: str
+        self,
+        job_id: str,
+        *,
+        attempts: int,
+        error: str,
+        reason: str,
+        tags: Optional[dict] = None,
     ) -> None:
+        # DLQ Option A: copy the source row into soniq_dead_letter_jobs and
+        # delete it from soniq_jobs in a single transaction. aiosqlite runs
+        # in implicit-transaction mode (we commit at the end), so a crash
+        # before commit() leaves both tables in their pre-move state. The
+        # SELECT/INSERT/DELETE share a single python lock on self._conn,
+        # so concurrent writers cannot wedge halfway. See
+        # docs/contracts/dead_letter.md and docs/design/dlq_option_a.md.
         assert self._conn is not None
+        async with self._conn.execute(
+            "SELECT * FROM soniq_jobs WHERE id=?",
+            (job_id,),
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row is None:
+                return
+        now = _now_iso()
+        tags_json = json.dumps(tags) if tags is not None else None
         await self._conn.execute(
-            "UPDATE soniq_jobs SET status='dead_letter', attempts=?, last_error=?, updated_at=? WHERE id=?",
-            (attempts, error, _now_iso(), job_id),
+            """
+            INSERT INTO soniq_dead_letter_jobs (
+                id, job_name, args, queue, priority, max_attempts,
+                attempts, last_error, dead_letter_reason,
+                original_created_at, moved_to_dead_letter_at,
+                resurrection_count, tags, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+            """,
+            (
+                job_id,
+                row["job_name"],
+                row["args"],
+                row["queue"],
+                row["priority"],
+                row["max_attempts"],
+                attempts,
+                error,
+                reason,
+                row["created_at"],
+                now,
+                tags_json,
+                now,
+            ),
+        )
+        await self._conn.execute(
+            "DELETE FROM soniq_jobs WHERE id=?",
+            (job_id,),
+        )
+        await self._conn.commit()
+
+    async def nack_job(self, job_id: str) -> None:
+        assert self._conn is not None
+        now = _now_iso()
+        await self._conn.execute(
+            "UPDATE soniq_jobs SET status='queued', worker_id=NULL, scheduled_at=?, updated_at=? "
+            "WHERE id=? AND status='processing'",
+            (now, now, job_id),
         )
         await self._conn.commit()
 
@@ -349,7 +458,7 @@ class SQLiteBackend:
     async def retry_job(self, job_id: str) -> bool:
         assert self._conn is not None
         cursor = await self._conn.execute(
-            "UPDATE soniq_jobs SET status='queued', attempts=0, last_error=NULL, updated_at=? WHERE id=? AND status IN ('dead_letter', 'failed')",
+            "UPDATE soniq_jobs SET status='queued', attempts=0, last_error=NULL, updated_at=? WHERE id=? AND status='failed'",
             (_now_iso(), job_id),
         )
         await self._conn.commit()
@@ -404,22 +513,41 @@ class SQLiteBackend:
             rows = await cursor.fetchall()
             return [_sqlite_row_to_dict(r) for r in rows]
 
-    async def get_queue_stats(self) -> list[dict]:
+    async def get_queue_stats(self) -> "QueueStats":
+        # Whole-instance counts in the canonical 6-key shape. dead_letter
+        # is sourced from soniq_dead_letter_jobs (DLQ Option A, mirrored
+        # from postgres). See docs/contracts/queue_stats.md.
+        from soniq.types import QueueStats
+
         assert self._conn is not None
         async with self._conn.execute(
             """
-            SELECT queue,
-                COUNT(*) as total,
-                SUM(CASE WHEN status='queued' THEN 1 ELSE 0 END) as queued,
-                SUM(CASE WHEN status='processing' THEN 1 ELSE 0 END) as processing,
-                SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) as done,
-                SUM(CASE WHEN status='dead_letter' THEN 1 ELSE 0 END) as dead_letter,
-                SUM(CASE WHEN status='cancelled' THEN 1 ELSE 0 END) as cancelled
-            FROM soniq_jobs GROUP BY queue ORDER BY queue
+            SELECT
+                SUM(CASE WHEN status='queued'     THEN 1 ELSE 0 END) AS queued,
+                SUM(CASE WHEN status='processing' THEN 1 ELSE 0 END) AS processing,
+                SUM(CASE WHEN status='done'       THEN 1 ELSE 0 END) AS done,
+                SUM(CASE WHEN status='cancelled'  THEN 1 ELSE 0 END) AS cancelled
+            FROM soniq_jobs
             """
         ) as cursor:
-            rows = await cursor.fetchall()
-            return [dict(r) for r in rows]
+            row = await cursor.fetchone()
+        async with self._conn.execute(
+            "SELECT COUNT(*) AS c FROM soniq_dead_letter_jobs"
+        ) as cursor:
+            dlq_row = await cursor.fetchone()
+        queued = int(row["queued"] or 0) if row is not None else 0
+        processing = int(row["processing"] or 0) if row is not None else 0
+        done = int(row["done"] or 0) if row is not None else 0
+        cancelled = int(row["cancelled"] or 0) if row is not None else 0
+        dead_letter = int(dlq_row["c"] or 0) if dlq_row is not None else 0
+        return QueueStats(
+            total=queued + processing + done + cancelled + dead_letter,
+            queued=queued,
+            processing=processing,
+            done=done,
+            dead_letter=dead_letter,
+            cancelled=cancelled,
+        )
 
     # --- Worker tracking ---
 
