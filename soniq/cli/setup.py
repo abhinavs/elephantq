@@ -65,7 +65,7 @@ async def handle_setup(args) -> int:
     if soniq_instance is None:
         import soniq as _soniq
 
-        soniq_instance = _soniq._get_global_app()
+        soniq_instance = _soniq.get_global_app()
 
     try:
         print_status("Setting up Soniq database...", "info")

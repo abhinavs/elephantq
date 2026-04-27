@@ -9,10 +9,8 @@ This script runs tests in the new isolated structure:
 - Unit tests: Test individual modules
 """
 import os
-import shutil
 import subprocess
 import sys
-from pathlib import Path
 
 
 def _bool_env(name: str) -> bool:
@@ -62,28 +60,8 @@ def _bootstrap_venv(project_root: str) -> None:
 
 
 def _cleanup_legacy_editables(venv_python: str) -> None:
-    """Remove stale editable installs from previous package names."""
-    try:
-        site_packages = subprocess.check_output(
-            [
-                venv_python,
-                "-c",
-                "import site; print(site.getsitepackages()[0])",
-            ],
-            text=True,
-        ).strip()
-    except Exception:
-        return
-
-    site_path = Path(site_packages)
-    if not site_path.exists():
-        return
-
-    for pth in site_path.glob("__editable__.runql-*.pth"):
-        pth.unlink(missing_ok=True)
-
-    for dist in site_path.glob("runql-*.dist-info"):
-        shutil.rmtree(dist, ignore_errors=True)
+    """No-op placeholder for removed legacy editable-install cleanup."""
+    return
 
 
 def run_test_batch(name, test_paths, verbose=True):

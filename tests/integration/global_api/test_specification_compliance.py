@@ -33,7 +33,7 @@ async def test_free_features_compliance():
     job_id = await soniq.enqueue("basic_job", args={"message": "test persistence"})
 
     # Use global app pool for consistency
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     app_pool = await global_app._get_pool()
 
     async with app_pool.acquire() as conn:
@@ -57,7 +57,7 @@ async def test_free_features_compliance():
         assert job_record["max_attempts"] == 4  # retries=3 -> max_attempts=4
 
     # ✅ Internal DB connection pooling
-    pool = await soniq._get_global_app()._get_pool()
+    pool = await soniq.get_global_app()._get_pool()
     assert pool is not None
 
 
@@ -75,7 +75,7 @@ async def test_pro_features_compliance():
     )
 
     # Verify priority ordering in database
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     app_pool = await global_app._get_pool()
 
     async with app_pool.acquire() as conn:
@@ -158,7 +158,7 @@ async def test_database_schema_compliance():
     """Test database schema matches specification"""
 
     # Use global app pool for consistency
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     app_pool = await global_app._get_pool()
 
     async with app_pool.acquire() as conn:

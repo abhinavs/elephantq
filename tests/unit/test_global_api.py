@@ -22,9 +22,9 @@ class TestGlobalAPI:
     """Test the global convenience API functions"""
 
     def test_get_global_app_creates_singleton(self):
-        """Test that _get_global_app creates and returns same instance"""
-        app1 = soniq._get_global_app()
-        app2 = soniq._get_global_app()
+        """Test that get_global_app creates and returns same instance"""
+        app1 = soniq.get_global_app()
+        app2 = soniq.get_global_app()
 
         assert isinstance(app1, Soniq)
         assert isinstance(app2, Soniq)
@@ -34,13 +34,13 @@ class TestGlobalAPI:
     async def test_configure_creates_new_global_app(self):
         """Test that configure() creates a new global app with settings"""
         # Get initial app
-        app1 = soniq._get_global_app()
+        app1 = soniq.get_global_app()
 
         # Configure with new settings
         await soniq.configure(database_url="postgresql://test@localhost/test_db")
 
         # Should get new app instance
-        app2 = soniq._get_global_app()
+        app2 = soniq.get_global_app()
 
         assert app1 is not app2  # Different instances
         assert app2.settings.database_url == "postgresql://test@localhost/test_db"
@@ -55,7 +55,7 @@ class TestGlobalAPI:
             return f"Processed: {message}"
 
         # Check job is registered in global app under its explicit name
-        app = soniq._get_global_app()
+        app = soniq.get_global_app()
         job_meta = app._get_job_registry().get_job("test_job")
 
         assert job_meta is not None
@@ -84,7 +84,7 @@ class TestGlobalAPI:
             return message
 
         # Mock the global app's enqueue method
-        app = soniq._get_global_app()
+        app = soniq.get_global_app()
         with patch.object(app, "enqueue", new_callable=AsyncMock) as mock_enqueue:
             mock_enqueue.return_value = "test-job-id"
 
@@ -141,7 +141,7 @@ class TestGlobalAPI:
         await soniq.configure(database_url="postgresql://test@localhost/test_db")
 
         # Mock the global app's run_worker method
-        app = soniq._get_global_app()
+        app = soniq.get_global_app()
         with patch.object(app, "run_worker", new_callable=AsyncMock) as mock_run_worker:
 
             # Call global run_worker
@@ -171,7 +171,7 @@ class TestGlobalAPI:
             return "instance"
 
         # Check isolation under explicit names
-        global_app = soniq._get_global_app()
+        global_app = soniq.get_global_app()
 
         # Global app should have global_job but not instance_job
         global_registry = global_app._get_job_registry()
@@ -195,8 +195,8 @@ class TestGlobalAPI:
         await soniq.configure(**test_config)
 
         # Get app multiple times
-        app1 = soniq._get_global_app()
-        app2 = soniq._get_global_app()
+        app1 = soniq.get_global_app()
+        app2 = soniq.get_global_app()
 
         # Should be same instance with same config
         assert app1 is app2
@@ -229,7 +229,7 @@ class TestGlobalAPI:
             return "default"
 
         # Should create global app with default settings
-        app = soniq._get_global_app()
+        app = soniq.get_global_app()
         assert app is not None
         assert app.settings.database_url is not None  # Should have some default
 

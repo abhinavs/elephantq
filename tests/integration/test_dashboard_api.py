@@ -1,6 +1,6 @@
 import pytest
 
-from soniq.dashboard.fastapi_app import FASTAPI_AVAILABLE, create_dashboard_app
+from soniq.dashboard.server import FASTAPI_AVAILABLE, create_dashboard_app
 
 
 @pytest.mark.skipif(not FASTAPI_AVAILABLE, reason="FastAPI not installed")
@@ -21,3 +21,13 @@ async def test_dashboard_api_smoke():
         resp = await client.get("/api/jobs")
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
+
+        # Literal routes must not be shadowed by /api/jobs/{job_id}
+        resp = await client.get("/api/jobs/timeline")
+        assert resp.status_code == 200
+
+        resp = await client.get("/api/jobs/types")
+        assert resp.status_code == 200
+
+        resp = await client.get("/api/jobs/search")
+        assert resp.status_code == 200

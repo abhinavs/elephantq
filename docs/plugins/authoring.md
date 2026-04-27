@@ -232,12 +232,12 @@ Plugins should pin a Soniq version range so a major Soniq release
 doesn't silently break them:
 
 ```toml
-dependencies = ["soniq>=0.0.2,<0.1.0"]
+dependencies = ["soniq>=0.0.3,<0.1.0"]
 ```
 
 The plugin contract (`install`, `on_startup`, `on_shutdown`) is part
-of Soniq's public-API stability promise from 0.0.2 onwards. Breaking
-it requires a major bump.
+of Soniq's public-API stability promise. Breaking it requires a major
+bump.
 
 ## Stability and breakage
 

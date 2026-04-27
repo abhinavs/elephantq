@@ -1,10 +1,8 @@
 # Shutdown contract
 
-Status: locked for 0.0.3 (alpha; one-way; no transitional shims).
-
 This document is the source of truth for worker shutdown behavior. The state diagram below is canonical; implementation, tests, and user-facing prose all conform to it.
 
-## Boundedness contract (locked, copied verbatim from plan.md P0.3)
+## Boundedness contract
 
 Shutdown is bounded for async handlers and **not** bounded for sync handlers.
 
@@ -13,7 +11,7 @@ Shutdown is bounded for async handlers and **not** bounded for sync handlers.
 
 The post-timeout state is named **`FORCE_TIMEOUT_PATH`** (renamed from `FORCE_REQUEUE` in v8.5+) because only the async branch actually requeues; the sync branch hands off to wait-for-thread plus stale-recovery.
 
-## State diagram (locked, copied verbatim from plan.md P0.3)
+## State diagram
 
 ```
 RUNNING --SIGTERM--> DRAINING --all jobs done--> STOPPED
@@ -93,7 +91,7 @@ Operators must:
 
 Async handlers do not carry this risk because cooperative cancellation actually stops execution before `nack_job` runs.
 
-## Bounded claimed-not-yet-running window (interaction with P0.5)
+## Bounded claimed-not-yet-running window
 
 Because saturation is enforced by post-claim semaphore (job type is unknown until after claim), a sync job can sit briefly in `processing` before its handler thread starts. The window is bounded:
 
@@ -105,4 +103,3 @@ Because saturation is enforced by post-claim semaphore (job type is unknown unti
 
 - `processing` count semantics in queue stats (includes claimed-but-not-yet-running): [`queue_stats.md`](queue_stats.md).
 - DLQ behavior is unrelated to shutdown; a job mid-shutdown does not become a DLQ row. See [`dead_letter.md`](dead_letter.md).
-- Plan sections: P0.3 (boundedness contract, state diagram, `nack_job` contract); P0.5 (post-claim backpressure mechanism); B1 (sync-job cancellation gap); B5 (`nack_job` field set lock).

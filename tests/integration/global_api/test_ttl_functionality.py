@@ -69,7 +69,7 @@ async def test_ttl_positive_sets_expires_at():
         assert processed
 
         # Use global app pool for consistency
-        global_app = soniq._get_global_app()
+        global_app = soniq.get_global_app()
         app_pool = await global_app._get_pool()
 
         async with app_pool.acquire() as conn:
@@ -108,7 +108,7 @@ async def test_ttl_cleanup_removes_expired_jobs():
         await asyncio.sleep(2)
 
         # Use global app pool for consistency
-        global_app = soniq._get_global_app()
+        global_app = soniq.get_global_app()
         app_pool = await global_app._get_pool()
 
         async with app_pool.acquire() as conn:
@@ -154,7 +154,7 @@ async def test_ttl_failed_jobs_not_cleaned_up():
         await asyncio.sleep(2)
 
         # Use global app pool for consistency
-        global_app = soniq._get_global_app()
+        global_app = soniq.get_global_app()
         app_pool = await global_app._get_pool()
 
         async with app_pool.acquire() as conn:

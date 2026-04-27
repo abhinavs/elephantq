@@ -82,7 +82,7 @@ export SONIQ_JOBS_MODULES="myservice.tasks"
 soniq start
 ```
 
-Soniq is at-least-once, not exactly-once: handlers should be idempotent. See [docs/guides/cross-service-jobs.md](docs/guides/cross-service-jobs.md) and the [migration guide](docs/migration/0.0.x-to-cross-service.md) for the full story.
+Soniq is at-least-once, not exactly-once: handlers should be idempotent. See [docs/guides/cross-service-jobs.md](docs/guides/cross-service-jobs.md) for the full delivery-semantics details.
 
 ## Why Soniq
 

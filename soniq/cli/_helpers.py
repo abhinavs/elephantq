@@ -61,7 +61,7 @@ async def resolve_soniq_instance(args: Any) -> Optional[Any]:
     """Build a ``Soniq`` from ``--database-url``, or return ``None``.
 
     Returning ``None`` is the signal to the caller to fall back to the
-    global app via ``soniq._get_global_app()``. Exists to keep the
+    global app via ``soniq.get_global_app()``. Exists to keep the
     error-message wording consistent across every subcommand that takes
     a database URL.
     """

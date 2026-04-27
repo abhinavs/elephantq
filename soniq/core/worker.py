@@ -48,7 +48,7 @@ class Worker:
         self._middleware = middleware or []
         self._retry_policy = retry_policy
         self._metrics_sink = metrics_sink
-        # P0.5: bounded sync dispatch + post-claim semaphore. Both are
+        # Bounded sync dispatch + post-claim semaphore. Both are
         # owned by the Soniq instance; the worker only reads them.
         self._sync_executor = sync_executor
         self._sync_pool_semaphore = sync_pool_semaphore
@@ -278,7 +278,7 @@ class Worker:
             )
 
             if shutdown_task in done:
-                # P0.3 shutdown state machine. Source of truth:
+                # Shutdown state machine. Source of truth:
                 # docs/contracts/shutdown.md. RUNNING -> DRAINING here;
                 # the per-task while-loop already stops fetching when
                 # shutdown_event is set, so DRAINING is "wait up to
@@ -336,15 +336,15 @@ class Worker:
         tasks: list[asyncio.Task],
         in_flight_slots: list[dict],
     ) -> None:
-        """Implement the P0.3 shutdown state machine.
+        """Implement the shutdown state machine.
 
-        Phase 1 - DRAINING: wait up to ``shutdown_timeout`` for every
+        Step 1 - DRAINING: wait up to ``shutdown_timeout`` for every
         worker_task to exit cleanly. Each task already exits its outer
         while-loop the moment it observes ``shutdown_event`` between
         jobs, so this just gives whatever job is currently mid-flight
         time to finish.
 
-        Phase 2 - FORCE_TIMEOUT_PATH: branches by handler kind, read off
+        Step 2 - FORCE_TIMEOUT_PATH: branches by handler kind, read off
         each task's in-flight slot.
 
         - **Async branch:** cancel the worker_task (which surfaces a

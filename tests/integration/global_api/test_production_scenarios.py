@@ -30,7 +30,7 @@ async def _global_pool():
     ``async with _global_pool():`` where the latter form just ensures the
     pool exists.
     """
-    app = soniq._get_global_app()
+    app = soniq.get_global_app()
     await app._ensure_initialized()
     yield app.backend._pool
 
@@ -275,7 +275,7 @@ if __name__ == "__main__":
             max_attempts = 10
             for attempt in range(max_attempts):
                 # Check how many jobs are still queued using global app pool
-                global_app = soniq._get_global_app()
+                global_app = soniq.get_global_app()
                 app_pool = await global_app._get_pool()
 
                 async with app_pool.acquire() as conn:
@@ -394,7 +394,7 @@ if __name__ == "__main__":
                 ), f"Expected 5 successful executions, got {successful_executions}"
 
                 # Use global app pool for consistency
-                global_app = soniq._get_global_app()
+                global_app = soniq.get_global_app()
                 app_pool = await global_app._get_pool()
 
                 async with app_pool.acquire() as verify_conn:
@@ -464,7 +464,7 @@ if __name__ == "__main__":
                 # Process jobs with timing checks — wait for scheduled times
                 from soniq.core.worker import Worker
 
-                global_app = soniq._get_global_app()
+                global_app = soniq.get_global_app()
                 worker = Worker(global_app._backend, global_app._get_job_registry())
 
                 start_time = time.time()
@@ -529,7 +529,7 @@ if __name__ == "__main__":
                 max_attempts = 20
                 for attempt in range(max_attempts):
                     # Check remaining jobs using global app pool
-                    global_app = soniq._get_global_app()
+                    global_app = soniq.get_global_app()
                     app_pool = await global_app._get_pool()
 
                     async with app_pool.acquire() as conn:

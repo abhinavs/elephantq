@@ -1,5 +1,5 @@
 """
-Extended tests for dead_letter.py — DeadLetterManager and helpers.
+Extended tests for dead_letter.py — DeadLetterService and helpers.
 """
 
 from datetime import datetime, timezone

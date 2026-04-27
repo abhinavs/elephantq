@@ -28,7 +28,7 @@ async def test_webhook_delivery_smoke():
     port = site._server.sockets[0].getsockname()[1]
     url = f"http://127.0.0.1:{port}/webhook"
 
-    soniq_app = soniq._get_global_app()
+    soniq_app = soniq.get_global_app()
     await soniq_app._ensure_initialized()
 
     try:

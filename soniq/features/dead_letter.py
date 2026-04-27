@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional, Tuple
 
-from soniq.db.helpers import rows_affected as _rows_affected
+from soniq.backends.helpers import rows_affected as _rows_affected
 
 if TYPE_CHECKING:
     from soniq.app import Soniq
@@ -151,10 +151,7 @@ class DeadLetterService:
     """Service for dead letter queue operations bound to a Soniq instance.
 
     Connections come from ``self._app.backend.acquire()`` so a custom
-    ``Soniq(...)`` instance writes to its own database. The historical
-    name ``DeadLetterManager`` is preserved as an alias below for
-    backwards compatibility within this session; the public surface
-    delegates here.
+    ``Soniq(...)`` instance writes to its own database.
     """
 
     def __init__(
@@ -628,12 +625,6 @@ class DeadLetterService:
 
         else:
             raise ValueError(f"Unsupported export format: {format}")
-
-
-# Backwards-compatible alias. The class was renamed when it stopped reaching
-# for the global app on every method; existing external imports of
-# `DeadLetterManager` keep working without code change.
-DeadLetterManager = DeadLetterService
 
 
 def _service() -> DeadLetterService:

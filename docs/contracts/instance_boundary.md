@@ -1,10 +1,8 @@
 # Instance boundary contract
 
-Status: locked for 0.0.3 (alpha; one-way; no transitional shims).
-
 A `Soniq` instance is the unit of ownership for all settings, registries, backends, and worker resources. Two `Soniq` instances in one process must not bleed state into each other - including settings, registry entries, backend connections, and metrics state. This contract defines what an instance owns, what is allowed to remain process-global, and the lint rule that enforces the boundary.
 
-## What a `Soniq` instance owns (locked)
+## What a `Soniq` instance owns
 
 Each instance carries the following, scoped to the instance and its constructor arguments:
 
@@ -15,7 +13,7 @@ Each instance carries the following, scoped to the instance and its constructor 
 - **Metrics state.** `_job_metrics_index` and any rolling counters live on the instance. The metrics CLI resolves the instance via the existing `--database-url` / env path, not via a global app fallback.
 - **CLI scope.** All CLI commands resolve their instance from explicit flags / env (`--database-url`, etc.) - no implicit "ambient instance" lookup.
 
-The two-instance bleed test (`tests/integration/test_two_instance_bleed.py`, added in Phase 1) constructs two `Soniq` instances with different settings (different `job_timeout`, different `result_ttl`, different queue prefixes) in one process, runs jobs against both, and asserts no bleed in any direction.
+The two-instance bleed test (`tests/integration/test_two_instance_bleed.py`) constructs two `Soniq` instances with different settings (different `job_timeout`, different `result_ttl`, different queue prefixes) in one process, runs jobs against both, and asserts no bleed in any direction.
 
 ## Allowed process-global state (locked, exhaustive)
 
@@ -36,7 +34,7 @@ If a future feature genuinely needs new global state, this contract must be amen
 
 ## Lint rule (summary)
 
-`scripts/check_no_global_settings.py` (lands in Phase 1, P0.4) is the enforcement mechanism. The rule:
+`scripts/check_no_global_settings.py` is the enforcement mechanism. The rule:
 
 - **Greps for `get_settings()` calls.** Any call outside the **constructor / bootstrap allowlist** is a CI failure.
 - **Allowlist (locked):** the explicit construction paths (`Soniq.__init__`, the CLI bootstrap that builds an instance from flags, the test fixtures that build an instance for tests). Module-level imports and runtime helpers are **not** on the allowlist.
@@ -48,11 +46,8 @@ Why a grep, not an AST tool: `get_settings()` is a single name with a small, kno
 
 - Not a per-thread isolation contract. Threads inside a single instance share that instance's state freely. Bleed only matters across instances.
 - Not a multi-process contract. Two worker processes sharing a database backend are independent OS processes; the instance boundary is about same-process bleed.
-- Not a public-API stability contract. P1.7 may delete unwired premature abstractions (`serializer`, `log_sink`); those are still per-instance, just unfinished.
 
 ## Cross-references
 
-- Phase 1 / P0.4: instance-scoping refactors that make the boundary real (`processor`, `naming`, `dead_letter`, `metrics CLI`, `metrics service`).
-- `scripts/check_no_global_settings.py`: the enforcement script; lands in Phase 1.
-- `tests/integration/test_two_instance_bleed.py`: the verification test; lands in Phase 1.
-- Plan sections: P0.4 (split into 5 sub-PRs), Release gate 9.
+- `scripts/check_no_global_settings.py`: the enforcement script.
+- `tests/integration/test_two_instance_bleed.py`: the verification test.

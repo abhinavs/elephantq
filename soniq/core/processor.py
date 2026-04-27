@@ -119,7 +119,7 @@ async def _execute_job_safely(
     if timeout is None:
         timeout = settings.job_timeout
 
-    # P0.5: sync handlers run in a bounded ThreadPoolExecutor with post-claim
+    # Sync handlers run in a bounded ThreadPoolExecutor with post-claim
     # backpressure via an asyncio.Semaphore. Async handlers stay on the event
     # loop unchanged. The sync path is gated by acquiring the per-instance
     # semaphore *before* dispatch so saturation surfaces as a wait, not a

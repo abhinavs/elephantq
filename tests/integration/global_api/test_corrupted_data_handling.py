@@ -42,7 +42,7 @@ async def clean_db():
     """Clean database before each test"""
     from tests.db_utils import clear_table
 
-    pool = await soniq._get_global_app()._get_pool()
+    pool = await soniq.get_global_app()._get_pool()
     await clear_table(pool)
     yield
     await clear_table(pool)
@@ -58,7 +58,7 @@ async def test_corrupted_json_data(clean_db):
     """
     from soniq.core.worker import Worker
 
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     app_pool = await global_app._get_pool()
     registry = global_app._get_job_registry()
     backend = global_app._backend
@@ -100,7 +100,7 @@ async def test_corrupted_json_data(clean_db):
 async def test_corrupted_validation_data(clean_db):
     """Test handling of data that fails Pydantic validation"""
     # Use global app pool for consistency
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     app_pool = await global_app._get_pool()
 
     # Insert job with data that fails validation
@@ -140,7 +140,7 @@ async def test_corrupted_validation_data(clean_db):
 async def test_missing_required_arguments(clean_db):
     """Test handling of missing required function arguments"""
     # Use global app pool for consistency
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     app_pool = await global_app._get_pool()
 
     # Insert job with missing required arguments
@@ -185,7 +185,7 @@ async def test_missing_required_arguments(clean_db):
 async def test_extra_unexpected_arguments(clean_db):
     """Test handling of extra unexpected function arguments"""
     # Use global app pool for consistency
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     app_pool = await global_app._get_pool()
 
     # Insert job with extra unexpected arguments
@@ -232,7 +232,7 @@ async def test_extra_unexpected_arguments(clean_db):
 async def test_invalid_json_structure(clean_db):
     """Test handling of JSON with invalid structure"""
     # Use global app pool for consistency
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     app_pool = await global_app._get_pool()
 
     # Insert job with a JSONB value that is valid JSON but not an object.
@@ -278,7 +278,7 @@ async def test_invalid_json_structure(clean_db):
 async def test_valid_job_still_processes_normally(clean_db):
     """Test that valid jobs are not affected by corruption handling"""
     # Use global app pool for consistency
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     app_pool = await global_app._get_pool()
 
     # Enqueue a valid job
@@ -300,7 +300,7 @@ async def test_valid_job_still_processes_normally(clean_db):
 async def test_pydantic_validation_success(clean_db):
     """Test that Pydantic validation works for valid data"""
     # Use global app pool for consistency
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     app_pool = await global_app._get_pool()
 
     # Debug: Check job registration
@@ -308,7 +308,7 @@ async def test_pydantic_validation_success(clean_db):
     print(f"Job name: {validated_test_job._soniq_name}")
 
     # Debug: Check global app database configuration
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     print(f"Global app database URL: {global_app.settings.database_url}")
     print("Test pool database from get_pool(): Expected test database")
 
@@ -331,7 +331,7 @@ async def test_pydantic_validation_success(clean_db):
         print(f"Jobs in test database pool: {[dict(job) for job in jobs]}")
 
     # Debug: Check database state from global app pool
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     await global_app._ensure_initialized()
     async with global_app.backend.acquire() as conn:
         jobs_global = await conn.fetch("SELECT job_name, status FROM soniq_jobs")
@@ -352,7 +352,7 @@ async def test_pydantic_validation_success(clean_db):
             print(f"Global registry keys: {list(_global_registry._registry.keys())}")
 
             try:
-                global_app = soniq._get_global_app()
+                global_app = soniq.get_global_app()
                 app_registry = global_app._get_job_registry()
                 print(f"App registry keys: {list(app_registry._registry.keys())}")
             except Exception as e:
@@ -382,7 +382,7 @@ async def test_regular_job_exceptions_still_retry(clean_db):
         return "success"
 
     # Use global app pool for consistency
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     app_pool = await global_app._get_pool()
 
     # Enqueue a job that will fail (with retries=0 so max_attempts=1)
@@ -411,7 +411,7 @@ async def test_regular_job_exceptions_still_retry(clean_db):
 async def test_mixed_corrupted_and_valid_jobs(clean_db):
     """Test processing queue with mix of corrupted and valid jobs"""
     # Use global app pool for consistency
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     app_pool = await global_app._get_pool()
 
     # Insert corrupted job (use validation corruption instead of JSON corruption)

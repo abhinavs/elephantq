@@ -36,7 +36,7 @@ async def handle_dashboard(args) -> int:
         print("Dashboard is not available. Install with: pip install soniq[dashboard]")
         return 1
 
-    from soniq.dashboard.fastapi_app import run_dashboard
+    from soniq.dashboard.server import run_dashboard
 
     rc = await run_dashboard(host=args.host, port=args.port)
     return int(rc) if rc is not None else 0

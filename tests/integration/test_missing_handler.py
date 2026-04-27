@@ -17,7 +17,7 @@ async def test_unregistered_job_dead_lettered():
     A job with a job_name that doesn't exist in the registry
     should be moved to dead_letter with a clear error message.
     """
-    app = soniq._get_global_app()
+    app = soniq.get_global_app()
     pool = await app._get_pool()
 
     # Insert a job directly with a non-existent handler

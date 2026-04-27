@@ -11,6 +11,5 @@ exclude tests/
 exclude examples/
 exclude deployment/
 exclude jobs/
-exclude quickstart_test/
 exclude run_tests.py
 exclude release.py

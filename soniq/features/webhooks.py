@@ -610,8 +610,16 @@ class WebhookDispatcher:
                             delivered_at=row["delivered_at"],
                         )
 
-                        # Re-queue for delivery
-                        await self.delivery_queue.put(delivery)
+                        # Re-queue for delivery without blocking the retry
+                        # scanner loop when the queue is saturated.
+                        try:
+                            self.delivery_queue.put_nowait(delivery)
+                        except asyncio.QueueFull:
+                            logger.warning(
+                                "Webhook retry queue full; deferring delivery %s "
+                                "until the next retry scan cycle",
+                                delivery.id,
+                            )
 
                 await asyncio.sleep(30)  # Check every 30 seconds
 
@@ -737,10 +745,6 @@ class WebhookService:
     async def unregister(self, endpoint_id: str) -> bool:
         """Unregister a webhook endpoint."""
         return await self.registry.unregister_endpoint(endpoint_id)  # type: ignore[no-any-return]
-
-    # Backwards-compat aliases for the module-level helper names.
-    register_webhook = register
-    unregister_webhook = unregister
 
     async def send_webhook(
         self,

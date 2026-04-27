@@ -97,7 +97,7 @@ async def test_worker_listener_cleanup_handles_errors():
     """Test that the worker's listener cleanup code handles connection errors gracefully"""
     import soniq
 
-    app = soniq._get_global_app()
+    app = soniq.get_global_app()
     await app._ensure_initialized()
     pool = app.backend._pool
     conn = await pool.acquire()

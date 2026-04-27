@@ -29,11 +29,11 @@ def test_drift_data_layer_method_importable():
     assert callable(DashboardService.get_task_registry_drift)
 
 
-def test_drift_endpoint_registered_on_fastapi_app():
+def test_drift_endpoint_registered_on_server():
     """The /api/tasks/drift route is wired on the FastAPI app."""
     fastapi = pytest.importorskip("fastapi")  # noqa: F841
 
-    from soniq.dashboard.fastapi_app import create_dashboard_app
+    from soniq.dashboard.server import create_dashboard_app
 
     app = create_dashboard_app()
     routes = {getattr(r, "path", None) for r in app.routes}

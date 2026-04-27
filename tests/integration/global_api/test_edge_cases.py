@@ -147,7 +147,7 @@ async def test_exception_handling_in_jobs():
         if status is not None:
             assert status["status"] == "failed"
             return status["last_error"]
-        global_app = soniq._get_global_app()
+        global_app = soniq.get_global_app()
         async with (await global_app._get_pool()).acquire() as conn:
             dlq = await conn.fetchrow(
                 "SELECT last_error FROM soniq_dead_letter_jobs WHERE id = $1",
@@ -204,7 +204,7 @@ async def test_worker_shutdown_handling():
 async def test_registry_edge_cases():
     """Test job registry behavior in edge cases"""
     # Test duplicate job registration with global Soniq app
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     app_registry = global_app._get_job_registry()
 
     initial_count = len(app_registry)

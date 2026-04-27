@@ -1,10 +1,8 @@
 """
 Dashboard data collection and API for Soniq.
 
-The HTTP layer (``fastapi_app``) constructs a single ``DashboardService``
-bound to the configured ``Soniq`` and calls methods on it. The class
-replaces the previous bag of module-level functions that all reached for
-the global app's pool through a shared context.
+The HTTP layer (``server``) constructs a single ``DashboardService``
+bound to the configured ``Soniq`` and calls methods on it.
 """
 
 import uuid
@@ -23,7 +21,7 @@ class DashboardService:
     pooled connection via ``self._app.backend.acquire()``. Write methods
     (``retry_job``, ``delete_job``, ``cancel_job``) just hit the backend;
     HTTP-level authorization for writes is enforced in
-    ``fastapi_app._require_write_authorization``.
+    ``server._require_write_authorization``.
     """
 
     def __init__(self, app: "Soniq"):

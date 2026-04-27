@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any, AsyncIterator, Optional
 
 import asyncpg
 
-from soniq.db.helpers import rows_affected as _rows_affected
+from soniq.backends.helpers import rows_affected as _rows_affected
 
 from ...core.leadership import advisory_key
 
@@ -30,11 +30,8 @@ async def _init_connection(conn: asyncpg.Connection) -> None:
     """Initialize a pooled asyncpg connection: UTC timezone and a JSONB
     codec so layers above this one can treat ``args``, ``result``, ``tags``,
     etc. as native Python values without manual ``json.dumps`` /
-    ``json.loads`` dances.
-
-    The encoder uses ``default=str`` to match the project's long-standing
-    tolerance for non-JSON-native types (datetimes, Decimal, UUID) in job
-    payloads and results.
+    ``json.loads`` dances. The encoder uses ``default=str`` so non-JSON-native
+    types (datetimes, Decimal, UUID) round-trip via ``str(...)``.
     """
     await conn.execute("SET timezone = 'UTC'")
     await conn.set_type_codec(

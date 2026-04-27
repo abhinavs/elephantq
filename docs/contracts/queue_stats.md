@@ -1,10 +1,8 @@
 # Queue stats contract
 
-Status: locked for 0.0.3 (alpha; no transitional shims).
+`Soniq.get_queue_stats()` (and the `soniq status` CLI that consumes it) returns a `QueueStats` mapping with **exactly** the six keys below. Any other key is a bug; any missing key is a bug. Backends must produce the canonical shape directly - no aliases, no extras.
 
-`Soniq.get_queue_stats()` (and the `soniq status` CLI that consumes it) returns a `QueueStats` mapping with **exactly** the six keys below. Any other key is a bug; any missing key is a bug. Backends must produce the canonical shape directly - there is no transitional union form, no legacy `failed` key, no extras.
-
-## Canonical keys (locked)
+## Canonical keys
 
 ```
 {
@@ -51,18 +49,17 @@ Two-table aggregation cost is acceptable: `get_queue_stats` is not on the hot pa
 
 ## Error-on-extra-keys rule
 
-The `QueueStats` TypedDict (defined in `soniq/types.py` in P0.1) is `total: TypedDict` declared in **closed** form. The contract test (`tests/contract/test_queue_stats_keys.py`, parameterized over all three backends) asserts `set(stats.keys()) == {"total", "queued", "processing", "done", "dead_letter", "cancelled"}`. A backend that leaks a column name as an extra stats key fails the contract test. A backend that omits a key fails the contract test. Both failures block release gate 1.
+The `QueueStats` TypedDict (defined in `soniq/types.py`) is declared in **closed** form. The contract test (`tests/contract/test_queue_stats_keys.py`, parameterized over all three backends) asserts `set(stats.keys()) == {"total", "queued", "processing", "done", "dead_letter", "cancelled"}`. A backend that leaks a column name as an extra stats key fails the contract test. A backend that omits a key fails the contract test. Both failures block release gate 1.
 
 The CLI (`soniq/cli/status.py`) consumes the canonical keys positionally; an unknown key from a backend would surface as a KeyError, but the contract test catches it before the CLI ever runs.
 
 ## What this contract is **not**
 
 - Not a metrics snapshot. Metrics history lives in the metrics tables and the operator dashboards; queue stats is a point-in-time count.
-- Not a per-queue breakdown. P1.1 (per-queue worker pools) will add a per-queue API; the current stats contract is whole-instance.
+- Not a per-queue breakdown. The current stats contract is whole-instance.
 - Not a job listing. Use the explicit list APIs for that.
 
 ## Cross-references
 
 - DLQ source-of-truth and lifecycle: [`dead_letter.md`](dead_letter.md).
 - Where `processing` rows can transiently grow because of post-claim semaphore waits: [`shutdown.md`](shutdown.md), Bounded claimed-not-yet-running window.
-- Plan section P0.1 (canonical keys, locked); P0.2 (Option A migration, the source of the cross-table `dead_letter` count).

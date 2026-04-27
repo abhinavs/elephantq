@@ -26,7 +26,7 @@ async def test_stale_worker_resets_processing_jobs():
     """
     A job stuck in 'processing' with a stale worker should be reset to 'queued'.
     """
-    app = soniq._get_global_app()
+    app = soniq.get_global_app()
     pool = await app._get_pool()
 
     async with pool.acquire() as conn:
@@ -86,7 +86,7 @@ async def test_recovered_job_is_processed_by_new_worker():
     After crash recovery resets a job to 'queued', a new worker
     should pick it up and complete it.
     """
-    app = soniq._get_global_app()
+    app = soniq.get_global_app()
     pool = await app._get_pool()
     registry = app._get_job_registry()
     backend = app._backend
@@ -149,7 +149,7 @@ async def test_active_worker_jobs_not_reset():
     """
     Jobs processing by an active (recent heartbeat) worker must NOT be reset.
     """
-    app = soniq._get_global_app()
+    app = soniq.get_global_app()
     pool = await app._get_pool()
 
     async with pool.acquire() as conn:

@@ -200,7 +200,7 @@ class JobStore(Protocol):
         ...
 
     async def nack_job(self, job_id: str) -> None:
-        """Abandon a claimed job back to ``queued`` (P0.3 shutdown contract).
+        """Abandon a claimed job back to ``queued`` (shutdown contract).
 
         Locked field set, identical across all backends:
 

@@ -206,7 +206,7 @@ class Soniq:
         self._dashboard = PluginDashboard()
         self._migrations = PluginMigrations()
 
-        # P0.5: bounded executor + post-claim semaphore for sync handlers.
+        # Bounded executor + post-claim semaphore for sync handlers.
         # The semaphore is loop-affine (created lazily on first use because
         # construction can happen outside an event loop). The executor is a
         # bounded ThreadPoolExecutor so saturation surfaces as backpressure
@@ -325,8 +325,7 @@ class Soniq:
         Feature services (`WebhookService`, `DeadLetterService`, ...) take a
         `Soniq` and reach the database through `app.backend.acquire()`. Returns
         `None` until `_ensure_initialized()` has run; lazy backends create
-        their pool there. The accessor is intentionally untyped because
-        `StorageBackend` becomes a Protocol in a later session.
+        their pool there.
         """
         return self._backend
 
@@ -343,17 +342,6 @@ class Soniq:
     @property
     def is_closed(self) -> bool:
         """Whether the app has been closed."""
-        return self._closed
-
-    # Underscore-prefixed aliases kept for back-compat within the package
-    # while call sites are migrated. Public callers should read
-    # ``is_initialized`` / ``is_closed``.
-    @property
-    def _is_initialized(self) -> bool:
-        return self._initialized
-
-    @property
-    def _is_closed(self) -> bool:
         return self._closed
 
     async def ensure_initialized(self) -> None:
@@ -623,7 +611,7 @@ class Soniq:
         """Lazy per-app `DashboardService` (the data layer for the dashboard).
 
         The HTML/FastAPI surface is constructed by
-        ``soniq.dashboard.fastapi_app.create_dashboard_app(app)``; this
+        ``soniq.dashboard.server.create_dashboard_app(app)``; this
         property is the underlying data accessor that FastAPI handlers use.
         """
         if self._dashboard_data is None:
@@ -1004,12 +992,7 @@ class Soniq:
 
         job_meta = self._job_registry.get_job(job_name)
 
-        # Registry-based validation. Per plan section 15.6 strict-mode
-        # boundary: this consults *only* the in-process registry, never the
-        # soniq_task_registry DB table that phase 3 introduces. Do not add
-        # a fallback path that reads from the DB - that would turn the
-        # registry table into distributed coordination.
-        #
+        # Strict-mode boundary: this consults *only* the in-process registry.
         # The TaskRef arm skips registry validation entirely: the ref is the
         # local declaration of the name. SONIQ_ENQUEUE_VALIDATION governs
         # only the string-name path.
@@ -1498,11 +1481,6 @@ class Soniq:
             if hook is None:
                 continue
             await hook(self)
-
-    # Underscore-prefixed alias preserved for in-package callers and the
-    # global module facade. Public callers should use ``setup()``.
-    async def _setup(self) -> int:
-        return await self.setup()
 
     async def _ensure_postgres_database_exists(self) -> None:
         """Create the PostgreSQL database if it doesn't exist."""

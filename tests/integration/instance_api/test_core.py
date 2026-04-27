@@ -78,7 +78,7 @@ async def test_enqueue_job_invalid_args():
         return x + y
 
     # Clear test table using global app pool
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     global_pool = await global_app._get_pool()
     async with global_pool.acquire() as conn:
         await conn.execute("DELETE FROM soniq_jobs")
@@ -90,7 +90,7 @@ async def test_enqueue_job_invalid_args():
     assert exc_info.value.error_code == SONIQ_TASK_ARGS_INVALID
 
     # Clean up global app
-    if global_app._is_initialized:
+    if global_app.is_initialized:
         await global_app.close()
 
 
@@ -117,7 +117,7 @@ async def test_retry_mechanism():
         raise ValueError("Always fails")
 
     # Clear test table using global app pool
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     global_pool = await global_app._get_pool()
     async with global_pool.acquire() as conn:
         await conn.execute("DELETE FROM soniq_jobs")
@@ -161,7 +161,7 @@ async def test_retry_mechanism():
         assert "Always fails" in dlq_record["last_error"]
 
     # Clean up global app
-    if global_app._is_initialized:
+    if global_app.is_initialized:
         await global_app.close()
 
 
@@ -176,7 +176,7 @@ async def test_run_worker_processes_job():
         return x + y
 
     # Clear test table using global app pool
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     global_pool = await global_app._get_pool()
     async with global_pool.acquire() as conn:
         await conn.execute("DELETE FROM soniq_jobs")
@@ -195,7 +195,7 @@ async def test_run_worker_processes_job():
         assert job_record["status"] == "done"
 
     # Clean up global app
-    if global_app._is_initialized:
+    if global_app.is_initialized:
         await global_app.close()
 
 
@@ -227,7 +227,7 @@ async def test_task_discovery():
     await soniq.configure(database_url=TEST_DATABASE_URL)
 
     # Clear test table using global app pool
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     global_pool = await global_app._get_pool()
     async with global_pool.acquire() as conn:
         await conn.execute("DELETE FROM soniq_jobs")
@@ -261,8 +261,8 @@ async def test_task_discovery():
         assert job_record["status"] == "done"
 
     # Clean up global app
-    global_app = soniq._get_global_app()
-    if global_app._is_initialized:
+    global_app = soniq.get_global_app()
+    if global_app.is_initialized:
         await global_app.close()
 
     # Restore original environment variables

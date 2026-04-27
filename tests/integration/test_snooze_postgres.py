@@ -19,7 +19,7 @@ from tests.db_utils import TEST_DATABASE_URL
 @pytest.mark.asyncio
 async def test_snooze_requeues_with_attempts_unchanged_against_postgres():
     await soniq.configure(database_url=TEST_DATABASE_URL)
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     await global_app._ensure_initialized()
 
     calls = {"n": 0}

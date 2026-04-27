@@ -68,9 +68,6 @@ class SoniqSettings(BaseSettings):
     )
 
     # Job Discovery
-    jobs_module: str = Field(
-        default="jobs", description="Module name for automatic job discovery"
-    )
     jobs_modules: str = Field(
         default="",
         description=(
@@ -199,7 +196,7 @@ class SoniqSettings(BaseSettings):
             return None
         return v
 
-    # P0.5: bounded executor for sync handlers. Default 8 = sane multi-core
+    # Bounded executor for sync handlers. Default 8 = sane multi-core
     # ceiling for IO-bound sync work; raise for CPU-bound or block-heavy
     # handlers, lower if you want tighter back-pressure under burst load.
     sync_handler_pool_size: int = Field(
@@ -213,7 +210,7 @@ class SoniqSettings(BaseSettings):
         ),
     )
 
-    # P0.3: bounded async-handler shutdown wall time. Sync handlers are not
+    # Bounded async-handler shutdown wall time. Sync handlers are not
     # bounded by this alone (see sync_handler_grace_seconds and the shutdown
     # contract in docs/contracts/shutdown.md).
     shutdown_timeout: float = Field(

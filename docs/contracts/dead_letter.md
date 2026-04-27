@@ -1,12 +1,10 @@
 # Dead-letter contract (Option A)
 
-Status: locked for 0.0.3 (alpha; one-way; no transitional shims).
-
 `soniq_dead_letter_jobs` is the **single source of truth** for dead-lettered jobs. The `dead_letter` value is **not** present in the `soniq_jobs.status` enum; backends reject any write that tries to set it.
 
-## Lifecycle (locked)
+## Lifecycle
 
-A job that exhausts retries follows this path; nothing else creates a DLQ row in 0.0.3.
+A job that exhausts retries follows this path; nothing else creates a DLQ row.
 
 ```
 soniq_jobs(processing) --DLQ--> soniq_dead_letter_jobs   [INSERT + DELETE in one tx]
@@ -19,9 +17,9 @@ soniq_dead_letter_jobs --purge--> (deleted)
 - **Replay** (`DeadLetterService.replay`): inserts a **new** `soniq_jobs` row with a fresh UUID, `status='queued'`, `attempts=0`, args/queue/priority copied from the DLQ row. The DLQ row is **not** deleted; it is updated in the same transaction with `resurrection_count = resurrection_count + 1` and `last_resurrection_at = NOW()`. Operators can replay the same DLQ row multiple times; each call yields a distinct new `soniq_jobs` row.
 - **Purge** (`DeadLetterService.purge`): deletes the row from `soniq_dead_letter_jobs`. There is no soft-delete; purge is final.
 
-## Status enum (locked)
+## Status enum
 
-`soniq_jobs.status` allowed values in 0.0.3:
+`soniq_jobs.status` allowed values:
 
 | Value | Terminal? | Meaning |
 | --- | --- | --- |
@@ -30,21 +28,17 @@ soniq_dead_letter_jobs --purge--> (deleted)
 | `done` | yes | success |
 | `cancelled` | yes | explicit cancellation |
 
-`dead_letter` is **gone** from this enum. Backends reject writes via:
+`dead_letter` is **not** in this enum. Backends reject writes via:
 
-- **Postgres**: CHECK constraint on `soniq_jobs.status` that excludes `dead_letter`. Re-asserted by a defensive CHECK added in the 0.0.3 migration.
+- **Postgres**: CHECK constraint on `soniq_jobs.status` that excludes `dead_letter`.
 - **SQLite**: a `BEFORE INSERT OR UPDATE` trigger on `soniq_jobs` that raises when `NEW.status = 'dead_letter'`. (SQLite has no ENUM; the trigger is the rejection mechanism.)
 - **Memory**: a Python `ValueError` raised by the in-memory write paths (insert and transition update).
 
 The mechanism varies; the observable contract is identical: writing `dead_letter` to `soniq_jobs.status` is **rejected**. The integration test `test_dlq_status_rejects_dead_letter` (Group A; runs on all three backends) asserts the rejection regardless of mechanism.
 
-## Removed API surface
+## Public API
 
-`DeadLetterService.move(job_id)` is **deleted** in 0.0.3. There is no deprecation class, no `SoniqDeprecationError`, no shim. External callers receive `AttributeError`. This is an intentional hard break, documented in the CHANGELOG.
-
-Rationale: with Option A wired up, the runtime is the only path that creates DLQ rows. A manual `move()` call from outside the worker would either duplicate the runtime path or create rows that bypassed retry policy entirely. Neither is desirable; both produce confusing operator behavior.
-
-The `list`, `replay`, and `purge` operations remain on `DeadLetterService`; they all act on `soniq_dead_letter_jobs` directly.
+`DeadLetterService` exposes `list`, `replay`, and `purge`. There is no `move(job_id)` helper: the runtime is the only path that creates DLQ rows. A manual move from outside the worker would either duplicate the runtime path or create rows that bypassed retry policy entirely.
 
 ## Cross-table consistency
 
@@ -54,7 +48,7 @@ The `list`, `replay`, and `purge` operations remain on `DeadLetterService`; they
 ## Replay invariants
 
 - Replay does **not** reset the original `soniq_jobs` row - that row no longer exists. The DLQ row stays.
-- Replay produces a **new** `soniq_jobs.id`. The lineage to the DLQ row is **not** stored as a column in 0.0.3 (avoids new schema). The DLQ row's `resurrection_count` is the operator-facing audit signal; if richer lineage is needed it lands in P1.
+- Replay produces a **new** `soniq_jobs.id`. The lineage to the DLQ row is not stored as a column; the DLQ row's `resurrection_count` is the operator-facing audit signal.
 - `attempts=0` on the new row means the replayed job gets the full retry budget again. Retry policy applies normally to the new row.
 
 ## Purge invariants
@@ -64,12 +58,10 @@ The `list`, `replay`, and `purge` operations remain on `DeadLetterService`; they
 
 ## Operator notes
 
-- DLQ growth is unbounded by Soniq itself. Retention/partitioning lands in P1.2; in 0.0.3 operators should size the DLQ table for their failure-rate budget.
+- DLQ growth is unbounded by Soniq itself. Operators should size the DLQ table for their failure-rate budget.
 - Replays are not idempotent across calls (each call creates a new row); they are atomic per call. Tooling that wraps replay must dedupe upstream if needed.
-- `move()` is gone. If an operator on a 0.0.2 install wants to hand-move rows before upgrading, they must do so on the 0.0.2 code (where `move()` still exists), or via direct SQL against the still-pre-migration schema. After 0.0.3 is installed there is no `move()` to call.
 
 ## Cross-references
 
-- 0.0.3 schema-tightening migration (destructive cleanup + CHECK tightening): [`../design/dlq_option_a.md`](../design/dlq_option_a.md).
+- DLQ design notes: [`../design/dlq_option_a.md`](../design/dlq_option_a.md).
 - `dead_letter` as a queue-stats key (cross-table): [`queue_stats.md`](queue_stats.md).
-- Plan sections: P0.2 (Option A), B4 (test matrix), v8 alpha-no-compat decisions.

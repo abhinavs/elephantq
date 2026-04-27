@@ -23,7 +23,7 @@ async def main():
     )
     await soniq.configure(database_url=database_url)
 
-    await soniq._setup()
+    await soniq.setup()
 
     job_id = await soniq.enqueue("compute_summary", args={"a": 7, "b": 35})
     await soniq.run_worker(run_once=True)

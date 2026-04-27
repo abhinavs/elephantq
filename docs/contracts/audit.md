@@ -1,11 +1,11 @@
-# Doc / manifest audit (P0.6)
+# Doc / manifest audit
 
 Tracked artifact. Every public command, environment variable, and setting referenced from `docs/`, `deployment/`, `README.md`, `CHANGELOG.md`, or `docs/production/` lives in the table below. The table is the single source of truth for what the doc smoke job iterates over.
 
 Status values:
 
 - `implemented` - the symbol exists in code at the listed `Code reference` and the doc reference is accurate.
-- `removed` - the symbol is referenced from the docs but does not exist in code today. The follow-up is to delete the doc reference (or, when the symbol is genuinely roadmap material, mark it as such inline). P0.1 - P0.5 mutate these rows as they fix or delete each item.
+- `removed` - the symbol is referenced from the docs but does not exist in code today. The follow-up is to delete the doc reference.
 
 Smoke category:
 
@@ -32,12 +32,9 @@ Smoke category:
 | docs/cli/commands.md:255                     | `soniq migrate-status`          | soniq/cli/migrate_status.py:11                                                               | implemented | auto-smoke     |
 | docs/concepts/tasks-vs-jobs.md:27            | `soniq tasks list`              | soniq/cli/tasks.py:39                                                                        | implemented | auto-smoke     |
 | docs/concepts/tasks-vs-jobs.md:27            | `soniq tasks check`             | soniq/cli/tasks.py:53                                                                        | implemented | auto-smoke     |
-| docs/migration/0.0.x-to-cross-service.md:24  | `soniq migrate-enqueue`         | (no subparser registered in soniq/cli/main.py)                                               | removed     | manual-only    |
-| docs/recipes/cross-service-task-stubs.md:172 | `soniq tasks check <path>`      | soniq/cli/tasks.py:53 (path-arg form documented as "phase 3 ... when shipped" in source doc) | removed     | manual-only    |
 | README.md:34                                 | `soniq setup`                   | soniq/cli/setup.py:11                                                                        | implemented | manual-only    |
 | README.md:35                                 | `soniq start --concurrency`     | soniq/cli/start.py                                                                           | implemented | manual-only    |
 | README.md:124                                | `soniq dashboard`               | soniq/cli/dashboard.py                                                                       | implemented | manual-only    |
-| CHANGELOG.md:44                              | `soniq migrate-enqueue` codemod | (no subparser registered)                                                                    | removed     | manual-only    |
 | CHANGELOG.md:81                              | `soniq scheduler` sidecar       | soniq/cli/scheduler.py                                                                       | implemented | manual-only    |
 
 ## Environment variables (settings)
@@ -84,8 +81,8 @@ Each of these maps to a `Field(...)` on `SoniqSettings` (env prefix `SONIQ_`).
 | Source (file:line)                      | Symbol                             | Code reference                                                                         | Status      | Smoke category |
 | --------------------------------------- | ---------------------------------- | -------------------------------------------------------------------------------------- | ----------- | -------------- |
 | docs/cli/commands.md:172                | `SONIQ_DASHBOARD_ENABLED`          | (no code reference; documented as opt-in flag but not gated in soniq/cli/dashboard.py) | removed     | manual-only    |
-| docs/dashboard/overview.md:50           | `SONIQ_DASHBOARD_WRITE_ENABLED`    | soniq/dashboard/fastapi_app.py:774 (UI hint only; no Python gate)                      | removed     | manual-only    |
-| docs/dashboard/overview.md:128          | `SONIQ_DASHBOARD_API_KEY`          | soniq/dashboard/fastapi_app.py:60, :129                                                | implemented | manual-only    |
+| docs/dashboard/overview.md:50           | `SONIQ_DASHBOARD_WRITE_ENABLED`    | soniq/dashboard/server.py:774 (UI hint only; no Python gate)                      | removed     | manual-only    |
+| docs/dashboard/overview.md:128          | `SONIQ_DASHBOARD_API_KEY`          | soniq/dashboard/server.py:60, :129                                                | implemented | manual-only    |
 | docs/cli/commands.md:200                | `SONIQ_SCHEDULING_ENABLED`         | (no code reference)                                                                    | removed     | manual-only    |
 | docs/cli/commands.md:113                | `SONIQ_DEAD_LETTER_QUEUE_ENABLED`  | (no code reference)                                                                    | removed     | manual-only    |
 | docs/getting-started/installation.md:77 | `SONIQ_TIMEOUTS_ENABLED`           | (no code reference)                                                                    | removed     | manual-only    |
@@ -93,8 +90,7 @@ Each of these maps to a `Field(...)` on `SoniqSettings` (env prefix `SONIQ_`).
 | docs/getting-started/installation.md:79 | `SONIQ_LOGGING_ENABLED`            | (no code reference)                                                                    | removed     | manual-only    |
 | docs/getting-started/installation.md:80 | `SONIQ_WEBHOOKS_ENABLED`           | (no code reference)                                                                    | removed     | manual-only    |
 | docs/getting-started/installation.md:81 | `SONIQ_SIGNING_ENABLED`            | (no code reference)                                                                    | removed     | manual-only    |
-| docs/plugins/extracting-features.md:101 | `SONIQ_PLUGINS`                    | soniq/cli/main.py:103                                                                  | implemented | manual-only    |
-| docs/plugins/authoring.md:115           | `SONIQ_MY_PLUGIN_*`                | (per-plugin convention, no built-in field)                                             | implemented | manual-only    |
+| docs/plugins/authoring.md:115           | `SONIQ_PLUGINS` / `SONIQ_MY_PLUGIN_*` | soniq/cli/main.py:103 (`SONIQ_PLUGINS`); per-plugin convention for the suffix       | implemented | manual-only    |
 | docs/production/deployment.md:45        | `SONIQ_SCHEDULER_SUPPRESS_WARNING` | soniq/app.py:1208                                                                      | implemented | manual-only    |
 
 ## Error codes referenced as identifiers
@@ -122,9 +118,9 @@ These shell out to the documented commands above; the audit covers the symbols t
 | deployment/Dockerfile.worker       | `soniq start`                     | soniq/cli/start.py                         | implemented | manual-only    |
 | deployment/Dockerfile.dashboard    | `soniq dashboard`                 | soniq/cli/dashboard.py                     | implemented | manual-only    |
 
-## Phase 3 contract artifacts (P0.1, P0.2)
+## Contract artifacts
 
-Each contract doc shipped in Phase 3 has a code anchor and a contract test. After Phase 3 sign-off all rows below are `implemented`; new contracts add a row here rather than mutating the legacy CLI/env tables above.
+Each contract doc has a code anchor and a contract test. New contracts add a row here rather than mutating the CLI/env tables above.
 
 | Contract doc                               | Code anchor                                                                                                      | Contract test                                                                            | Status      |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ----------- |
@@ -134,7 +130,7 @@ Each contract doc shipped in Phase 3 has a code anchor and a contract test. Afte
 
 ## Notes
 
-- Rows with `Status = removed` are the doc-cleanup punch list. P0.5 (doc surface trim) is the natural place to delete them or replace them with the existing field name (e.g., `SONIQ_STALE_WORKER_THRESHOLD` -> `SONIQ_HEARTBEAT_TIMEOUT`).
+- Rows with `Status = removed` are the doc-cleanup punch list: delete the doc reference or replace it with the existing field name (e.g., `SONIQ_STALE_WORKER_THRESHOLD` -> `SONIQ_HEARTBEAT_TIMEOUT`).
 - `Source (file:line)` points to a representative occurrence. Symbols mentioned in many places (e.g. `SONIQ_DATABASE_URL`) appear once; the canonical reference is the table in `docs/production/checklist.md` or the install guide.
 - `Smoke category` choice is conservative: anything that could mutate the database, run for more than a few seconds, or touch external services is `manual-only`. The `auto-smoke` set is deliberately small so the CI job stays fast and reliable.
 - Long-running commands (`soniq start`, `soniq scheduler`, `soniq dashboard`) are `manual-only` even though they accept `--help`. The smoke job invokes `--help` separately if it wants to assert the parser builds; the rows above describe the _command_ itself.

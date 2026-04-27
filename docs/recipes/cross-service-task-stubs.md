@@ -144,8 +144,8 @@ The consumer:
 
 ## Versioning convention
 
-Stub packages should follow the dotted-suffix convention recommended
-by the soniq plan:
+Stub packages should use a dotted suffix in the task name so two
+shapes can coexist:
 
 ```python
 # good
@@ -155,23 +155,12 @@ send_invoice_v2 = task_ref(name="billing.invoices.send.v2", ...)
 # (consumers can't tell which version a row belongs to)
 ```
 
-When you need a backwards-incompatible change, ship `...send.v3`
-alongside `...send.v2` for a release window. Existing in-flight rows
-with the v2 name continue to dispatch at the v2 handler; new producers
-move to v3.
+When the args shape changes, ship `...send.v3` alongside `...send.v2`
+for a release window. In-flight rows with the v2 name continue to
+dispatch at the v2 handler; new producers move to v3.
 
 ## Drift detection
 
-The phase 3 `soniq tasks check` CLI (when shipped) compares the
-`TaskRef` declarations in your stub package against the names a live
-consumer's worker has registered. If a producer is using a name no
-consumer registers, drift detection surfaces it before the row turns
-into a dead-letter incident.
-
-```bash
-soniq tasks check myservice_tasks/
-```
-
-Until phase 3 lands, the dead-letter queue is the operational signal
-of drift: rows with reason `Job <name> not registered` are exactly
-what `tasks check` will eventually surface earlier.
+The dead-letter queue is the operational signal of drift: rows with
+reason `Job <name> not registered` flag a producer using a name that
+no consumer has registered.
