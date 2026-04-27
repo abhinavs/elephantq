@@ -69,7 +69,7 @@ app = Soniq(
 
 ## Caveat: backends are JSON-shaped
 
-In 0.0.2 the bundled backends (Postgres JSONB, SQLite `TEXT`, Memory dict) all expect JSON-compatible payloads. A custom `Serializer` that emits, say, msgpack bytes would break the storage layer. If you need a non-JSON wire format, you also need a custom `StorageBackend` that stores `bytea` instead of `JSONB`. The `Serializer` Protocol is in place for that future path; the shipped backends do not consume it directly today.
+The bundled backends (Postgres JSONB, SQLite `TEXT`, Memory dict) all expect JSON-compatible payloads. A custom `Serializer` that emits, say, msgpack bytes would break the storage layer. If you need a non-JSON wire format, you also need a custom `StorageBackend` that stores `bytea` instead of `JSONB`.
 
 For most use cases - validation, redaction, schema versioning - a JSON-shaped serializer like the example above is enough.
 

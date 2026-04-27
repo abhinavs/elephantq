@@ -48,12 +48,12 @@ def test_recurring_jobs_uses_real_api():
 
 
 def test_transactional_enqueue_setup_call():
-    """transactional_enqueue.py must not pass unsupported args to soniq._setup()."""
+    """transactional_enqueue.py must not pass unsupported args to soniq.setup()."""
     source = (EXAMPLES_DIR / "transactional_enqueue.py").read_text()
 
-    assert "_setup(database_url=" not in source, (
-        "transactional_enqueue.py passes database_url to soniq._setup(), "
-        "but _setup() takes no arguments"
+    assert "setup(database_url=" not in source, (
+        "transactional_enqueue.py passes database_url to soniq.setup(), "
+        "but setup() takes no arguments"
     )
 
 

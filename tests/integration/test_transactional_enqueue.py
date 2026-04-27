@@ -9,7 +9,7 @@ async def test_transactional_enqueue_rolls_back():
     async def txn_job():
         return "ok"
 
-    pool = await soniq._get_global_app()._get_pool()
+    pool = await soniq.get_global_app()._get_pool()
     async with pool.acquire() as conn:
         job_id = None
         try:
@@ -29,7 +29,7 @@ async def test_transactional_enqueue_commits():
     async def txn_job_commit():
         return "ok"
 
-    pool = await soniq._get_global_app()._get_pool()
+    pool = await soniq.get_global_app()._get_pool()
     async with pool.acquire() as conn:
         async with conn.transaction():
             job_id = await soniq.enqueue("txn_job_commit", connection=conn)
@@ -44,7 +44,7 @@ async def test_transactional_schedule_rolls_back():
     async def txn_scheduled_job():
         return "scheduled"
 
-    pool = await soniq._get_global_app()._get_pool()
+    pool = await soniq.get_global_app()._get_pool()
     async with pool.acquire() as conn:
         job_id = None
         try:
@@ -68,7 +68,7 @@ async def test_non_transactional_enqueue_commits_immediately():
 
     job_id = await soniq.enqueue("non_txn_job")
 
-    pool = await soniq._get_global_app()._get_pool()
+    pool = await soniq.get_global_app()._get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow("SELECT id FROM soniq_jobs WHERE id = $1", job_id)
         assert row is not None
@@ -84,7 +84,7 @@ async def test_unique_enqueue_rollback_does_not_block_next_enqueue():
 
     unique_payload = str(uuid.uuid4())
 
-    pool = await soniq._get_global_app()._get_pool()
+    pool = await soniq.get_global_app()._get_pool()
     async with pool.acquire() as conn:
         try:
             async with conn.transaction():

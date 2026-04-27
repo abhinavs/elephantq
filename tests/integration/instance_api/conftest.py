@@ -31,8 +31,8 @@ async def clean_instance_api_state():
     global_app = soniq._global_app
     if (
         global_app is not None
-        and global_app._is_initialized
-        and not global_app._is_closed
+        and global_app.is_initialized
+        and not global_app.is_closed
     ):
         await global_app.close()
 
@@ -41,8 +41,8 @@ async def clean_instance_api_state():
     global_app = soniq._global_app
     if (
         global_app is not None
-        and global_app._is_initialized
-        and not global_app._is_closed
+        and global_app.is_initialized
+        and not global_app.is_closed
     ):
         await global_app.close()
 

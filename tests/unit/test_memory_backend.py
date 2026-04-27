@@ -150,8 +150,16 @@ async def test_dead_letter():
         scheduled_at=None,
     )
     await backend.fetch_and_lock_job(queues=["default"], worker_id=None)
-    await backend.mark_job_dead_letter(j, attempts=3, error="gave up")
-    assert (await backend.get_job(j))["status"] == "dead_letter"
+    await backend.mark_job_dead_letter(
+        j,
+        attempts=3,
+        error="gave up",
+        reason="max_retries_exceeded",
+    )
+    # DLQ Option A: row removed from soniq_jobs entirely.
+    assert await backend.get_job(j) is None
+    assert j in backend._dead_letter_jobs
+    assert backend._dead_letter_jobs[j]["dead_letter_reason"] == "max_retries_exceeded"
 
 
 @pytest.mark.asyncio

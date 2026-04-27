@@ -30,6 +30,11 @@ def add_scheduler_cmd(subparsers) -> None:
         action="store_true",
         help="Show scheduler status and exit",
     )
+    parser.add_argument(
+        "--log-level",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Root logger level (default: INFO, or $SONIQ_LOG_LEVEL)",
+    )
     database_url_argument(parser)
     parser.set_defaults(func=handle_scheduler)
 
@@ -47,7 +52,7 @@ async def handle_scheduler(args) -> int:
         app = soniq_instance
     else:
         print_status("Using global API configuration", "info")
-        app = soniq._get_global_app()
+        app = soniq.get_global_app()
 
     log_level: str = (
         getattr(args, "log_level", None) or os.getenv("SONIQ_LOG_LEVEL") or "INFO"

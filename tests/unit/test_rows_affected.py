@@ -47,7 +47,7 @@ class TestRowsAffectedSharedImport:
     """Verify the shared helper in db/helpers.py works."""
 
     def test_helpers_rows_affected(self):
-        from soniq.db.helpers import rows_affected
+        from soniq.backends.helpers import rows_affected
 
         assert rows_affected("DELETE 5") == 5
         assert rows_affected("UPDATE 0") == 0
@@ -58,26 +58,26 @@ class TestRowsAffectedSharedHelper:
     """Test the shared helper after deduplication."""
 
     def test_shared_helper_exists(self):
-        from soniq.db.helpers import rows_affected
+        from soniq.backends.helpers import rows_affected
 
         assert rows_affected("DELETE 5") == 5
 
     def test_shared_helper_update(self):
-        from soniq.db.helpers import rows_affected
+        from soniq.backends.helpers import rows_affected
 
         assert rows_affected("UPDATE 10") == 10
 
     def test_shared_helper_empty(self):
-        from soniq.db.helpers import rows_affected
+        from soniq.backends.helpers import rows_affected
 
         assert rows_affected("") == 0
 
     def test_shared_helper_nonsense(self):
-        from soniq.db.helpers import rows_affected
+        from soniq.backends.helpers import rows_affected
 
         assert rows_affected("NONSENSE") == 0
 
     def test_shared_helper_insert(self):
-        from soniq.db.helpers import rows_affected
+        from soniq.backends.helpers import rows_affected
 
         assert rows_affected("INSERT 0 1") == 1

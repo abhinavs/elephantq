@@ -25,12 +25,14 @@ where the name is a wire-protocol identifier)::
 
 from datetime import datetime, timedelta, timezone
 from importlib.metadata import PackageNotFoundError, version
-from typing import Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional, Union
+
+if TYPE_CHECKING:
+    from .types import QueueStats
 
 from .app import Soniq
 from .job import JobContext, JobStatus, Snooze
 from .schedules import cron, daily, every, monthly, weekly
-from .settings import configure as settings_configure
 from .task_ref import TaskRef, task_ref
 
 try:
@@ -51,10 +53,10 @@ __all__ = [
     "schedule",
     "run_worker",
     "setup",
-    "_setup",
     "_reset",
     "configure",
     "get_job",
+    "get_result",
     "cancel_job",
     "retry_job",
     "delete_job",
@@ -77,7 +79,7 @@ __all__ = [
 
 # Dashboard availability flag (for CLI checks)
 try:
-    from .dashboard.fastapi_app import FASTAPI_AVAILABLE as DASHBOARD_AVAILABLE
+    from .dashboard.server import FASTAPI_AVAILABLE as DASHBOARD_AVAILABLE
 except Exception:
     DASHBOARD_AVAILABLE = False
 
@@ -103,12 +105,6 @@ def get_global_app() -> Soniq:
             _global_app.job(**job_kwargs)(job_func)
 
     return _global_app
-
-
-# Underscore alias preserved for in-package callers and tests written
-# against the older spelling. New call sites (and plugins) should use
-# the public name above.
-_get_global_app = get_global_app
 
 
 async def configure(
@@ -163,16 +159,13 @@ async def configure(
             settings_kwargs[key] = value
     settings_kwargs.update(extra)
 
-    if settings_kwargs:
-        settings_configure(**settings_kwargs)
-
     # Close the prior global app (and its pool) before replacing it. Missing
     # this was the leak: flipping _closed on a live app left the asyncpg
     # pool running, holding Postgres connections until the process died.
     if (
         _global_app is not None
-        and _global_app._is_initialized
-        and not _global_app._is_closed
+        and _global_app.is_initialized
+        and not _global_app.is_closed
     ):
         try:
             await _global_app.close()
@@ -210,7 +203,7 @@ def job(*decorator_args: Any, **kwargs: Any) -> Any:
     # `@soniq.job(name=...)` form.
     if len(decorator_args) == 1 and callable(decorator_args[0]) and not kwargs:
         func = decorator_args[0]
-        app = _get_global_app()
+        app = get_global_app()
         wrapped = app.job()(func)
         _global_job_registry.append((func, {}))
         return wrapped
@@ -221,7 +214,7 @@ def job(*decorator_args: Any, **kwargs: Any) -> Any:
         # that exercises the negative path (`@soniq.job()` with no
         # name=) would leave a poison tuple in _global_job_registry
         # that breaks later tests when configure() iterates the list.
-        app = _get_global_app()
+        app = get_global_app()
         wrapped = app.job(**kwargs)(func)
         _global_job_registry.append((func, kwargs))
         return wrapped
@@ -249,7 +242,7 @@ def periodic(*, cron: Any = None, every: Any = None, **job_kwargs: Any) -> Any:
         async def cleanup():
             ...
     """
-    app = _get_global_app()
+    app = get_global_app()
     inner = app.periodic(cron=cron, every=every, **job_kwargs)
 
     def decorator(func: Any) -> Any:
@@ -282,7 +275,7 @@ async def enqueue(
     ``app.enqueue(...)`` directly. See ``Soniq.enqueue`` for the full
     contract and the three input shapes.
     """
-    app = _get_global_app()
+    app = get_global_app()
     return await app.enqueue(
         target,
         args=args,
@@ -340,7 +333,7 @@ async def run_worker(
     queues: Optional[list[str]] = None,
 ) -> Any:
     """Run a worker using the global Soniq instance."""
-    app = _get_global_app()
+    app = get_global_app()
     return await app.run_worker(
         concurrency=concurrency, run_once=run_once, queues=queues
     )
@@ -348,48 +341,43 @@ async def run_worker(
 
 async def setup() -> int:
     """Set up Soniq — create database (if needed) and run migrations."""
-    app = _get_global_app()
+    app = get_global_app()
     return await app.setup()
-
-
-# Underscore alias kept for compatibility with code that imported the
-# private name; new callers should use ``soniq.setup``.
-_setup = setup
 
 
 async def _reset() -> None:
     """Delete all jobs and workers. Used in test fixtures."""
-    app = _get_global_app()
+    app = get_global_app()
     await app._reset()
 
 
 async def get_job(job_id: str) -> Optional[dict[str, Any]]:
     """Get information for a specific job."""
-    app = _get_global_app()
+    app = get_global_app()
     return await app.get_job(job_id)
 
 
-async def get_result(job_id: str) -> Any:
+async def get_result(job_id: str, *, result_model: Optional[Any] = None) -> Any:
     """Get the return value of a completed job, or None."""
-    app = _get_global_app()
-    return await app.get_result(job_id)
+    app = get_global_app()
+    return await app.get_result(job_id, result_model=result_model)
 
 
 async def cancel_job(job_id: str) -> bool:
     """Cancel a queued job."""
-    app = _get_global_app()
+    app = get_global_app()
     return await app.cancel_job(job_id)
 
 
 async def retry_job(job_id: str) -> bool:
     """Retry a failed job."""
-    app = _get_global_app()
+    app = get_global_app()
     return await app.retry_job(job_id)
 
 
 async def delete_job(job_id: str) -> bool:
     """Delete a job from the queue."""
-    app = _get_global_app()
+    app = get_global_app()
     return await app.delete_job(job_id)
 
 
@@ -400,11 +388,11 @@ async def list_jobs(
     offset: int = 0,
 ) -> list[dict[str, Any]]:
     """List jobs with optional filtering."""
-    app = _get_global_app()
+    app = get_global_app()
     return await app.list_jobs(queue=queue, status=status, limit=limit, offset=offset)
 
 
-async def get_queue_stats() -> list[dict[str, Any]]:
-    """Get statistics for all queues."""
-    app = _get_global_app()
+async def get_queue_stats() -> "QueueStats":
+    """Whole-instance job state counts. See ``docs/contracts/queue_stats.md``."""
+    app = get_global_app()
     return await app.get_queue_stats()

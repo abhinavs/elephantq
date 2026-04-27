@@ -31,6 +31,8 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, AsyncIterator, Optional, Union
 
+from soniq.backends.helpers import rows_affected
+
 if TYPE_CHECKING:
     from soniq.app import Soniq
 
@@ -278,8 +280,6 @@ class _SqlStore:
         return self._row_to_schedule(row) if row else None
 
     async def delete(self, name: str) -> bool:
-        from soniq.db.helpers import rows_affected
-
         async with self._conn() as conn:
             result = await conn.execute(
                 "DELETE FROM soniq_recurring_jobs WHERE job_name = $1", name
@@ -287,8 +287,6 @@ class _SqlStore:
         return rows_affected(result) > 0
 
     async def set_status(self, name: str, status: str) -> bool:
-        from soniq.db.helpers import rows_affected
-
         async with self._conn() as conn:
             result = await conn.execute(
                 """
@@ -415,10 +413,11 @@ class Scheduler:
         """
         from soniq.core.naming import validate_task_name
 
+        pattern = self._app.settings.task_name_pattern
         if name is not None:
-            job_name = validate_task_name(name)
+            job_name = validate_task_name(name, pattern)
         elif isinstance(target, str):
-            job_name = validate_task_name(target)
+            job_name = validate_task_name(target, pattern)
         elif callable(target):
             job_name = (
                 getattr(target, "_soniq_name", None)
@@ -650,8 +649,6 @@ class Scheduler:
         backend = self._app.backend
 
         if isinstance(store, _SqlStore):
-            from soniq.db.helpers import rows_affected
-
             new_run_count = sched.run_count + 1
             actual_job_id: Optional[str] = None
             async with backend.acquire() as conn:

@@ -118,6 +118,6 @@ class TestRowsAffectedHelper:
         ],
     )
     def test_rows_affected(self, status_string, expected):
-        from soniq.db.helpers import rows_affected
+        from soniq.backends.helpers import rows_affected
 
         assert rows_affected(status_string) == expected

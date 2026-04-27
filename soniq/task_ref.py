@@ -60,14 +60,24 @@ def task_ref(
     name: str,
     args_model: Optional[Type[Any]] = None,
     default_queue: Optional[str] = None,
+    pattern: Optional[str] = None,
 ) -> TaskRef:
     """Construct a validated ``TaskRef``.
 
     The name is checked against ``SONIQ_TASK_NAME_PATTERN`` at construction
     time so a typo in a stub package fails at import / first use rather
     than as a dead-letter row in production.
+
+    ``pattern`` lets callers thread an explicit pattern (e.g. from a Soniq
+    instance's settings). When omitted, a fresh ``SoniqSettings()`` is
+    constructed to read the env-configured pattern - we never consult the
+    cached global (`docs/contracts/instance_boundary.md`).
     """
     from .core.naming import validate_task_name
 
-    validate_task_name(name)
+    if pattern is None:
+        from .settings import SoniqSettings
+
+        pattern = SoniqSettings().task_name_pattern
+    validate_task_name(name, pattern)
     return TaskRef(name=name, args_model=args_model, default_queue=default_queue)

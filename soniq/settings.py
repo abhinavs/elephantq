@@ -68,9 +68,6 @@ class SoniqSettings(BaseSettings):
     )
 
     # Job Discovery
-    jobs_module: str = Field(
-        default="jobs", description="Module name for automatic job discovery"
-    )
     jobs_modules: str = Field(
         default="",
         description=(
@@ -198,6 +195,46 @@ class SoniqSettings(BaseSettings):
         if v == "0" or v == 0:
             return None
         return v
+
+    # Bounded executor for sync handlers. Default 8 = sane multi-core
+    # ceiling for IO-bound sync work; raise for CPU-bound or block-heavy
+    # handlers, lower if you want tighter back-pressure under burst load.
+    sync_handler_pool_size: int = Field(
+        default=8,
+        ge=1,
+        le=256,
+        description=(
+            "Max concurrent sync handler threads per Soniq instance. The "
+            "post-claim semaphore enforces this bound; jobs claimed beyond "
+            "the bound wait in `processing` state until a slot frees."
+        ),
+    )
+
+    # Bounded async-handler shutdown wall time. Sync handlers are not
+    # bounded by this alone (see sync_handler_grace_seconds and the shutdown
+    # contract in docs/contracts/shutdown.md).
+    shutdown_timeout: float = Field(
+        default=30.0,
+        ge=0.1,
+        le=3600.0,
+        description=(
+            "Wall time (seconds) the worker waits for in-flight jobs to "
+            "drain after SIGTERM. On expiry the async branch cancels + "
+            "nacks; the sync branch enters its own grace window."
+        ),
+    )
+
+    sync_handler_grace_seconds: Optional[float] = Field(
+        default=None,
+        ge=0.0,
+        description=(
+            "Flat additional grace (seconds) the worker waits for an "
+            "in-flight sync handler thread once shutdown_timeout expires. "
+            "None means use job_timeout. After grace the worker keeps "
+            "waiting until the thread returns or the orchestrator sends "
+            "SIGKILL; sync shutdown is unbounded by Soniq alone."
+        ),
+    )
 
     # Connection Pool Settings
     pool_min_size: int = Field(

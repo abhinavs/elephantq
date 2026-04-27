@@ -22,7 +22,7 @@ def reset_global():
 @pytest.mark.asyncio
 async def test_global_get_job():
     await soniq.configure(database_url="postgresql://test@localhost/test")
-    app = soniq._get_global_app()
+    app = soniq.get_global_app()
     with patch.object(app, "get_job", new_callable=AsyncMock) as mock:
         mock.return_value = {"status": "done", "id": "j1"}
         result = await soniq.get_job("j1")
@@ -33,7 +33,7 @@ async def test_global_get_job():
 @pytest.mark.asyncio
 async def test_global_cancel_job():
     await soniq.configure(database_url="postgresql://test@localhost/test")
-    app = soniq._get_global_app()
+    app = soniq.get_global_app()
     with patch.object(app, "cancel_job", new_callable=AsyncMock) as mock:
         mock.return_value = True
         result = await soniq.cancel_job("j1")
@@ -44,7 +44,7 @@ async def test_global_cancel_job():
 @pytest.mark.asyncio
 async def test_global_retry_job():
     await soniq.configure(database_url="postgresql://test@localhost/test")
-    app = soniq._get_global_app()
+    app = soniq.get_global_app()
     with patch.object(app, "retry_job", new_callable=AsyncMock) as mock:
         mock.return_value = True
         result = await soniq.retry_job("j1")
@@ -55,7 +55,7 @@ async def test_global_retry_job():
 @pytest.mark.asyncio
 async def test_global_delete_job():
     await soniq.configure(database_url="postgresql://test@localhost/test")
-    app = soniq._get_global_app()
+    app = soniq.get_global_app()
     with patch.object(app, "delete_job", new_callable=AsyncMock) as mock:
         mock.return_value = True
         result = await soniq.delete_job("j1")
@@ -66,7 +66,7 @@ async def test_global_delete_job():
 @pytest.mark.asyncio
 async def test_global_list_jobs():
     await soniq.configure(database_url="postgresql://test@localhost/test")
-    app = soniq._get_global_app()
+    app = soniq.get_global_app()
     with patch.object(app, "list_jobs", new_callable=AsyncMock) as mock:
         mock.return_value = [{"id": "j1"}, {"id": "j2"}]
         result = await soniq.list_jobs(status="done")
@@ -77,7 +77,7 @@ async def test_global_list_jobs():
 @pytest.mark.asyncio
 async def test_global_get_queue_stats():
     await soniq.configure(database_url="postgresql://test@localhost/test")
-    app = soniq._get_global_app()
+    app = soniq.get_global_app()
     with patch.object(app, "get_queue_stats", new_callable=AsyncMock) as mock:
         mock.return_value = {"queued": 5, "processing": 2}
         result = await soniq.get_queue_stats()
@@ -88,7 +88,7 @@ async def test_global_get_queue_stats():
 @pytest.mark.asyncio
 async def test_global_setup():
     await soniq.configure(database_url="postgresql://test@localhost/test")
-    app = soniq._get_global_app()
+    app = soniq.get_global_app()
     with patch.object(app, "setup", new_callable=AsyncMock) as mock:
         await soniq.setup()
         mock.assert_called_once()
@@ -97,7 +97,7 @@ async def test_global_setup():
 @pytest.mark.asyncio
 async def test_global_reset():
     await soniq.configure(database_url="postgresql://test@localhost/test")
-    app = soniq._get_global_app()
+    app = soniq.get_global_app()
     with patch.object(app, "_reset", new_callable=AsyncMock) as mock:
         await soniq._reset()
         mock.assert_called_once()

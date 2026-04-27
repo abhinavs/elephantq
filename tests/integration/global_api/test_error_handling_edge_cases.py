@@ -90,9 +90,9 @@ class TestDatabaseConnectionFailures:
         processed = await soniq.run_worker(run_once=True)
         assert processed  # Job was processed (failed gracefully)
 
-        # Verify job failed
+        # Verify job failed. DLQ Option A: dead-lettered jobs leave soniq_jobs.
         status = await soniq.get_job(job_id)
-        assert status["status"] in ["failed", "dead_letter"]
+        assert status is None or status["status"] == "failed"
 
 
 class TestMemoryPressureScenarios:
@@ -118,9 +118,9 @@ class TestMemoryPressureScenarios:
         processed = await soniq.run_worker(run_once=True)
         assert processed  # Should handle memory error gracefully
 
-        # Verify job failed
+        # Verify job failed. DLQ Option A: dead-lettered jobs leave soniq_jobs.
         status = await soniq.get_job(job_id)
-        assert status["status"] in ["failed", "dead_letter"]
+        assert status is None or status["status"] == "failed"
 
 
 class TestHighVolumeErrorScenarios:
@@ -137,9 +137,9 @@ class TestHighVolumeErrorScenarios:
             if not processed:
                 break
 
-        # Verify job eventually failed
+        # Verify job eventually failed. DLQ Option A: dead-lettered rows leave soniq_jobs.
         status = await soniq.get_job(job_id)
-        assert status["status"] in ["failed", "dead_letter"]
+        assert status is None or status["status"] == "failed"
 
     @pytest.mark.asyncio
     async def test_queue_size_handling(self):
@@ -174,9 +174,9 @@ class TestSystemResourceFailures:
         processed = await soniq.run_worker(run_once=True)
         assert processed  # Should handle system error gracefully
 
-        # Verify job failed
+        # Verify job failed. DLQ Option A: dead-lettered jobs leave soniq_jobs.
         status = await soniq.get_job(job_id)
-        assert status["status"] in ["failed", "dead_letter"]
+        assert status is None or status["status"] == "failed"
 
     @pytest.mark.asyncio
     async def test_simulated_file_descriptor_error(self):
@@ -186,9 +186,9 @@ class TestSystemResourceFailures:
         processed = await soniq.run_worker(run_once=True)
         assert processed  # Should handle FD error gracefully
 
-        # Verify job failed
+        # Verify job failed. DLQ Option A: dead-lettered jobs leave soniq_jobs.
         status = await soniq.get_job(job_id)
-        assert status["status"] in ["failed", "dead_letter"]
+        assert status is None or status["status"] == "failed"
 
 
 class TestGracefulDegradation:
@@ -207,9 +207,10 @@ class TestGracefulDegradation:
             if not processed:
                 break
 
-        # Job should eventually succeed or fail gracefully
+        # Job should eventually succeed or fail gracefully.
+        # DLQ Option A: dead-lettered jobs leave soniq_jobs.
         status = await soniq.get_job(job_id)
-        assert status["status"] in ["done", "failed", "dead_letter"]
+        assert status is None or status["status"] in ("done", "failed")
 
     @pytest.mark.asyncio
     async def test_error_isolation_between_jobs(self):
@@ -228,4 +229,5 @@ class TestGracefulDegradation:
         bad_status = await soniq.get_job(bad_job_id)
 
         assert good_status["status"] == "done"
-        assert bad_status["status"] in ["failed", "dead_letter"]
+        # DLQ Option A: dead-lettered jobs leave soniq_jobs.
+        assert bad_status is None or bad_status["status"] == "failed"

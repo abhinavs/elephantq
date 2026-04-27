@@ -74,7 +74,7 @@ def _load_in_process_jobs() -> List[Dict[str, Any]]:
 
     Imports modules listed in SONIQ_JOBS_MODULES (comma-separated) so
     decorator-time registrations populate the global registry, then
-    reads from ``soniq._get_global_app().registry``.
+    reads from ``soniq.get_global_app().registry``.
     """
     modules = os.environ.get("SONIQ_JOBS_MODULES", "")
     for mod in [m.strip() for m in modules.split(",") if m.strip()]:
@@ -88,7 +88,7 @@ def _load_in_process_jobs() -> List[Dict[str, Any]]:
 
     import soniq
 
-    app = soniq._get_global_app()
+    app = soniq.get_global_app()
     registry = app.registry
     rows = []
     for name, meta in registry.list_jobs().items():

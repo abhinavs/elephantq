@@ -5,7 +5,9 @@ Instance-based architecture to replace global state patterns.
 Enables multiple isolated Soniq instances with independent configurations.
 """
 
+import asyncio
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import (
     TYPE_CHECKING,
@@ -26,6 +28,7 @@ from .settings import SoniqSettings
 
 if TYPE_CHECKING:
     from .task_ref import TaskRef
+    from .types import QueueStats
 
 _P = ParamSpec("_P")
 
@@ -203,6 +206,14 @@ class Soniq:
         self._dashboard = PluginDashboard()
         self._migrations = PluginMigrations()
 
+        # Bounded executor + post-claim semaphore for sync handlers.
+        # The semaphore is loop-affine (created lazily on first use because
+        # construction can happen outside an event loop). The executor is a
+        # bounded ThreadPoolExecutor so saturation surfaces as backpressure
+        # rather than as unbounded thread spawning via asyncio.to_thread.
+        self._sync_executor: Optional[ThreadPoolExecutor] = None
+        self._sync_pool_semaphore: Optional[asyncio.Semaphore] = None
+
         for plugin in plugins or []:
             self.use(plugin)
         if autoload_plugins:
@@ -314,8 +325,7 @@ class Soniq:
         Feature services (`WebhookService`, `DeadLetterService`, ...) take a
         `Soniq` and reach the database through `app.backend.acquire()`. Returns
         `None` until `_ensure_initialized()` has run; lazy backends create
-        their pool there. The accessor is intentionally untyped because
-        `StorageBackend` becomes a Protocol in a later session.
+        their pool there.
         """
         return self._backend
 
@@ -332,17 +342,6 @@ class Soniq:
     @property
     def is_closed(self) -> bool:
         """Whether the app has been closed."""
-        return self._closed
-
-    # Underscore-prefixed aliases kept for back-compat within the package
-    # while call sites are migrated. Public callers should read
-    # ``is_initialized`` / ``is_closed``.
-    @property
-    def _is_initialized(self) -> bool:
-        return self._initialized
-
-    @property
-    def _is_closed(self) -> bool:
         return self._closed
 
     async def ensure_initialized(self) -> None:
@@ -461,6 +460,16 @@ class Soniq:
                 await self._backend.close()
                 logger.debug("Closed backend")
 
+            # Tear down the sync executor. wait=False because the worker
+            # shutdown path is responsible for waiting on in-flight sync
+            # threads (per docs/contracts/shutdown.md); blocking here a
+            # second time would just stall close() during operator-driven
+            # rebuilds in tests.
+            if self._sync_executor is not None:
+                self._sync_executor.shutdown(wait=False)
+                self._sync_executor = None
+            self._sync_pool_semaphore = None
+
             self._closed = True
             self._initialized = False
             logger.info("Soniq application closed successfully")
@@ -521,16 +530,22 @@ class Soniq:
         _JP = ParamSpec("_JP")
         _JR = TypeVar("_JR")
 
-        # Hand the per-instance route_map to register_job so consumer-
-        # side prefix routing is resolved against this Soniq's settings,
-        # not the global cache (multiple Soniq instances may have
-        # different maps).
+        # Hand the per-instance route_map and task_name_pattern to
+        # register_job so consumer-side prefix routing and name validation
+        # are resolved against this Soniq's settings, not a global cache
+        # (multiple Soniq instances may have different maps / patterns).
         route_map = dict(self._settings.route_map or {})
+        task_name_pattern = self._settings.task_name_pattern
 
         def decorator(
             func: Callable[_JP, Awaitable[_JR]],
         ) -> Callable[_JP, Awaitable[_JR]]:
-            return self._job_registry.register_job(func, _route_map=route_map, **kwargs)
+            return self._job_registry.register_job(
+                func,
+                _route_map=route_map,
+                _task_name_pattern=task_name_pattern,
+                **kwargs,
+            )
 
         # `@app.job` (no parens) - Python passed the function in directly.
         if _func is not None:
@@ -596,7 +611,7 @@ class Soniq:
         """Lazy per-app `DashboardService` (the data layer for the dashboard).
 
         The HTML/FastAPI surface is constructed by
-        ``soniq.dashboard.fastapi_app.create_dashboard_app(app)``; this
+        ``soniq.dashboard.server.create_dashboard_app(app)``; this
         property is the underlying data accessor that FastAPI handlers use.
         """
         if self._dashboard_data is None:
@@ -931,7 +946,7 @@ class Soniq:
                     "arguments; pass args=dict instead."
                 )
         elif isinstance(target, str):
-            job_name = validate_task_name(target)
+            job_name = validate_task_name(target, self._settings.task_name_pattern)
             if func_kwargs:
                 raise TypeError(
                     "enqueue('name', ...) cannot accept **kwargs as function "
@@ -977,12 +992,7 @@ class Soniq:
 
         job_meta = self._job_registry.get_job(job_name)
 
-        # Registry-based validation. Per plan section 15.6 strict-mode
-        # boundary: this consults *only* the in-process registry, never the
-        # soniq_task_registry DB table that phase 3 introduces. Do not add
-        # a fallback path that reads from the DB - that would turn the
-        # registry table into distributed coordination.
-        #
+        # Strict-mode boundary: this consults *only* the in-process registry.
         # The TaskRef arm skips registry validation entirely: the ref is the
         # local declaration of the name. SONIQ_ENQUEUE_VALIDATION governs
         # only the string-name path.
@@ -1146,6 +1156,26 @@ class Soniq:
         """Get job registry."""
         return self._job_registry
 
+    def _get_sync_dispatch(self) -> tuple[ThreadPoolExecutor, asyncio.Semaphore]:
+        """Return the per-instance sync executor and post-claim semaphore.
+
+        Lazy because constructing an `asyncio.Semaphore` requires a running
+        event loop in older asyncio versions and we do not want to force one
+        at `Soniq()` construction time. The pair is created on the first
+        worker dispatch of a sync handler and reused for the instance's
+        lifetime; `close()` shuts the executor down.
+        """
+        if self._sync_executor is None:
+            self._sync_executor = ThreadPoolExecutor(
+                max_workers=self._settings.sync_handler_pool_size,
+                thread_name_prefix="soniq-sync",
+            )
+        if self._sync_pool_semaphore is None:
+            self._sync_pool_semaphore = asyncio.Semaphore(
+                self._settings.sync_handler_pool_size
+            )
+        return self._sync_executor, self._sync_pool_semaphore
+
     async def run_worker(
         self,
         concurrency: int = 4,
@@ -1171,6 +1201,7 @@ class Soniq:
 
         from .core.worker import Worker
 
+        sync_executor, sync_pool_semaphore = self._get_sync_dispatch()
         worker = Worker(
             backend=self._backend,
             registry=self._job_registry,
@@ -1179,6 +1210,8 @@ class Soniq:
             middleware=self._middleware,
             retry_policy=self._retry_policy,
             metrics_sink=self._metrics_sink,
+            sync_executor=sync_executor,
+            sync_pool_semaphore=sync_pool_semaphore,
         )
 
         # `soniq start` only runs the worker. Recurring jobs require a
@@ -1342,12 +1375,11 @@ class Soniq:
             queue=queue, status=status, limit=limit, offset=offset
         )
 
-    async def get_queue_stats(self) -> List[dict[str, Any]]:
-        """
-        Get statistics for all queues.
+    async def get_queue_stats(self) -> "QueueStats":
+        """Whole-instance job state counts in the canonical 6-key shape.
 
-        Returns:
-            List of dictionaries with queue statistics
+        Returns a single ``QueueStats`` dict (``soniq.types.QueueStats``).
+        See ``docs/contracts/queue_stats.md``.
         """
         await self._ensure_initialized()
         assert self._backend is not None
@@ -1449,11 +1481,6 @@ class Soniq:
             if hook is None:
                 continue
             await hook(self)
-
-    # Underscore-prefixed alias preserved for in-package callers and the
-    # global module facade. Public callers should use ``setup()``.
-    async def _setup(self) -> int:
-        return await self.setup()
 
     async def _ensure_postgres_database_exists(self) -> None:
         """Create the PostgreSQL database if it doesn't exist."""

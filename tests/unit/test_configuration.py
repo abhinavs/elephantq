@@ -67,7 +67,6 @@ class TestPydanticConfiguration:
 
         # Test default values
         assert settings.database_url == "postgresql://postgres@localhost/soniq"
-        assert settings.jobs_module == "jobs"
         assert settings.jobs_modules == ""
         assert settings.concurrency == 4
         assert settings.queues == ["default"]
@@ -87,7 +86,6 @@ class TestPydanticConfiguration:
         """Test environment variable override functionality."""
         # Set environment variables
         os.environ["SONIQ_DATABASE_URL"] = "postgresql://test@localhost/test_db"
-        os.environ["SONIQ_JOBS_MODULE"] = "myapp.jobs"
         os.environ["SONIQ_JOBS_MODULES"] = "myapp.tasks,myapp.other_tasks"
         os.environ["SONIQ_CONCURRENCY"] = "8"
         os.environ["SONIQ_QUEUES"] = "urgent,default,low"
@@ -109,7 +107,6 @@ class TestPydanticConfiguration:
 
         # Test overridden values
         assert settings.database_url == "postgresql://test@localhost/test_db"
-        assert settings.jobs_module == "myapp.jobs"
         assert settings.jobs_modules == "myapp.tasks,myapp.other_tasks"
         assert settings.concurrency == 8
         assert settings.queues == ["urgent", "default", "low"]
@@ -220,7 +217,6 @@ class TestPydanticConfiguration:
         # Create temporary config file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".env", delete=False) as f:
             f.write("SONIQ_DATABASE_URL=postgresql://config@localhost/config_db\n")
-            f.write("SONIQ_JOBS_MODULE=config.jobs\n")
             f.write("SONIQ_CONCURRENCY=12\n")
             f.write("SONIQ_LOG_LEVEL=WARNING\n")
             config_file = Path(f.name)
@@ -232,7 +228,6 @@ class TestPydanticConfiguration:
 
             # Should load from config file
             assert settings.database_url == "postgresql://config@localhost/config_db"
-            assert settings.jobs_module == "config.jobs"
             assert settings.concurrency == 12
             assert settings.log_level == "WARNING"
 
@@ -291,7 +286,6 @@ class TestPydanticConfiguration:
         os.environ["SONIQ_DATABASE_URL"] = (
             "postgresql://export_test@localhost/export_db"
         )
-        os.environ["SONIQ_JOBS_MODULE"] = "export.jobs"
 
         # Reload settings to pick up environment variables
         from soniq.settings import get_settings
@@ -300,7 +294,6 @@ class TestPydanticConfiguration:
 
         # Settings should be accessible via the settings object
         assert settings.database_url == "postgresql://export_test@localhost/export_db"
-        assert settings.jobs_module == "export.jobs"
 
     def test_case_insensitive_configuration(self):
         """Test case-insensitive configuration handling."""

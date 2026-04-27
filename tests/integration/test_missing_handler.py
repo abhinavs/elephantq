@@ -17,7 +17,7 @@ async def test_unregistered_job_dead_lettered():
     A job with a job_name that doesn't exist in the registry
     should be moved to dead_letter with a clear error message.
     """
-    app = soniq._get_global_app()
+    app = soniq.get_global_app()
     pool = await app._get_pool()
 
     # Insert a job directly with a non-existent handler
@@ -39,12 +39,17 @@ async def test_unregistered_job_dead_lettered():
 
     assert processed is True
 
-    # Verify job is in dead_letter
+    # DLQ Option A: dead-lettered jobs leave soniq_jobs.
     async with pool.acquire() as conn:
+        in_jobs = await conn.fetchrow(
+            "SELECT id FROM soniq_jobs WHERE id = $1",
+            job_id,
+        )
+        assert in_jobs is None
         row = await conn.fetchrow(
-            "SELECT status, last_error FROM soniq_jobs WHERE id = $1",
+            "SELECT last_error FROM soniq_dead_letter_jobs WHERE id = $1",
             job_id,
         )
 
-    assert row["status"] == "dead_letter"
+    assert row is not None
     assert "not registered" in row["last_error"].lower()

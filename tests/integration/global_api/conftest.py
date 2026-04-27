@@ -32,14 +32,14 @@ async def clean_global_api_state():
 
     # Clear only the job table - much faster than recreating pools
     try:
-        global_app = soniq._get_global_app()
-        if global_app._is_initialized:
+        global_app = soniq.get_global_app()
+        if global_app.is_initialized:
             app_pool = await global_app._get_pool()
             await clear_table(app_pool)
         else:
             # Initialize once if needed
             await soniq.configure(database_url=TEST_DATABASE_URL)
-            global_app = soniq._get_global_app()
+            global_app = soniq.get_global_app()
             app_pool = await global_app._get_pool()
             await clear_table(app_pool)
     except Exception:
@@ -61,7 +61,7 @@ async def clean_db():
     """Additional fixture for tests that need explicit clean database state."""
     import soniq
 
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     app_pool = await global_app._get_pool()
     await clear_table(app_pool)
     return None

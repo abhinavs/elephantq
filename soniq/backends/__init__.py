@@ -22,7 +22,10 @@ and quick scripts only.
 """
 
 from datetime import datetime
-from typing import Any, Optional, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Optional, Protocol, runtime_checkable
+
+if TYPE_CHECKING:
+    from soniq.types import QueueStats
 
 
 @runtime_checkable
@@ -183,8 +186,41 @@ class JobStore(Protocol):
         *,
         attempts: int,
         error: str,
+        reason: str,
+        tags: Optional[dict] = None,
     ) -> None:
-        """Move job to dead_letter status."""
+        """Move a job out of ``soniq_jobs`` and into ``soniq_dead_letter_jobs``.
+
+        Single-transaction INSERT-then-DELETE. The DLQ row keeps the
+        original ``soniq_jobs.id`` as primary key, with ``reason`` and
+        ``tags`` populated from the call site. After commit the row
+        exists in exactly one table. See ``docs/contracts/dead_letter.md``
+        and ``docs/design/dlq_option_a.md``.
+        """
+        ...
+
+    async def nack_job(self, job_id: str) -> None:
+        """Abandon a claimed job back to ``queued`` (shutdown contract).
+
+        Locked field set, identical across all backends:
+
+        ::
+
+            UPDATE soniq_jobs
+            SET status='queued', worker_id=NULL,
+                updated_at=NOW(), scheduled_at=NOW()
+            WHERE id=$1 AND status='processing'
+
+        ``attempts`` and ``last_error`` are **not** modified - the worker
+        abandoned the job, the job did not fail. The WHERE clause makes
+        the operation idempotent: a row that has already been advanced
+        (e.g. by stale-worker recovery) is left alone.
+
+        Called only on the async branch of ``FORCE_TIMEOUT_PATH``. Sync
+        handlers never go through ``nack_job``; their rows are left in
+        ``processing`` and reclaimed by stale-worker recovery in a
+        subsequent process. See ``docs/contracts/shutdown.md``.
+        """
         ...
 
     async def reschedule_job(
@@ -208,7 +244,12 @@ class JobStore(Protocol):
         ...
 
     async def retry_job(self, job_id: str) -> bool:
-        """Reset a dead_letter/failed job to queued. Return True if reset."""
+        """Reset a failed job to queued. Return True if reset.
+
+        Operates on ``soniq_jobs`` only. DLQ rows live in
+        ``soniq_dead_letter_jobs`` under DLQ Option A and are resurrected
+        via ``DeadLetterService.replay``, not this method.
+        """
         ...
 
     async def delete_job(self, job_id: str) -> bool:
@@ -232,8 +273,16 @@ class JobStore(Protocol):
         """List jobs with optional filters."""
         ...
 
-    async def get_queue_stats(self) -> list[dict]:
-        """Aggregate job counts grouped by queue and status."""
+    async def get_queue_stats(self) -> "QueueStats":
+        """Whole-instance job state counts in the canonical 6-key shape.
+
+        Returns a single ``QueueStats`` dict (``soniq.types.QueueStats``)
+        with keys ``total / queued / processing / done / dead_letter /
+        cancelled``. ``dead_letter`` is sourced from the separate
+        ``soniq_dead_letter_jobs`` table - DLQ Option A means
+        ``soniq_jobs.status='dead_letter'`` no longer exists. See
+        ``docs/contracts/queue_stats.md``.
+        """
         ...
 
     # --- Maintenance ---

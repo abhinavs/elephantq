@@ -4,75 +4,7 @@ All notable changes to Soniq are documented in this file.
 
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-### Breaking changes
-
-None for single-repo users. Existing code that uses
-`@app.job(...)` and `app.enqueue(my_func, x=1)` keeps working
-unchanged.
-
-### Added
-
-- **Cross-service enqueue.** `app.enqueue` now accepts three input
-  shapes selected by the type of the first argument:
-  - **Callable** (single-repo): `app.enqueue(my_func, x=1)` -
-    unchanged from earlier versions.
-  - **String task name** (cross-service / by-name):
-    `app.enqueue("users.task", args={"x": 1})`. The producer does
-    not need to import the consumer's handler.
-  - **`TaskRef`** (typed cross-repo stub):
-    `app.enqueue(my_ref, args={"x": 1})`. Validates `args` against
-    the ref's `args_model` and uses its `default_queue` when no
-    explicit `queue=` is passed.
-- **`@app.job(name=...)` for stable wire-protocol identifiers.**
-  When omitted the task name is derived from
-  `f"{module}.{qualname}"` (matching Celery / Dramatiq / RQ).
-  Cross-service deployments should pass `name=` explicitly; explicit
-  names are validated against `SONIQ_TASK_NAME_PATTERN`.
-
-- `SONIQ_ENQUEUE_VALIDATION` setting (`"strict"` / `"warn"` /
-  `"none"`). Governs how `enqueue("string-name", ...)` handles a name
-  not registered locally. Default `"strict"` raises
-  `SONIQ_UNKNOWN_TASK_NAME`. `"warn"` emits a rate-limited
-  per-process warning.
-- `SONIQ_TASK_NAME_PATTERN` setting. Default rejects whitespace,
-  uppercase, and leading/trailing dots. Validates explicit `name=`
-  values at registration and string targets at enqueue time.
-- New error codes: `SONIQ_UNKNOWN_TASK_NAME`,
-  `SONIQ_INVALID_TASK_NAME`, `SONIQ_TASK_ARGS_INVALID`.
-- `soniq migrate-enqueue` codemod for projects that want to switch
-  from the callable form to the by-name form (e.g. when carving a
-  consumer service out of a monolith). Optional - the callable form
-  keeps working.
-
-### Documentation
-
-- New cross-service jobs guide at
-  `docs/guides/cross-service-jobs.md`.
-- New migration guide at
-  `docs/migration/0.0.x-to-cross-service.md`.
-- README cross-service section.
-
-### Migration
-
-Most single-repo code does not need to change. The callable form
-of `enqueue` keeps working and `@app.job()` continues to derive task
-names automatically.
-
-For projects switching to the by-name form (e.g. carving a consumer
-service out of a monolith), the codemod handles the rewrite:
-
-```bash
-soniq migrate-enqueue --use-derived-names .
-```
-
-Or supply explicit canonical names in `migrate-enqueue.toml`. See
-the migration guide for the full walkthrough.
-
-## [0.0.2] - 2026-04-25
-
-First public release.
+## [0.0.3] - unreleased
 
 ### Highlights
 
@@ -87,15 +19,74 @@ First public release.
 - Structured logging, webhook delivery, and metrics behind optional extras.
 - Pluggable extension points: `RetryPolicy`, `Serializer`, `LogSink`, and `MetricsSink`. Each ships a default and a `Soniq(...)` constructor parameter. `PrometheusMetricsSink` (under `pip install soniq[monitoring]`) emits `soniq_jobs_started_total`, `soniq_jobs_completed_total`, `soniq_job_duration_seconds`, and `soniq_jobs_in_progress` against a configurable registry / prefix.
 
+### Cross-service enqueue
+
+- `app.enqueue` accepts three input shapes selected by the type of the first argument:
+  - **Callable** (single-repo): `app.enqueue(my_func, x=1)`.
+  - **String task name** (cross-service / by-name):
+    `app.enqueue("users.task", args={"x": 1})`. The producer does
+    not need to import the consumer's handler.
+  - **`TaskRef`** (typed cross-repo stub):
+    `app.enqueue(my_ref, args={"x": 1})`. Validates `args` against
+    the ref's `args_model` and uses its `default_queue` when no
+    explicit `queue=` is passed.
+- `@app.job(name=...)` for stable wire-protocol identifiers. When
+  omitted the task name is derived from `f"{module}.{qualname}"`
+  (matching Celery / Dramatiq / RQ). Cross-service deployments should
+  pass `name=` explicitly; explicit names are validated against
+  `SONIQ_TASK_NAME_PATTERN`.
+- `SONIQ_ENQUEUE_VALIDATION` setting (`"strict"` / `"warn"` /
+  `"none"`). Governs how `enqueue("string-name", ...)` handles a name
+  not registered locally. Default `"strict"` raises
+  `SONIQ_UNKNOWN_TASK_NAME`. `"warn"` emits a rate-limited
+  per-process warning.
+- `SONIQ_TASK_NAME_PATTERN` setting. Default rejects whitespace,
+  uppercase, and leading/trailing dots. Validates explicit `name=`
+  values at registration and string targets at enqueue time.
+- Error codes: `SONIQ_UNKNOWN_TASK_NAME`, `SONIQ_INVALID_TASK_NAME`,
+  `SONIQ_TASK_ARGS_INVALID`.
+
+### Contracts
+
+- `soniq.types.QueueStats` is the canonical 6-key shape returned by
+  every backend's `queue_stats()` and surfaced in CLI / dashboard:
+  `{total, queued, processing, done, dead_letter, cancelled}`. No
+  aliases, no extra keys.
+- DLQ is a table-of-record under `soniq_dead_letter_jobs`. The runtime
+  is the only path that creates DLQ rows; there is no public
+  `move(job_id)` helper. List, replay, and purge operations remain on
+  `DeadLetterService`.
+- Bounded sync handler thread pool: `sync_handler_pool_size` (default
+  `8`) caps concurrent sync handler threads per `Soniq` instance, with
+  a post-claim `asyncio.Semaphore` so claimed `processing` rows can
+  never exceed worker concurrency. Async handlers bypass the pool
+  entirely.
+- `shutdown_timeout` (default `30s`) and `sync_handler_grace_seconds`
+  settings drive the `RUNNING -> DRAINING -> FORCE_TIMEOUT_PATH`
+  shutdown state machine. Async jobs nack on force-timeout; sync jobs
+  receive an extra grace window before the executor is torn down.
+- Two-instance isolation: no module-level `get_settings()` calls
+  outside the constructor allowlist, validated by
+  `check_no_global_settings.py` (pre-commit + CI) and the
+  cross-instance bleed integration test.
+
 ### Operational notes
 
 - `SONIQ_DATABASE_URL` is the primary configuration input. Every other setting (`SONIQ_CONCURRENCY`, `SONIQ_POOL_MAX_SIZE`, feature flags) has a sensible default.
-- Baseline database schema is applied by the single migration `001_soniq_baseline.sql` on first run of `soniq setup`. All tables are namespaced `soniq_*`.
+- Baseline database schema is applied by the core migration set on first run of `soniq setup`. All tables are namespaced `soniq_*`.
 - LISTEN/NOTIFY channel is `soniq_new_job`. Advisory-lock namespaces are `soniq.maintenance` (worker cleanup) and `soniq.migrations` (migration runner).
 - Default SQLite backend filename is `soniq.db`.
 - Connection pool sizing is validated at worker startup: `SONIQ_POOL_MAX_SIZE` must be at least `SONIQ_CONCURRENCY + SONIQ_POOL_HEADROOM`; the worker refuses to start otherwise.
 
-### Recurring jobs need a scheduler sidecar (action required if upgrading from a pre-release)
+### Known limitations
+
+- Sync handler hard-kill on shutdown can re-deliver a job whose handler
+  was mid-flight when the executor was forced down. There is no
+  exactly-once guarantee for sync handlers under
+  `shutdown_timeout`-triggered force-paths; design handlers to be
+  idempotent.
+
+### Recurring jobs need a scheduler sidecar
 
 `soniq start` runs the worker only. If you use `@app.periodic(...)` jobs, deploy a separate `soniq scheduler` process. The worker prints a one-time WARN at startup if it detects `@periodic` decorators and no scheduler is configured. Suppress with `SONIQ_SCHEDULER_SUPPRESS_WARNING=1`.
 

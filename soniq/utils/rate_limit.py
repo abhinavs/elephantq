@@ -7,9 +7,9 @@ the task name; emits at most once per ``(key, ttl_window)`` pair
 per process.
 
 The contract is intentionally implementation-defined: callers MUST
-NOT depend on the exact dedup window or eviction policy. The plan
-section 14.4 spells this out so a future contributor can swap the
-LRU+TTL for, say, a token bucket without breaking a public guarantee.
+NOT depend on the exact dedup window or eviction policy. The
+LRU+TTL can be swapped for, say, a token bucket without breaking a
+public guarantee.
 
 Defaults: per-process LRU of 1024 keys with a 1-hour TTL. Both are
 overridable via constructor args, primarily for tests.

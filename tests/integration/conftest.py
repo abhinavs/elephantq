@@ -38,18 +38,18 @@ async def clean_test_state():
     global_app = soniq._global_app
     if (
         global_app is not None
-        and global_app._is_initialized
-        and not global_app._is_closed
+        and global_app.is_initialized
+        and not global_app.is_closed
     ):
         await global_app.close()
 
     await soniq.configure(database_url=_TEST_DATABASE_URL)
 
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     app_pool = await global_app._get_pool()
     await clear_table(app_pool)
 
     yield
 
-    if global_app._is_initialized:
+    if global_app.is_initialized:
         await global_app.close()

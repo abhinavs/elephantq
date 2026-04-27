@@ -92,20 +92,22 @@ async def drop_test_database():
 
 async def clear_table(pool: Pool):
     async with pool.acquire() as conn:
-        # Clear both tables with CASCADE to handle foreign key constraints
+        # Clear job tables with CASCADE to handle foreign key constraints.
+        # DLQ Option A: soniq_dead_letter_jobs is the authoritative store for
+        # dead-lettered jobs and must be truncated alongside soniq_jobs so
+        # tests get a clean slate.
         try:
             await conn.execute(
-                "TRUNCATE TABLE soniq_jobs, soniq_workers RESTART IDENTITY CASCADE"
+                "TRUNCATE TABLE soniq_jobs, soniq_dead_letter_jobs, soniq_workers "
+                "RESTART IDENTITY CASCADE"
             )
         except Exception:
-            # Fallback to individual table clearing if the above fails
-            try:
-                await conn.execute("TRUNCATE TABLE soniq_jobs RESTART IDENTITY")
-            except Exception:
-                pass
-            try:
-                await conn.execute(
-                    "TRUNCATE TABLE soniq_workers RESTART IDENTITY CASCADE"
-                )
-            except Exception:
-                pass
+            for stmt in (
+                "TRUNCATE TABLE soniq_jobs RESTART IDENTITY",
+                "TRUNCATE TABLE soniq_dead_letter_jobs RESTART IDENTITY",
+                "TRUNCATE TABLE soniq_workers RESTART IDENTITY CASCADE",
+            ):
+                try:
+                    await conn.execute(stmt)
+                except Exception:
+                    pass

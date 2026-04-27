@@ -3,7 +3,7 @@ A user who creates `app = Soniq(database_url=...)` and then calls the
 feature APIs (`every(...).schedule(...)`, `schedule_job(...)`, global
 `soniq.enqueue` from within `app.enqueue`, and so on) must have those
 features target *their* database, not the global app's. Prior to this PR
-the features always reached for `_get_global_app()`, silently crossing the
+the features always reached for `get_global_app()`, silently crossing the
 database boundary. We assert that isolation holds for the `enqueue` path on
 real Postgres against two databases.
 """

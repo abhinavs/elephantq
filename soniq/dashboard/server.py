@@ -44,18 +44,38 @@ def _is_localhost_request(request: "Request") -> bool:
     return host == "" or host in _LOCALHOST_HOSTS
 
 
+def _is_dashboard_write_enabled() -> bool:
+    """Whether mutating dashboard actions are enabled by env config."""
+    import os
+
+    return os.environ.get("SONIQ_DASHBOARD_WRITE_ENABLED", "").lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+
+
 def _require_write_authorization(request: "Request") -> None:
     """Guard called from each write endpoint.
 
-    The operator opts in to writes by running the dashboard process at
-    all. To prevent a public-facing dashboard from accepting writes from
-    arbitrary clients, we still require either:
+    Mutating endpoints are disabled unless ``SONIQ_DASHBOARD_WRITE_ENABLED``
+    is true-ish. When writes are enabled, we still require either:
     1. ``SONIQ_DASHBOARD_API_KEY`` configured (the global API-key
        middleware will have already validated the key by the time this
        runs), or
     2. The request originates on localhost.
     """
     import os
+
+    if not _is_dashboard_write_enabled():
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "Dashboard writes are disabled. Set "
+                "SONIQ_DASHBOARD_WRITE_ENABLED=true to enable retry/cancel/delete."
+            ),
+        )
 
     api_key_set = bool(os.environ.get("SONIQ_DASHBOARD_API_KEY", ""))
     if api_key_set:
@@ -174,14 +194,6 @@ def create_dashboard_app(soniq_app: Optional["Soniq"] = None) -> "FastAPI":
         """Get job processing metrics"""
         return await data.get_job_metrics(hours=hours)
 
-    @app.get("/api/jobs/{job_id}")
-    async def api_job_details(job_id: str) -> Dict[str, Any]:
-        """Get job details"""
-        job = await data.get_job_details(job_id)
-        if not job:
-            raise HTTPException(status_code=404, detail="Job not found")
-        return job
-
     @app.post("/api/jobs/{job_id}/retry")
     async def api_retry_job(job_id: str, request: Request) -> Dict[str, str]:
         """Retry a failed job"""
@@ -243,6 +255,14 @@ def create_dashboard_app(soniq_app: Optional["Soniq"] = None) -> "FastAPI":
             offset=offset,
         )
 
+    @app.get("/api/jobs/{job_id}")
+    async def api_job_details(job_id: str) -> Dict[str, Any]:
+        """Get job details"""
+        job = await data.get_job_details(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        return job
+
     @app.get("/api/system/health")
     async def api_system_health() -> Dict[str, Any]:
         """Get overall system health metrics"""
@@ -285,9 +305,8 @@ def create_dashboard_app(soniq_app: Optional["Soniq"] = None) -> "FastAPI":
 
 def get_dashboard_html() -> str:
     """Generate dashboard HTML"""
-    # Writes are always wired into the UI; the actual authorization gate
-    # lives in `_require_write_authorization` (localhost / API key).
-    can_write = "true"
+    # Keep the UI in sync with the server-side mutating-endpoint gate.
+    can_write = "true" if _is_dashboard_write_enabled() else "false"
     html = """
 <!DOCTYPE html>
 <html lang="en">

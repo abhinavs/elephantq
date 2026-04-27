@@ -117,12 +117,16 @@ async def test_get_queue_stats(app):
     await app.enqueue("noop")
 
     stats = await app.get_queue_stats()
-    assert len(stats) >= 1
-    assert stats[0]["queued"] == 2
+    assert stats["queued"] == 2
+    assert stats["total"] == 2
+    assert stats["dead_letter"] == 0
 
 
-async def test_retry_job(app):
-    """retry_job should work on MemoryBackend."""
+async def test_retry_job_after_dead_letter_returns_false(app):
+    """Under DLQ Option A, retry_job cannot resurrect a dead-lettered job
+    because the row is moved out of soniq_jobs into soniq_dead_letter_jobs.
+    Resurrection lives on DeadLetterService.replay; retry_job operates on
+    soniq_jobs ('failed' rows) only. See docs/contracts/dead_letter.md."""
 
     @app.job(name="failing_job", retries=1)
     async def failing_job():
@@ -130,15 +134,9 @@ async def test_retry_job(app):
 
     job_id = await app.enqueue("failing_job")
 
-    # Process until dead_letter
     await app.run_worker(run_once=True)
     await app.run_worker(run_once=True)
 
-    status = await app.get_job(job_id)
-    assert status["status"] == "dead_letter"
+    assert await app.get_job(job_id) is None
 
-    result = await app.retry_job(job_id)
-    assert result is True
-
-    status = await app.get_job(job_id)
-    assert status["status"] == "queued"
+    assert await app.retry_job(job_id) is False

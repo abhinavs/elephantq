@@ -1,10 +1,8 @@
 """
 Dashboard data collection and API for Soniq.
 
-The HTTP layer (``fastapi_app``) constructs a single ``DashboardService``
-bound to the configured ``Soniq`` and calls methods on it. The class
-replaces the previous bag of module-level functions that all reached for
-the global app's pool through a shared context.
+The HTTP layer (``server``) constructs a single ``DashboardService``
+bound to the configured ``Soniq`` and calls methods on it.
 """
 
 import uuid
@@ -23,7 +21,7 @@ class DashboardService:
     pooled connection via ``self._app.backend.acquire()``. Write methods
     (``retry_job``, ``delete_job``, ``cancel_job``) just hit the backend;
     HTTP-level authorization for writes is enforced in
-    ``fastapi_app._require_write_authorization``.
+    ``server._require_write_authorization``.
     """
 
     def __init__(self, app: "Soniq"):
@@ -82,24 +80,57 @@ class DashboardService:
             return [dict(row) for row in rows]
 
     async def get_queue_stats(self) -> List[Dict[str, Any]]:
+        # Per-queue rollup for the dashboard. Distinct from the canonical
+        # whole-instance Soniq.get_queue_stats(); the dashboard breaks down
+        # by queue and joins in the DLQ count from soniq_dead_letter_jobs
+        # (DLQ Option A). See docs/contracts/dead_letter.md and
+        # docs/contracts/queue_stats.md.
         async with self._acquire() as conn:
             rows = await conn.fetch(
                 """
                 SELECT
-                    queue,
-                    COUNT(*) as total_jobs,
-                    COUNT(*) FILTER (WHERE status = 'queued') as queued,
-                    COUNT(*) FILTER (WHERE status = 'done') as done,
-                    COUNT(*) FILTER (WHERE status = 'failed') as failed,
-                    COUNT(*) FILTER (WHERE status = 'dead_letter') as dead_letter,
-                    AVG(GREATEST(EXTRACT(EPOCH FROM (updated_at - created_at)) * 1000, 0))
-                        FILTER (WHERE status = 'done') as avg_processing_time_ms
-                FROM soniq_jobs
-                GROUP BY queue
+                    j.queue,
+                    COUNT(*) AS total_jobs,
+                    COUNT(*) FILTER (WHERE j.status = 'queued')     AS queued,
+                    COUNT(*) FILTER (WHERE j.status = 'done')       AS done,
+                    COUNT(*) FILTER (WHERE j.status = 'failed')     AS failed,
+                    AVG(GREATEST(EXTRACT(EPOCH FROM (j.updated_at - j.created_at)) * 1000, 0))
+                        FILTER (WHERE j.status = 'done')            AS avg_processing_time_ms
+                FROM soniq_jobs j
+                GROUP BY j.queue
                 ORDER BY total_jobs DESC
                 """
             )
-            return [dict(row) for row in rows]
+            try:
+                dlq_rows = await conn.fetch(
+                    """
+                    SELECT queue, COUNT(*) AS dead_letter
+                    FROM soniq_dead_letter_jobs
+                    GROUP BY queue
+                    """
+                )
+                dlq_by_queue = {r["queue"]: int(r["dead_letter"]) for r in dlq_rows}
+            except Exception:
+                dlq_by_queue = {}
+            results: List[Dict[str, Any]] = []
+            for row in rows:
+                d = dict(row)
+                d["dead_letter"] = dlq_by_queue.get(d["queue"], 0)
+                results.append(d)
+            for queue, count in dlq_by_queue.items():
+                if not any(r["queue"] == queue for r in results):
+                    results.append(
+                        {
+                            "queue": queue,
+                            "total_jobs": count,
+                            "queued": 0,
+                            "done": 0,
+                            "failed": 0,
+                            "dead_letter": count,
+                            "avg_processing_time_ms": None,
+                        }
+                    )
+            return results
 
     async def get_job_metrics(self, hours: int = 24) -> Dict[str, Any]:
         async with self._acquire() as conn:
@@ -109,7 +140,7 @@ class DashboardService:
                 SELECT
                     COUNT(*) as total_processed,
                     COUNT(*) FILTER (WHERE status = 'done') as successful,
-                    COUNT(*) FILTER (WHERE status IN ('failed', 'dead_letter')) as failed,
+                    COUNT(*) FILTER (WHERE status = 'failed') as failed,
                     AVG(GREATEST(EXTRACT(EPOCH FROM (updated_at - created_at)) * 1000, 0))
                         FILTER (WHERE status = 'done') as avg_processing_time_ms,
                     COUNT(*) / GREATEST($2, 1) as jobs_per_hour

@@ -174,6 +174,6 @@ async def test_retry_policy_can_short_circuit_to_dead_letter():
         retry_policy=_NoRetry(),
     )
 
-    job = await backend.get_job("dl-policy")
-    assert job["status"] == "dead_letter"
-    assert "Retry policy declined" in job["last_error"]
+    assert await backend.get_job("dl-policy") is None
+    dlq_row = backend._dead_letter_jobs["dl-policy"]
+    assert "Retry policy declined" in dlq_row["last_error"]

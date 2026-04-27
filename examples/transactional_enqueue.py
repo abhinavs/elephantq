@@ -45,7 +45,7 @@ from contextlib import asynccontextmanager  # noqa: E402
 async def lifespan(app):
     app.state.pool = await asyncpg.create_pool(DATABASE_URL)
     await soniq.configure(database_url=DATABASE_URL)
-    await soniq._setup()
+    await soniq.setup()
 
     async with app.state.pool.acquire() as conn:
         await conn.execute(

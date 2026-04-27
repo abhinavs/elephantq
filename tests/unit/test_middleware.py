@@ -251,10 +251,12 @@ async def test_middleware_exception_lets_processor_record_failure():
 
     job_id = await app.enqueue("demo.bad")
     await app.run_worker(run_once=True)
+    # DLQ Option A: dead-lettered jobs are gone from soniq_jobs.
     job = await app.get_job(job_id)
+    dlq_row = app.backend._dead_letter_jobs[job_id]
     await app.close()
 
     # max_retries=0 -> max_attempts=1, dead-letter on first failure.
     assert events == []
-    assert job["status"] == "dead_letter"
-    assert "middleware says no" in job["last_error"]
+    assert job is None
+    assert "middleware says no" in dlq_row["last_error"]

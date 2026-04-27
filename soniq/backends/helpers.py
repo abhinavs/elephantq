@@ -1,6 +1,4 @@
-"""
-Database helper utilities.
-"""
+"""Backend helper utilities."""
 
 
 def rows_affected(result: str) -> int:

@@ -13,8 +13,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional, Tuple
 
-from soniq.core.registry import get_job
-from soniq.db.helpers import rows_affected as _rows_affected
+from soniq.backends.helpers import rows_affected as _rows_affected
 
 if TYPE_CHECKING:
     from soniq.app import Soniq
@@ -152,10 +151,7 @@ class DeadLetterService:
     """Service for dead letter queue operations bound to a Soniq instance.
 
     Connections come from ``self._app.backend.acquire()`` so a custom
-    ``Soniq(...)`` instance writes to its own database. The historical
-    name ``DeadLetterManager`` is preserved as an alias below for
-    backwards compatibility within this session; the public surface
-    delegates here.
+    ``Soniq(...)`` instance writes to its own database.
     """
 
     def __init__(
@@ -195,69 +191,11 @@ class DeadLetterService:
             version_filter="0020"
         )
 
-    async def move_job_to_dead_letter(
-        self,
-        job_id: str,
-        reason: DeadLetterReason,
-        tags: Optional[Dict[str, str]] = None,
-    ) -> bool:
-        """Move a job to the dead letter queue"""
-        async with self._acquire() as conn:
-            async with conn.transaction():
-                # Get the job record
-                job_record = await conn.fetchrow(
-                    """
-                    SELECT * FROM soniq_jobs WHERE id = $1
-                """,
-                    uuid.UUID(job_id),
-                )
-
-                if not job_record:
-                    logger.warning(f"Job {job_id} not found for dead letter move")
-                    return False
-
-                # Create dead letter record
-                dead_letter_job = DeadLetterJob.from_job_record(
-                    dict(job_record), reason
-                )
-                if tags:
-                    dead_letter_job.tags = tags
-
-                # Insert into dead letter table
-                await conn.execute(
-                    f"""
-                    INSERT INTO {self.table_name} (
-                        id, job_name, args, queue, priority, max_attempts, attempts,
-                        last_error, dead_letter_reason, original_created_at,
-                        moved_to_dead_letter_at, tags
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-                """,
-                    uuid.UUID(dead_letter_job.id),
-                    dead_letter_job.job_name,
-                    dead_letter_job.args,
-                    dead_letter_job.queue,
-                    dead_letter_job.priority,
-                    dead_letter_job.max_attempts,
-                    dead_letter_job.attempts,
-                    dead_letter_job.last_error,
-                    dead_letter_job.dead_letter_reason,
-                    dead_letter_job.original_created_at,
-                    dead_letter_job.moved_to_dead_letter_at,
-                    dead_letter_job.tags,
-                )
-
-                # Update original job status
-                await conn.execute(
-                    """
-                    UPDATE soniq_jobs 
-                    SET status = 'dead_letter', updated_at = NOW()
-                    WHERE id = $1
-                """,
-                    uuid.UUID(job_id),
-                )
-
-                logger.info(f"Moved job {job_id} to dead letter queue: {reason.value}")
-                return True
+    # NOTE: ``move_job_to_dead_letter`` was removed in 0.0.3. The DLQ move
+    # is now a backend primitive (``backend.mark_job_dead_letter``) and the
+    # processor is its only legitimate caller. Application code that needs
+    # to forcibly DLQ a job should re-enqueue with ``max_attempts=0`` or
+    # raise from a handler. See docs/contracts/dead_letter.md.
 
     async def resurrect_job(
         self,
@@ -283,8 +221,12 @@ class DeadLetterService:
                     logger.warning(f"Dead letter job {dead_letter_id} not found")
                     return None
 
-                # Check if job function is still registered
-                job_meta = get_job(dead_job["job_name"])
+                # Check if job function is still registered on this
+                # instance's registry. Going through `self._app.registry`
+                # keeps the lookup scoped to the Soniq that owns this
+                # service - no global app fallback
+                # (`docs/contracts/instance_boundary.md`).
+                job_meta = self._app.registry.get_job(dead_job["job_name"])
                 if not job_meta:
                     logger.error(
                         f"Cannot resurrect job {dead_letter_id}: job {dead_job['job_name']} not registered"
@@ -685,12 +627,6 @@ class DeadLetterService:
             raise ValueError(f"Unsupported export format: {format}")
 
 
-# Backwards-compatible alias. The class was renamed when it stopped reaching
-# for the global app on every method; existing external imports of
-# `DeadLetterManager` keep working without code change.
-DeadLetterManager = DeadLetterService
-
-
 def _service() -> DeadLetterService:
     """Build a service bound to the global Soniq app on demand.
 
@@ -708,13 +644,6 @@ def _service() -> DeadLetterService:
 async def setup_dead_letter_queue():
     """Setup dead letter queue database tables"""
     await _service().setup_database()
-
-
-async def move_job_to_dead_letter(
-    job_id: str, reason: DeadLetterReason, tags: Optional[Dict[str, str]] = None
-) -> bool:
-    """Move a job to the dead letter queue"""
-    return await _service().move_job_to_dead_letter(job_id, reason, tags)
 
 
 async def resurrect_job(

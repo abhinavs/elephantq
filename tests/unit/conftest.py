@@ -16,7 +16,7 @@ async def reset_global_state():
     import soniq
 
     if soniq._global_app is not None:
-        if soniq._global_app._is_initialized and not soniq._global_app._is_closed:
+        if soniq._global_app.is_initialized and not soniq._global_app.is_closed:
             try:
                 await soniq._global_app.close()
             except Exception:

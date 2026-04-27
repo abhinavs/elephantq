@@ -39,7 +39,7 @@ async def handle_workers(args) -> int:
         import soniq as _soniq
 
         print_status("Using global API configuration", "info")
-        app = _soniq._get_global_app()
+        app = _soniq.get_global_app()
         owns_instance = False
 
     try:

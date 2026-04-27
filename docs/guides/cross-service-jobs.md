@@ -100,7 +100,7 @@ registration time.
 - **Args fail consumer's `args_model`:** dead-letter with the
   validation error. Producer sees nothing - validation is consumer-side
   unless the producer also has a local model (typically via a shared
-  stub package; see phase 2 of the soniq roadmap).
+  stub package).
 - **Consumer registers the name later:** rows queued before
   registration are picked up normally once the consumer comes online.
 
@@ -136,10 +136,3 @@ Producer-vs-consumer is a deployment convention, not a class. The same
 imports handler modules and runs `run_worker(...)`. See
 [Deployment shapes](../production/deployment-shapes.md) for the
 producer service, consumer service, and shared-library patterns.
-
-## Migrating from earlier versions
-
-If your project still uses the old `enqueue(callable, **kwargs)` shape
-or `@app.job()` without an explicit name, the
-[migration guide](../migration/0.0.x-to-cross-service.md) walks you
-through the rewrite and describes the `soniq migrate-enqueue` codemod.

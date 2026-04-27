@@ -133,10 +133,23 @@ async def test_mark_job_dead_letter(backend):
         scheduled_at=None,
     )
     await backend.fetch_and_lock_job(queues=["default"], worker_id=None)
-    await backend.mark_job_dead_letter(job_id, attempts=3, error="gave up")
+    await backend.mark_job_dead_letter(
+        job_id,
+        attempts=3,
+        error="gave up",
+        reason="max_retries_exceeded",
+    )
 
-    job = await backend.get_job(job_id)
-    assert job["status"] == "dead_letter"
+    # DLQ Option A: the row leaves soniq_jobs entirely.
+    assert await backend.get_job(job_id) is None
+    async with backend.acquire() as conn:
+        dlq_row = await conn.fetchrow(
+            "SELECT * FROM soniq_dead_letter_jobs WHERE id = $1",
+            uuid.UUID(job_id),
+        )
+    assert dlq_row is not None
+    assert dlq_row["dead_letter_reason"] == "max_retries_exceeded"
+    assert dlq_row["last_error"] == "gave up"
 
 
 @pytest.mark.asyncio
@@ -204,9 +217,16 @@ async def test_queue_stats(backend):
     )
 
     stats = await backend.get_queue_stats()
-    assert len(stats) >= 1
-    default_stat = next(s for s in stats if s["queue"] == "default")
-    assert default_stat["queued"] >= 1
+    assert set(stats.keys()) == {
+        "total",
+        "queued",
+        "processing",
+        "done",
+        "dead_letter",
+        "cancelled",
+    }
+    assert stats["queued"] >= 1
+    assert stats["total"] >= 1
 
 
 @pytest.mark.asyncio

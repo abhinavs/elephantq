@@ -7,6 +7,7 @@ the StorageBackend abstraction.
 """
 
 import asyncio
+import concurrent.futures
 import inspect
 import logging
 import time
@@ -14,6 +15,7 @@ import traceback
 from typing import Any, List, Optional
 
 from soniq.core.registry import JobRegistry
+from soniq.settings import SoniqSettings
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +42,11 @@ def _format_job_error(exc: BaseException) -> str:
 async def _execute_job_safely(
     job_record: dict,
     job_meta: dict,
+    settings: Optional[SoniqSettings] = None,
     middleware: Optional[List[Any]] = None,
+    sync_executor: Optional[concurrent.futures.ThreadPoolExecutor] = None,
+    sync_pool_semaphore: Optional[asyncio.Semaphore] = None,
+    in_flight_slot: Optional[dict] = None,
 ) -> tuple[bool, Optional[str], Any]:
     """
     Execute a job function safely with proper error handling.
@@ -59,6 +65,14 @@ async def _execute_job_safely(
     Returns:
         tuple: (success, error_message, return_value)
     """
+    # Settings is optional so unit tests can drive this helper without
+    # building a Soniq instance. Production paths (`process_job_via_backend`)
+    # always thread the per-instance settings through; the fresh
+    # `SoniqSettings()` fallback only fires for the bare-helper test path
+    # and never consults the cached global.
+    if settings is None:
+        settings = SoniqSettings()
+
     # Backends uniformly return `args` as a dict (Postgres JSONB codec,
     # SQLite json.loads on read, Memory stores dict natively). A non-dict
     # at this point means a backend contract violation; surface it loudly.
@@ -100,19 +114,75 @@ async def _execute_job_safely(
             validated_args[param_name] = ctx
             break
 
-    # Determine timeout: per-job overrides global setting
-    from soniq.settings import get_settings
-
+    # Determine timeout: per-job overrides instance setting
     timeout = job_meta.get("timeout")
     if timeout is None:
-        timeout = get_settings().job_timeout
+        timeout = settings.job_timeout
+
+    # Sync handlers run in a bounded ThreadPoolExecutor with post-claim
+    # backpressure via an asyncio.Semaphore. Async handlers stay on the event
+    # loop unchanged. The sync path is gated by acquiring the per-instance
+    # semaphore *before* dispatch so saturation surfaces as a wait, not a
+    # NACK / retry / rejection.
+    #
+    # JobRegistry wraps registered functions in a sync `def wrapper`
+    # (functools.wraps-style passthrough), so `iscoroutinefunction(func)`
+    # is False even when the underlying handler is `async def`. Unwrap
+    # once via inspect.unwrap to consult the original.
+    is_sync_handler = not inspect.iscoroutinefunction(inspect.unwrap(func))
 
     async def base_handler(_ctx: JobContext) -> Any:
-        # Handlers consume their kwargs by name; middleware sees only ctx.
-        result = func(**validated_args)
-        if inspect.iscoroutine(result):
-            return await result
-        return result
+        if is_sync_handler:
+            if sync_executor is None or sync_pool_semaphore is None:
+                # Fallback path for the bare-helper test entry point: no
+                # bounded executor available, so run inline. Production
+                # paths always thread the per-instance executor through.
+                return func(**validated_args)
+
+            loop = asyncio.get_running_loop()
+            await sync_pool_semaphore.acquire()
+            try:
+                fut = sync_executor.submit(lambda: func(**validated_args))
+            except BaseException:
+                # Could not even submit; release the permit immediately.
+                sync_pool_semaphore.release()
+                raise
+
+            # Tie semaphore release to the underlying thread, not to the
+            # await path. asyncio.wait_for can raise TimeoutError while the
+            # thread keeps running; releasing on the await timeout would let
+            # a fresh sync job acquire a slot while the original thread
+            # still holds an executor worker, breaking the
+            # `active sync execution <= sync_handler_pool_size` invariant.
+            #
+            # The done-callback fires on whichever thread completes the
+            # concurrent.futures.Future (typically the executor worker
+            # thread). asyncio.Semaphore.release() is loop-affine, so we
+            # post it back via call_soon_threadsafe.
+            def _release_on_thread_done(_f: concurrent.futures.Future) -> None:
+                loop.call_soon_threadsafe(sync_pool_semaphore.release)
+
+            fut.add_done_callback(_release_on_thread_done)
+
+            # Surface the future to the worker so the shutdown state
+            # machine can tell sync work apart from async work.
+            if in_flight_slot is not None:
+                in_flight_slot["sync_future"] = fut
+
+            try:
+                # asyncio.wrap_future bridges into the loop. wait_for above
+                # cancels this asyncio future on timeout, which forwards a
+                # cancel attempt to the underlying concurrent future; if
+                # the thread is already running, cancel is a no-op and the
+                # thread continues. The semaphore stays held until the
+                # thread truly returns (see done-callback above).
+                return await asyncio.wrap_future(fut)
+            finally:
+                if in_flight_slot is not None:
+                    in_flight_slot["sync_future"] = None
+        else:
+            # Coroutine handler; iscoroutinefunction is True.
+            return await func(**validated_args)
 
     if middleware:
         from .middleware import build_chain
@@ -156,6 +226,10 @@ async def process_job_via_backend(
     middleware: Optional[List[Any]] = None,
     retry_policy: Optional[Any] = None,
     metrics_sink: Optional[Any] = None,
+    settings: Optional[SoniqSettings] = None,
+    sync_executor: Optional[concurrent.futures.ThreadPoolExecutor] = None,
+    sync_pool_semaphore: Optional[asyncio.Semaphore] = None,
+    in_flight_slot: Optional[dict] = None,
 ) -> bool:
     """
     Process a single job using a StorageBackend.
@@ -172,7 +246,10 @@ async def process_job_via_backend(
     Returns:
         True if a job was processed, False if no jobs available
     """
-    from soniq.settings import get_settings
+    # Settings is per-instance: callers (Soniq workers, tests) supply the
+    # resolved settings; we never reach for the cached global here.
+    if settings is None:
+        settings = SoniqSettings()
 
     _hooks = hooks or {}
 
@@ -193,6 +270,11 @@ async def process_job_via_backend(
     if not job_record:
         return False
 
+    # Clear any stale slot state from a prior iteration before populating
+    # it for this job (slot is reused across the worker_task's lifetime).
+    if in_flight_slot is not None:
+        in_flight_slot.clear()
+
     job_id = str(job_record["id"])
     job_name = job_record["job_name"]
     max_attempts = job_record["max_attempts"]
@@ -209,6 +291,7 @@ async def process_job_via_backend(
             job_id,
             attempts=attempts,
             error="Max attempts exceeded (job crashed repeatedly)",
+            reason="max_retries_exceeded",
         )
         logger.error(f"Job {job_id} dead-lettered after {attempts} crash attempts")
         return True
@@ -219,6 +302,7 @@ async def process_job_via_backend(
             job_id,
             attempts=max_attempts,
             error=f"Job {job_name} not registered.",
+            reason="job_not_found",
         )
         logger.error(f"Job {job_name} not registered - moved to dead letter queue")
         return True
@@ -230,6 +314,68 @@ async def process_job_via_backend(
         queue=queue_name,
         attempt=attempts,
     )
+
+    # Tell the worker (via its in-flight slot) what kind of handler this is
+    # so the shutdown state machine can pick the right branch under
+    # FORCE_TIMEOUT_PATH. The slot is a per-worker-task mutable dict; the
+    # worker reads it directly when shutdown_timeout fires.
+    func_for_kind = job_meta.get("func")
+    is_sync_for_slot = not inspect.iscoroutinefunction(
+        inspect.unwrap(func_for_kind) if func_for_kind is not None else func_for_kind
+    )
+    if in_flight_slot is not None:
+        in_flight_slot["job_id"] = job_id
+        in_flight_slot["is_sync"] = is_sync_for_slot
+        in_flight_slot["sync_future"] = None
+
+    try:
+        return await _dispatch_and_record(
+            backend=backend,
+            settings=settings,
+            retry_policy=retry_policy,
+            metrics_sink=metrics_sink,
+            hooks=_hooks,
+            middleware=middleware,
+            sync_executor=sync_executor,
+            sync_pool_semaphore=sync_pool_semaphore,
+            in_flight_slot=in_flight_slot,
+            job_record=job_record,
+            job_meta=job_meta,
+            job_id=job_id,
+            job_name=job_name,
+            attempts=attempts,
+            max_attempts=max_attempts,
+            queue_name=queue_name,
+            start_time=start_time,
+        )
+    finally:
+        # Clear on exit so an idle worker_task between iterations does not
+        # carry stale claim metadata into the next shutdown decision.
+        if in_flight_slot is not None:
+            in_flight_slot.clear()
+
+
+async def _dispatch_and_record(
+    *,
+    backend: Any,
+    settings: SoniqSettings,
+    retry_policy: Any,
+    metrics_sink: Any,
+    hooks: dict,
+    middleware: Optional[List[Any]],
+    sync_executor: Optional[concurrent.futures.ThreadPoolExecutor],
+    sync_pool_semaphore: Optional[asyncio.Semaphore],
+    in_flight_slot: Optional[dict],
+    job_record: dict,
+    job_meta: dict,
+    job_id: str,
+    job_name: str,
+    attempts: int,
+    max_attempts: int,
+    queue_name: str,
+    start_time: float,
+) -> bool:
+    _hooks = hooks
 
     async def _emit_end(status: str, error: Optional[str] = None) -> None:
         await metrics_sink.record_job_end(
@@ -245,7 +391,13 @@ async def process_job_via_backend(
 
     try:
         job_success, job_error, job_result = await _execute_job_safely(
-            job_record, job_meta, middleware=middleware
+            job_record,
+            job_meta,
+            settings=settings,
+            middleware=middleware,
+            sync_executor=sync_executor,
+            sync_pool_semaphore=sync_pool_semaphore,
+            in_flight_slot=in_flight_slot,
         )
     except ValueError as corruption_error:
         logger.error(f"Job {job_id} has corrupted data: {corruption_error}")
@@ -253,6 +405,7 @@ async def process_job_via_backend(
             job_id,
             attempts=max_attempts,
             error=str(corruption_error),
+            reason="invalid_arguments",
         )
         await _emit_end("dead_letter", error=str(corruption_error))
         return True
@@ -263,7 +416,6 @@ async def process_job_via_backend(
         from soniq.job import Snooze
 
         if isinstance(job_result, Snooze):
-            settings = get_settings()
             requested = float(job_result.seconds)
             if requested < 0:
                 requested = 0.0
@@ -302,7 +454,6 @@ async def process_job_via_backend(
             await _emit_end("snoozed")
             return True
 
-        settings = get_settings()
         await backend.mark_job_done(
             job_id, result_ttl=settings.result_ttl, result=job_result
         )
@@ -321,6 +472,7 @@ async def process_job_via_backend(
                 job_id,
                 attempts=attempts,
                 error=wrapped,
+                reason="max_retries_exceeded",
             )
             logger.error(f"Job {job_id} moved to dead letter after {attempts} attempts")
             await _emit_end("dead_letter", error=str(job_error))
@@ -342,7 +494,10 @@ async def process_job_via_backend(
                 if len(wrapped) > _MAX_LAST_ERROR_CHARS:
                     wrapped = wrapped[:_MAX_LAST_ERROR_CHARS]
                 await backend.mark_job_dead_letter(
-                    job_id, attempts=attempts, error=wrapped
+                    job_id,
+                    attempts=attempts,
+                    error=wrapped,
+                    reason="permanent_failure",
                 )
                 logger.error(
                     f"Job {job_id} dead-lettered by retry policy at attempt {attempts}"

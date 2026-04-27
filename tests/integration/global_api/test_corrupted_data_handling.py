@@ -42,7 +42,7 @@ async def clean_db():
     """Clean database before each test"""
     from tests.db_utils import clear_table
 
-    pool = await soniq._get_global_app()._get_pool()
+    pool = await soniq.get_global_app()._get_pool()
     await clear_table(pool)
     yield
     await clear_table(pool)
@@ -58,7 +58,7 @@ async def test_corrupted_json_data(clean_db):
     """
     from soniq.core.worker import Worker
 
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     app_pool = await global_app._get_pool()
     registry = global_app._get_job_registry()
     backend = global_app._backend
@@ -82,20 +82,25 @@ async def test_corrupted_json_data(clean_db):
 
     assert processed
 
-    # Job should complete normally (args are valid)
+    # Job should complete normally (args are valid). If the handler is
+    # missing, DLQ Option A removes the row from soniq_jobs and lands it
+    # in soniq_dead_letter_jobs.
     async with app_pool.acquire() as conn:
         job = await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
-        assert job["status"] in (
-            "done",
-            "dead_letter",
-        )  # done if handler found, dead_letter if not
+        if job is None:
+            dlq = await conn.fetchrow(
+                "SELECT * FROM soniq_dead_letter_jobs WHERE id = $1", job_id
+            )
+            assert dlq is not None
+        else:
+            assert job["status"] == "done"
 
 
 @pytest.mark.asyncio
 async def test_corrupted_validation_data(clean_db):
     """Test handling of data that fails Pydantic validation"""
     # Use global app pool for consistency
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     app_pool = await global_app._get_pool()
 
     # Insert job with data that fails validation
@@ -117,19 +122,25 @@ async def test_corrupted_validation_data(clean_db):
 
     assert processed  # Job should be processed (moved to dead letter)
 
-    # Verify job was moved to dead letter
+    # Verify job was moved to dead letter (DLQ Option A: row leaves
+    # soniq_jobs and lives in soniq_dead_letter_jobs).
     async with app_pool.acquire() as conn:
-        job = await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
-        assert job["status"] == "dead_letter"
-        assert "Corrupted argument data" in job["last_error"]
-        assert job["attempts"] == 3  # Set to max attempts
+        assert (
+            await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
+        ) is None
+        dlq = await conn.fetchrow(
+            "SELECT * FROM soniq_dead_letter_jobs WHERE id = $1", job_id
+        )
+        assert dlq is not None
+        assert "Corrupted argument data" in dlq["last_error"]
+        assert dlq["attempts"] == 3  # Set to max attempts
 
 
 @pytest.mark.asyncio
 async def test_missing_required_arguments(clean_db):
     """Test handling of missing required function arguments"""
     # Use global app pool for consistency
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     app_pool = await global_app._get_pool()
 
     # Insert job with missing required arguments
@@ -151,24 +162,30 @@ async def test_missing_required_arguments(clean_db):
 
     assert processed  # Job should be processed (moved to dead letter)
 
-    # Verify job ends up in dead letter after exhausting retries
+    # Verify job ends up in dead letter after exhausting retries.
     async with app_pool.acquire() as conn:
-        job = await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
-        assert job["status"] == "dead_letter"
-        # TypeError from missing argument is now retried (not immediately dead-lettered),
-        # so after max_attempts it lands in dead letter with "Max retries exceeded"
         assert (
-            "missing" in job["last_error"].lower()
-            or "argument" in job["last_error"].lower()
+            await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
+        ) is None
+        dlq = await conn.fetchrow(
+            "SELECT * FROM soniq_dead_letter_jobs WHERE id = $1", job_id
         )
-        assert job["attempts"] == 3  # Set to max attempts
+        assert dlq is not None
+        # TypeError from missing argument is now retried (not immediately
+        # dead-lettered), so after max_attempts it lands in dead letter
+        # with "Max retries exceeded"
+        assert (
+            "missing" in dlq["last_error"].lower()
+            or "argument" in dlq["last_error"].lower()
+        )
+        assert dlq["attempts"] == 3
 
 
 @pytest.mark.asyncio
 async def test_extra_unexpected_arguments(clean_db):
     """Test handling of extra unexpected function arguments"""
     # Use global app pool for consistency
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     app_pool = await global_app._get_pool()
 
     # Insert job with extra unexpected arguments
@@ -194,23 +211,28 @@ async def test_extra_unexpected_arguments(clean_db):
 
     assert processed  # Job should be processed (moved to dead letter)
 
-    # Verify job ends up in dead letter after exhausting retries
+    # Verify job ends up in dead letter after exhausting retries.
     async with app_pool.acquire() as conn:
-        job = await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
-        assert job["status"] == "dead_letter"
-        # TypeError from extra args is now retried, ending in dead letter
         assert (
-            "unexpected" in job["last_error"].lower()
-            or "argument" in job["last_error"].lower()
+            await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
+        ) is None
+        dlq = await conn.fetchrow(
+            "SELECT * FROM soniq_dead_letter_jobs WHERE id = $1", job_id
         )
-        assert job["attempts"] == 3  # Set to max attempts
+        assert dlq is not None
+        # TypeError from extra args is now retried, ending in dead letter.
+        assert (
+            "unexpected" in dlq["last_error"].lower()
+            or "argument" in dlq["last_error"].lower()
+        )
+        assert dlq["attempts"] == 3
 
 
 @pytest.mark.asyncio
 async def test_invalid_json_structure(clean_db):
     """Test handling of JSON with invalid structure"""
     # Use global app pool for consistency
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     app_pool = await global_app._get_pool()
 
     # Insert job with a JSONB value that is valid JSON but not an object.
@@ -234,16 +256,21 @@ async def test_invalid_json_structure(clean_db):
 
     assert processed  # Job should be processed (moved to dead letter)
 
-    # Verify job was moved to dead letter
+    # Verify job was moved to dead letter.
     async with app_pool.acquire() as conn:
-        job = await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
-        assert job["status"] == "dead_letter"
+        assert (
+            await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
+        ) is None
+        dlq = await conn.fetchrow(
+            "SELECT * FROM soniq_dead_letter_jobs WHERE id = $1", job_id
+        )
+        assert dlq is not None
         # Under the 0.0.2 backend contract, non-dict args is a contract
         # violation raised by the processor before the job function runs.
         assert (
-            "contract violation" in job["last_error"]
-            or "Corrupted" in job["last_error"]
-            or "argument" in job["last_error"]
+            "contract violation" in dlq["last_error"]
+            or "Corrupted" in dlq["last_error"]
+            or "argument" in dlq["last_error"]
         )
 
 
@@ -251,7 +278,7 @@ async def test_invalid_json_structure(clean_db):
 async def test_valid_job_still_processes_normally(clean_db):
     """Test that valid jobs are not affected by corruption handling"""
     # Use global app pool for consistency
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     app_pool = await global_app._get_pool()
 
     # Enqueue a valid job
@@ -273,7 +300,7 @@ async def test_valid_job_still_processes_normally(clean_db):
 async def test_pydantic_validation_success(clean_db):
     """Test that Pydantic validation works for valid data"""
     # Use global app pool for consistency
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     app_pool = await global_app._get_pool()
 
     # Debug: Check job registration
@@ -281,7 +308,7 @@ async def test_pydantic_validation_success(clean_db):
     print(f"Job name: {validated_test_job._soniq_name}")
 
     # Debug: Check global app database configuration
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     print(f"Global app database URL: {global_app.settings.database_url}")
     print("Test pool database from get_pool(): Expected test database")
 
@@ -304,7 +331,7 @@ async def test_pydantic_validation_success(clean_db):
         print(f"Jobs in test database pool: {[dict(job) for job in jobs]}")
 
     # Debug: Check database state from global app pool
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     await global_app._ensure_initialized()
     async with global_app.backend.acquire() as conn:
         jobs_global = await conn.fetch("SELECT job_name, status FROM soniq_jobs")
@@ -325,7 +352,7 @@ async def test_pydantic_validation_success(clean_db):
             print(f"Global registry keys: {list(_global_registry._registry.keys())}")
 
             try:
-                global_app = soniq._get_global_app()
+                global_app = soniq.get_global_app()
                 app_registry = global_app._get_job_registry()
                 print(f"App registry keys: {list(app_registry._registry.keys())}")
             except Exception as e:
@@ -355,7 +382,7 @@ async def test_regular_job_exceptions_still_retry(clean_db):
         return "success"
 
     # Use global app pool for consistency
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     app_pool = await global_app._get_pool()
 
     # Enqueue a job that will fail (with retries=0 so max_attempts=1)
@@ -367,21 +394,24 @@ async def test_regular_job_exceptions_still_retry(clean_db):
 
     assert processed  # Job should be processed
 
-    # With retries=0, job goes directly to dead letter after first failure
+    # With retries=0, job goes directly to dead letter after first failure.
     async with app_pool.acquire() as conn:
-        job = await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
         assert (
-            job["status"] == "dead_letter"
-        )  # Should be in dead letter after max attempts
-        assert job["attempts"] == 1  # Single attempt made
-        assert "Intentional failure" in job["last_error"]
+            await conn.fetchrow("SELECT * FROM soniq_jobs WHERE id = $1", job_id)
+        ) is None
+        dlq = await conn.fetchrow(
+            "SELECT * FROM soniq_dead_letter_jobs WHERE id = $1", job_id
+        )
+        assert dlq is not None
+        assert dlq["attempts"] == 1
+        assert "Intentional failure" in dlq["last_error"]
 
 
 @pytest.mark.asyncio
 async def test_mixed_corrupted_and_valid_jobs(clean_db):
     """Test processing queue with mix of corrupted and valid jobs"""
     # Use global app pool for consistency
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     app_pool = await global_app._get_pool()
 
     # Insert corrupted job (use validation corruption instead of JSON corruption)
@@ -408,12 +438,17 @@ async def test_mixed_corrupted_and_valid_jobs(clean_db):
 
     assert processed  # Jobs should be processed
 
-    # Check corrupted job is in dead letter
+    # Check corrupted job is in dead letter (DLQ Option A).
     async with app_pool.acquire() as conn:
-        corrupted_job = await conn.fetchrow(
-            "SELECT * FROM soniq_jobs WHERE id = $1", corrupted_job_id
+        assert (
+            await conn.fetchrow(
+                "SELECT * FROM soniq_jobs WHERE id = $1", corrupted_job_id
+            )
+        ) is None
+        dlq = await conn.fetchrow(
+            "SELECT * FROM soniq_dead_letter_jobs WHERE id = $1", corrupted_job_id
         )
-        assert corrupted_job["status"] == "dead_letter"
+        assert dlq is not None
 
         # Check valid job completed
         valid_job = await conn.fetchrow(

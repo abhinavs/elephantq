@@ -83,13 +83,13 @@ async def test_end_to_end_get_result_via_app():
     """Enqueue via global API, process, retrieve result."""
     import soniq
 
-    app = soniq._get_global_app()
+    app = soniq.get_global_app()
 
     @app.job(name="compute_total")
     async def compute_total(a: int, b: int):
         return {"total": a + b}
 
-    await app._setup()
+    await app.setup()
     job_id = await app.enqueue("compute_total", args={"a": 2, "b": 40})
 
     processed = await process_job_via_backend(

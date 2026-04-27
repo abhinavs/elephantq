@@ -1,8 +1,7 @@
 """
 Tests for JobRegistry operations not covered elsewhere.
 
-Covers: get_all_jobs, get_jobs_by_queue, clear, remove_job, list_jobs,
-__len__, __contains__.
+Covers: clear, remove_job, list_jobs, __len__, __contains__.
 """
 
 from soniq.core.registry import JobRegistry
@@ -27,20 +26,21 @@ def _make_registry_with_jobs():
     return registry
 
 
-def test_get_all_jobs_returns_job_names():
+def test_list_jobs_contains_registered_names():
     registry = _make_registry_with_jobs()
-    names = registry.get_all_jobs()
+    names = list(registry.list_jobs().keys())
     assert len(names) == 3
     assert all(isinstance(n, str) for n in names)
 
 
-def test_get_jobs_by_queue_filters_correctly():
+def test_list_jobs_can_be_filtered_by_queue():
     registry = _make_registry_with_jobs()
-    email_jobs = registry.get_jobs_by_queue("emails")
+    jobs = registry.list_jobs()
+    email_jobs = [name for name, cfg in jobs.items() if cfg.get("queue") == "emails"]
     assert len(email_jobs) == 2
-    billing_jobs = registry.get_jobs_by_queue("billing")
+    billing_jobs = [name for name, cfg in jobs.items() if cfg.get("queue") == "billing"]
     assert len(billing_jobs) == 1
-    empty = registry.get_jobs_by_queue("nonexistent")
+    empty = [name for name, cfg in jobs.items() if cfg.get("queue") == "nonexistent"]
     assert empty == []
 
 
@@ -49,12 +49,12 @@ def test_clear_removes_all_jobs():
     assert len(registry) > 0
     registry.clear()
     assert len(registry) == 0
-    assert registry.get_all_jobs() == []
+    assert registry.list_jobs() == {}
 
 
 def test_remove_job_returns_true_for_existing():
     registry = _make_registry_with_jobs()
-    names = registry.get_all_jobs()
+    names = list(registry.list_jobs().keys())
     assert registry.remove_job(names[0]) is True
     assert len(registry) == 2
 
@@ -308,5 +308,5 @@ class TestNameResolution:
             pass
 
         expected = f"{my_global_handler.__module__}.my_global_handler"
-        app = soniq._get_global_app()
+        app = soniq.get_global_app()
         assert expected in app._job_registry

@@ -54,6 +54,9 @@ jobs:
             soniq/observability/metrics.py \
             soniq/utils/serialization.py
 
+      - name: No global get_settings() in core paths
+        run: scripts/check_no_global_settings.py
+
       - name: Check for dead documentation URLs
         run: |
           if grep -r "docs\.soniq\.dev" soniq/ examples/ docs/; then

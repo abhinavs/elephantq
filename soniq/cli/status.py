@@ -43,7 +43,7 @@ async def handle_status(args) -> int:
         import soniq as _soniq
 
         print_status("Using global API configuration", "info")
-        app = _soniq._get_global_app()
+        app = _soniq.get_global_app()
         owns_instance = False
 
     try:
@@ -63,42 +63,32 @@ async def handle_status(args) -> int:
             return 1
 
         try:
-            queues = await app.get_queue_stats()
-            if queues:
-                total_jobs = sum(q["total_jobs"] for q in queues)
-                total_queued = sum(q["queued"] for q in queues)
-                total_failed = sum(q["failed"] + q["dead_letter"] for q in queues)
+            stats = await app.get_queue_stats()
+            total_jobs = stats["total"]
+            total_queued = stats["queued"]
+            total_dead_letter = stats["dead_letter"]
 
+            if total_jobs > 0:
                 print("\nQueue Statistics:")
                 print(f"  Total Jobs: {total_jobs}")
                 print(f"  Queued: {total_queued}")
-                print(f"  Failed/Dead Letter: {total_failed}")
-                print(f"  Active Queues: {len(queues)}")
-
-                if args.verbose:
-                    print("\nPer-Queue Breakdown:")
-                    print(
-                        f"{'Queue':<15} {'Total':<8} {'Queued':<8} "
-                        f"{'Done':<8} {'Failed':<8}"
-                    )
-                    print("-" * 60)
-                    for queue in queues:
-                        print(
-                            f"{queue['queue']:<15} {queue['total_jobs']:<8} "
-                            f"{queue['queued']:<8} {queue['done']:<8} "
-                            f"{queue['failed']:<8}"
-                        )
+                print(f"  Processing: {stats['processing']}")
+                print(f"  Done: {stats['done']}")
+                print(f"  Cancelled: {stats['cancelled']}")
+                print(f"  Dead Letter: {total_dead_letter}")
 
                 if total_queued > 0:
                     print_status(
                         f"{total_queued} jobs waiting to be processed", "warning"
                     )
-                elif total_failed > 0:
-                    print_status(f"{total_failed} jobs need attention", "warning")
+                elif total_dead_letter > 0:
+                    print_status(
+                        f"{total_dead_letter} jobs in dead-letter queue", "warning"
+                    )
                 else:
                     print_status("All jobs processed successfully", "success")
             else:
-                print_status("No jobs found in any queue", "info")
+                print_status("No jobs found", "info")
         except Exception as e:
             print_status(f"Failed to get queue stats: {e}", "error")
             return 1

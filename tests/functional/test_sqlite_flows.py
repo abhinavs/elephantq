@@ -89,8 +89,14 @@ async def test_dead_letter_after_max(backend, registry):
         backend=backend, job_registry=registry, queues=["default"]
     )
 
-    job = await backend.get_job(job_id)
-    assert job["status"] == "dead_letter"
+    # DLQ Option A: dead-lettered rows leave soniq_jobs and live in
+    # soniq_dead_letter_jobs as the single source of truth.
+    assert await backend.get_job(job_id) is None
+    async with backend._conn.execute(
+        "SELECT COUNT(*) AS c FROM soniq_dead_letter_jobs WHERE id=?", (job_id,)
+    ) as cursor:
+        row = await cursor.fetchone()
+    assert int(row["c"]) == 1
 
 
 @pytest.mark.asyncio

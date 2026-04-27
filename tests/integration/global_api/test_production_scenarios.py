@@ -30,7 +30,7 @@ async def _global_pool():
     ``async with _global_pool():`` where the latter form just ensures the
     pool exists.
     """
-    app = soniq._get_global_app()
+    app = soniq.get_global_app()
     await app._ensure_initialized()
     yield app.backend._pool
 
@@ -275,7 +275,7 @@ if __name__ == "__main__":
             max_attempts = 10
             for attempt in range(max_attempts):
                 # Check how many jobs are still queued using global app pool
-                global_app = soniq._get_global_app()
+                global_app = soniq.get_global_app()
                 app_pool = await global_app._get_pool()
 
                 async with app_pool.acquire() as conn:
@@ -394,29 +394,24 @@ if __name__ == "__main__":
                 ), f"Expected 5 successful executions, got {successful_executions}"
 
                 # Use global app pool for consistency
-                global_app = soniq._get_global_app()
+                global_app = soniq.get_global_app()
                 app_pool = await global_app._get_pool()
 
                 async with app_pool.acquire() as verify_conn:
-                    # Verify failing jobs eventually moved to failed/dead_letter status
-                    # Search for any jobs that have failed/dead_letter status (regardless of name)
+                    # DLQ Option A: dead-lettered jobs leave soniq_jobs and live
+                    # in soniq_dead_letter_jobs as the single source of truth.
                     failed_jobs = await verify_conn.fetch(
                         """
-                        SELECT id, status, attempts, last_error FROM soniq_jobs 
-                        WHERE status IN ('failed', 'dead_letter') 
+                        SELECT id, attempts, last_error FROM soniq_dead_letter_jobs
                         ORDER BY created_at
-                    """
+                        """
                     )
 
                     assert (
                         len(failed_jobs) == 3
-                    ), f"Expected 3 failing jobs, got {len(failed_jobs)} jobs with status: {[j['status'] for j in failed_jobs]}"
+                    ), f"Expected 3 dead-lettered jobs, got {len(failed_jobs)}"
 
                     for job_record in failed_jobs:
-                        assert job_record["status"] in [
-                            "failed",
-                            "dead_letter",
-                        ], f"Job status: {job_record['status']}"
                         assert (
                             job_record["attempts"] > 1
                         ), f"Job should have been retried, attempts: {job_record['attempts']}"
@@ -469,7 +464,7 @@ if __name__ == "__main__":
                 # Process jobs with timing checks — wait for scheduled times
                 from soniq.core.worker import Worker
 
-                global_app = soniq._get_global_app()
+                global_app = soniq.get_global_app()
                 worker = Worker(global_app._backend, global_app._get_job_registry())
 
                 start_time = time.time()
@@ -534,7 +529,7 @@ if __name__ == "__main__":
                 max_attempts = 20
                 for attempt in range(max_attempts):
                     # Check remaining jobs using global app pool
-                    global_app = soniq._get_global_app()
+                    global_app = soniq.get_global_app()
                     app_pool = await global_app._get_pool()
 
                     async with app_pool.acquire() as conn:

@@ -12,7 +12,7 @@ async def main() -> None:
     await webhooks.start_webhook_system()
 
     # Register a webhook endpoint
-    await webhooks.register_webhook("http://localhost:8080/webhook")
+    await webhooks.register("http://localhost:8080/webhook")
 
     # Send a test event
     await webhooks.send_job_completed(

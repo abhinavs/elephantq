@@ -6,6 +6,7 @@ Handles concurrency, heartbeat, signal handling, and cleanup.
 """
 
 import asyncio
+import concurrent.futures
 import logging
 import time
 from typing import Any, List, Optional
@@ -36,6 +37,8 @@ class Worker:
         middleware: Optional[List[Any]] = None,
         retry_policy: Optional[Any] = None,
         metrics_sink: Optional[Any] = None,
+        sync_executor: Optional[concurrent.futures.ThreadPoolExecutor] = None,
+        sync_pool_semaphore: Optional[asyncio.Semaphore] = None,
     ):
         self._backend: StorageBackend = backend
         self._registry = registry
@@ -45,6 +48,10 @@ class Worker:
         self._middleware = middleware or []
         self._retry_policy = retry_policy
         self._metrics_sink = metrics_sink
+        # Bounded sync dispatch + post-claim semaphore. Both are
+        # owned by the Soniq instance; the worker only reads them.
+        self._sync_executor = sync_executor
+        self._sync_pool_semaphore = sync_pool_semaphore
 
     async def run(
         self,
@@ -146,6 +153,7 @@ class Worker:
                 middleware=self._middleware,
                 retry_policy=self._retry_policy,
                 metrics_sink=self._metrics_sink,
+                settings=self._settings,
             )
 
             if processed:
@@ -199,7 +207,13 @@ class Worker:
                 self._heartbeat_loop(worker_id, shutdown_event)
             )
 
-        async def worker_task():
+        # Per-worker-task in-flight slot. The processor populates each slot
+        # at claim time so the shutdown state machine can pick the
+        # async-vs-sync branch under FORCE_TIMEOUT_PATH (see
+        # docs/contracts/shutdown.md).
+        in_flight_slots: list[dict] = [{} for _ in range(concurrency)]
+
+        async def worker_task(slot: dict):
             while not shutdown_event.is_set():
                 try:
                     processed = await process_job_via_backend(
@@ -211,6 +225,10 @@ class Worker:
                         middleware=self._middleware,
                         retry_policy=self._retry_policy,
                         metrics_sink=self._metrics_sink,
+                        settings=self._settings,
+                        sync_executor=self._sync_executor,
+                        sync_pool_semaphore=self._sync_pool_semaphore,
+                        in_flight_slot=slot,
                     )
 
                     if not processed:
@@ -243,7 +261,10 @@ class Worker:
                     logger.exception(f"Worker error: {e}")
                     await asyncio.sleep(self._settings.error_retry_delay)
 
-        tasks = [asyncio.create_task(worker_task()) for _ in range(concurrency)]
+        tasks = [
+            asyncio.create_task(worker_task(in_flight_slots[i]))
+            for i in range(concurrency)
+        ]
 
         try:
             shutdown_task = asyncio.create_task(shutdown_event.wait())
@@ -257,11 +278,21 @@ class Worker:
             )
 
             if shutdown_task in done:
-                logger.info("Graceful shutdown initiated...")
-                for task in tasks:
-                    if not task.done():
-                        task.cancel()
-                await asyncio.gather(*tasks, return_exceptions=True)
+                # Shutdown state machine. Source of truth:
+                # docs/contracts/shutdown.md. RUNNING -> DRAINING here;
+                # the per-task while-loop already stops fetching when
+                # shutdown_event is set, so DRAINING is "wait up to
+                # shutdown_timeout for the in-flight jobs". On expiry we
+                # transition to FORCE_TIMEOUT_PATH and dispatch by
+                # handler kind.
+                logger.info(
+                    "Graceful shutdown initiated; DRAINING (timeout=%.1fs)",
+                    self._settings.shutdown_timeout,
+                )
+                await self._drain_then_force_timeout(
+                    tasks=tasks,
+                    in_flight_slots=in_flight_slots,
+                )
 
             for task in pending:
                 task.cancel()
@@ -298,6 +329,147 @@ class Worker:
                 await listen_handle.close()
 
         return True
+
+    async def _drain_then_force_timeout(
+        self,
+        *,
+        tasks: list[asyncio.Task],
+        in_flight_slots: list[dict],
+    ) -> None:
+        """Implement the shutdown state machine.
+
+        Step 1 - DRAINING: wait up to ``shutdown_timeout`` for every
+        worker_task to exit cleanly. Each task already exits its outer
+        while-loop the moment it observes ``shutdown_event`` between
+        jobs, so this just gives whatever job is currently mid-flight
+        time to finish.
+
+        Step 2 - FORCE_TIMEOUT_PATH: branches by handler kind, read off
+        each task's in-flight slot.
+
+        - **Async branch:** cancel the worker_task (which surfaces a
+          CancelledError up through the dispatch path), then call
+          ``nack_job`` to put the row back to ``queued`` with attempts
+          preserved. Total wall time stays bounded.
+        - **Sync branch:** do **not** cancel. The thread is uncancelable
+          from Python; the worker_task is awaiting an
+          ``asyncio.wrap_future`` over the executor future and will
+          unblock when the thread returns. Wait an extra
+          ``sync_handler_grace_seconds`` (flat budget, measured from the
+          FORCE_TIMEOUT_PATH instant). If the grace expires, enter
+          ``WAIT_FOR_THREAD`` and keep waiting until the thread returns
+          on its own or the operator's supervisor sends SIGKILL. Soniq
+          never calls ``nack_job`` for sync handlers.
+        """
+        shutdown_timeout = self._settings.shutdown_timeout
+
+        # ``asyncio.wait`` (unlike ``wait_for``) does *not* cancel pending
+        # tasks on timeout; it just returns (done, pending). This matters
+        # because we read each pending task's in-flight slot below, and
+        # cancellation propagates through the processor's try/finally
+        # which clears the slot - if we cancelled here, we'd lose the
+        # job_id we need for nack_job.
+        done, pending = await asyncio.wait(tasks, timeout=shutdown_timeout)
+        if not pending:
+            logger.info("All workers drained cleanly within shutdown_timeout")
+            return
+
+        logger.warning(
+            "shutdown_timeout (%.1fs) elapsed; entering FORCE_TIMEOUT_PATH",
+            shutdown_timeout,
+        )
+
+        # Snapshot the slot state at the FORCE_TIMEOUT_PATH instant. Slots
+        # belong to running tasks; if a task is already done its slot has
+        # been cleared by the processor's finally clause (or never
+        # populated) and we just skip it.
+        async_jobs: list[tuple[asyncio.Task, str]] = []
+        sync_jobs: list[asyncio.Task] = []
+        idle_tasks: list[asyncio.Task] = []
+        for task, slot in zip(tasks, in_flight_slots):
+            if task.done():
+                continue
+            is_sync = slot.get("is_sync")
+            job_id = slot.get("job_id")
+            if is_sync is True:
+                sync_jobs.append(task)
+            elif is_sync is False and job_id is not None:
+                async_jobs.append((task, job_id))
+            else:
+                # No populated slot: task is between jobs (likely stuck
+                # in poll_interval wait). Cancel it; nothing to NACK.
+                idle_tasks.append(task)
+
+        # Async branch: cancel + NACK. Cancellation surfaces as
+        # CancelledError up the dispatch path; the row stays 'processing'
+        # because mark_job_done/failed never ran. We then call nack_job
+        # to flip it back to 'queued' with attempts preserved.
+        for task, _ in async_jobs:
+            task.cancel()
+        for task in idle_tasks:
+            task.cancel()
+
+        # Wait for cancelled tasks. Bounded: cancellation propagates fast.
+        cancelled_to_await = [t for t, _ in async_jobs] + idle_tasks
+        if cancelled_to_await:
+            await asyncio.gather(*cancelled_to_await, return_exceptions=True)
+
+        for _, job_id in async_jobs:
+            try:
+                await self._backend.nack_job(job_id)
+                logger.warning("shutdown_nack: job=%s reason=shutdown_timeout", job_id)
+                if self._metrics_sink is not None:
+                    emit = getattr(self._metrics_sink, "emit", None)
+                    if callable(emit):
+                        try:
+                            res = emit(
+                                "shutdown_nack",
+                                {"job_id": job_id, "reason": "shutdown_timeout"},
+                            )
+                            if asyncio.iscoroutine(res):
+                                await res
+                        except Exception:
+                            logger.debug(
+                                "metrics_sink.emit shutdown_nack failed",
+                                exc_info=True,
+                            )
+            except Exception:
+                logger.warning(
+                    "nack_job failed for %s during shutdown", job_id, exc_info=True
+                )
+
+        if not sync_jobs:
+            return
+
+        # Sync branch: wait the flat grace budget for the threads to
+        # return on their own. Then enter WAIT_FOR_THREAD: keep waiting
+        # forever (until the thread returns or supervisor SIGKILL ends
+        # the process). docs/contracts/shutdown.md is explicit that
+        # Soniq does not bound this tail.
+        grace = self._settings.sync_handler_grace_seconds
+        if grace is None:
+            grace = self._settings.job_timeout or 0.0
+
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*sync_jobs, return_exceptions=True),
+                timeout=grace,
+            )
+            logger.info(
+                "Sync handlers returned within sync_handler_grace_seconds (%.1fs)",
+                grace,
+            )
+            return
+        except asyncio.TimeoutError:
+            pass
+
+        logger.warning(
+            "sync_handler_grace_seconds (%.1fs) elapsed; entering "
+            "WAIT_FOR_THREAD (unbounded by Soniq alone). Operators must "
+            "rely on supervisor SIGKILL to bound wall time.",
+            grace,
+        )
+        await asyncio.gather(*sync_jobs, return_exceptions=True)
 
     async def _heartbeat_loop(
         self, worker_id: str, shutdown_event: asyncio.Event

@@ -45,7 +45,6 @@ def add_start_cmd(subparsers) -> None:
 
 
 async def handle_start(args) -> int:
-    from soniq import settings
     from soniq.discovery import discover_and_import_modules, parse_jobs_modules
 
     log_level: str = (
@@ -53,7 +52,8 @@ async def handle_start(args) -> int:
     )
     configure_cli_logging(log_level)
 
-    if not settings.SONIQ_JOBS_MODULES:
+    jobs_modules_env = os.getenv("SONIQ_JOBS_MODULES", "")
+    if not jobs_modules_env:
         print(
             "Error: SONIQ_JOBS_MODULES is not set. "
             "Please configure the path to your job modules.",
@@ -61,7 +61,7 @@ async def handle_start(args) -> int:
         )
         sys.exit(1)
 
-    modules = parse_jobs_modules(settings.SONIQ_JOBS_MODULES)
+    modules = parse_jobs_modules(jobs_modules_env)
     if len(modules) == 1:
         print(f"Discovering jobs in: {modules[0]}")
     else:

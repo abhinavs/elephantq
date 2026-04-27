@@ -6,9 +6,9 @@ from soniq import Soniq
 async def test_async_context_manager():
     """Soniq should work as an async context manager."""
     async with Soniq(backend="memory") as app:
-        assert app._is_initialized is True
-        assert app._is_closed is False
-    assert app._is_closed is True
+        assert app.is_initialized is True
+        assert app.is_closed is False
+    assert app.is_closed is True
 
 
 async def test_context_manager_enqueue_and_process():
@@ -25,4 +25,4 @@ async def test_context_manager_enqueue_and_process():
         await app.run_worker(run_once=True)
 
     assert executed == ["world"]
-    assert app._is_closed
+    assert app.is_closed

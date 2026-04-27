@@ -140,14 +140,24 @@ async def test_exception_handling_in_jobs():
         if not processed:
             break
 
-    # Check that jobs failed with appropriate errors
-    value_status = await soniq.get_job(value_error_job)
-    type_status = await soniq.get_job(type_error_job)
+    # Check that jobs failed with appropriate errors. DLQ Option A:
+    # dead-lettered jobs leave soniq_jobs and live in soniq_dead_letter_jobs.
+    async def _last_error(job_id):
+        status = await soniq.get_job(job_id)
+        if status is not None:
+            assert status["status"] == "failed"
+            return status["last_error"]
+        global_app = soniq.get_global_app()
+        async with (await global_app._get_pool()).acquire() as conn:
+            dlq = await conn.fetchrow(
+                "SELECT last_error FROM soniq_dead_letter_jobs WHERE id = $1",
+                __import__("uuid").UUID(job_id),
+            )
+            assert dlq is not None
+            return dlq["last_error"]
 
-    assert value_status["status"] in ["failed", "dead_letter"]
-    assert type_status["status"] in ["failed", "dead_letter"]
-    assert "Test value error" in value_status["last_error"]
-    assert "Test type error" in type_status["last_error"]
+    assert "Test value error" in await _last_error(value_error_job)
+    assert "Test type error" in await _last_error(type_error_job)
 
 
 @pytest.mark.asyncio
@@ -194,7 +204,7 @@ async def test_worker_shutdown_handling():
 async def test_registry_edge_cases():
     """Test job registry behavior in edge cases"""
     # Test duplicate job registration with global Soniq app
-    global_app = soniq._get_global_app()
+    global_app = soniq.get_global_app()
     app_registry = global_app._get_job_registry()
 
     initial_count = len(app_registry)
