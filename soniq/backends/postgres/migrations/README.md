@@ -14,25 +14,44 @@ Schema migrations for the Postgres backend. Files are named
 
 Within the core range:
 
-| Version     | Feature       | Applied by                       |
-|-------------|---------------|----------------------------------|
-| `0001`      | core schema           | `Soniq.setup()`                  |
-| `0002`      | DLQ option-A cleanup  | `Soniq.setup()`                  |
-| `0003`      | dead-letter table     | `Soniq.setup()`                  |
-| `0010`      | scheduler             | `Scheduler.setup()`              |
-| `0021`      | webhooks              | `WebhookService.setup()`         |
-| `0022`      | logs                  | `LogService.setup()`             |
+| Version | File                            | Applied by      |
+|---------|---------------------------------|-----------------|
+| `0001`  | `0001_core.sql`                 | `Soniq.setup()` |
+| `0002`  | `0002_dead_letter_option_a.sql` | `Soniq.setup()` |
+| `0003`  | `0003_dead_letter.sql`          | `Soniq.setup()` |
+| `0004`  | `0004_scheduler.sql`            | `Soniq.setup()` |
+| `0005`  | `0005_webhooks.sql`             | `Soniq.setup()` |
+| `0006`  | `0006_logs.sql`                 | `Soniq.setup()` |
 
-`Soniq.setup()` only applies the `0001-0009` core slice. Optional
-features apply their own slice on first use, or the operator can opt in
-up front with `soniq setup --features=scheduler,webhooks,logs`.
+`Soniq.setup()` applies the `0001-0099` core slice. There is no
+`--features` flag any more: 0.0.3 always creates every soniq-owned table
+on first setup. Tables that the deployment never writes to stay empty
+and cost ~16KB each, which we trade for a smaller mental surface
+(`setup()` either ran or it didn't).
+
+### What "DLQ Option A cleanup" means (`0002`)
+
+`docs/contracts/dead_letter.md` settled on Option A: dead-lettered jobs
+live in the dedicated `soniq_dead_letter_jobs` table, never as a
+`status='dead_letter'` row in `soniq_jobs`. The `0002` migration enforces
+that contract on the schema by:
+
+1. Deleting any pre-existing `soniq_jobs` rows with
+   `status='dead_letter'` (one-way; export beforehand if you need them).
+2. Replacing the column-level `CHECK` on `soniq_jobs.status` with one
+   that excludes `'dead_letter'`, plus a named guard constraint
+   (`soniq_jobs_status_no_dead_letter`) so the contract is visible in
+   `pg_constraint`.
+
+The DLQ table itself is `0003`, not `0002` - keeping the schema
+tightening separate from the table creation makes the intent of each
+migration legible at a glance.
+
+### Additive core changes
 
 Additive core changes (a new column or table that lives in the core
-write path) get a new file in the `0002-0009` range, not an edit to
-`0001_core.sql`. The baseline stays the baseline.
-
-This is why a deployment that does not use webhooks does not get empty
-`soniq_webhook_*` tables sitting in its database.
+write path) get a new file in the next free `00NN` slot, not an edit
+to `0001_core.sql`. The baseline stays the baseline.
 
 ## Plugin migrations
 

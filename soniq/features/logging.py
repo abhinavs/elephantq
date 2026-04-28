@@ -35,9 +35,6 @@ from typing import (
     runtime_checkable,
 )
 
-from soniq.backends.postgres import PostgresBackend
-from soniq.backends.postgres.migration_runner import MigrationRunner
-
 if TYPE_CHECKING:
     from soniq.app import Soniq
 
@@ -760,17 +757,14 @@ class LogService:
         self.analyzer = LogAnalyzer(app)
 
     async def setup(self) -> int:
-        """Apply log migrations (``0022_*``).
+        """No-op in 0.0.3+: log tables are part of the core schema and are
+        applied by ``Soniq.setup()`` (migration ``0006_logs.sql``).
 
-        Idempotent. Memory and SQLite backends are no-ops.
+        Kept on the surface to avoid AttributeError for prior callers.
+        Returns 0 (no migrations applied here).
         """
         await self._app.ensure_initialized()
-        backend = self._app.backend
-        if not isinstance(backend, PostgresBackend):
-            return 0
-        return await MigrationRunner(backend=backend).run_migrations(
-            version_filter="0022"
-        )
+        return 0
 
     async def get_error_summary(self, hours: int = 24) -> Dict[str, Any]:
         return await self.analyzer.get_error_summary(hours)

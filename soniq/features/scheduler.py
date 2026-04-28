@@ -33,7 +33,6 @@ from typing import TYPE_CHECKING, Any, AsyncIterator, Optional, Union
 
 from soniq.backends.helpers import rows_affected
 from soniq.backends.postgres import PostgresBackend
-from soniq.backends.postgres.migration_runner import MigrationRunner
 from soniq.core.leadership import with_advisory_lock
 from soniq.core.naming import validate_task_name
 
@@ -324,20 +323,14 @@ class Scheduler:
         self._check_interval = 30
 
     async def setup(self) -> int:
-        """Apply scheduler migrations (``0010_*``).
+        """No-op in 0.0.3+: the scheduler table is part of the core schema
+        and is applied by ``Soniq.setup()`` (migration ``0004_scheduler.sql``).
 
-        Idempotent. Safe to call repeatedly; the migration runner
-        records applied versions in ``soniq_migrations`` and skips
-        anything already there. Memory and SQLite backends are no-ops -
-        the scheduler keeps state in-process there.
+        Kept on the surface to avoid AttributeError for prior callers.
+        Returns 0 (no migrations applied here).
         """
         await self._app.ensure_initialized()
-        backend = self._app.backend
-        if not isinstance(backend, PostgresBackend):
-            return 0
-        return await MigrationRunner(backend=backend).run_migrations(
-            version_filter="0010"
-        )
+        return 0
 
     # ------------------------------------------------------------------
     # Storage selection and cache maintenance
