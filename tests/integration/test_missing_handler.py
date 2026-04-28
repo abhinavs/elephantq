@@ -6,9 +6,10 @@ import uuid
 
 import pytest
 
-import soniq
+from soniq import Soniq
 from soniq.core.registry import JobRegistry
 from soniq.core.worker import Worker
+from tests.db_utils import TEST_DATABASE_URL
 
 
 @pytest.mark.asyncio
@@ -17,10 +18,9 @@ async def test_unregistered_job_dead_lettered():
     A job with a job_name that doesn't exist in the registry
     should be moved to dead_letter with a clear error message.
     """
-    app = soniq.get_global_app()
+    app = Soniq(database_url=TEST_DATABASE_URL)
     pool = await app._get_pool()
 
-    # Insert a job directly with a non-existent handler
     job_id = uuid.uuid4()
     async with pool.acquire() as conn:
         await conn.execute(
@@ -31,7 +31,6 @@ async def test_unregistered_job_dead_lettered():
             job_id,
         )
 
-    # Process with a clean registry (no jobs registered)
     empty_registry = JobRegistry()
     backend = app._backend
     worker = Worker(backend, empty_registry)
@@ -39,7 +38,6 @@ async def test_unregistered_job_dead_lettered():
 
     assert processed is True
 
-    # DLQ Option A: dead-lettered jobs leave soniq_jobs.
     async with pool.acquire() as conn:
         in_jobs = await conn.fetchrow(
             "SELECT id FROM soniq_jobs WHERE id = $1",
@@ -53,3 +51,5 @@ async def test_unregistered_job_dead_lettered():
 
     assert row is not None
     assert "not registered" in row["last_error"].lower()
+
+    await app.close()

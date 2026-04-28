@@ -22,7 +22,6 @@ from tests.db_utils import TEST_DATABASE_URL
 os.environ["SONIQ_DATABASE_URL"] = TEST_DATABASE_URL
 
 from soniq import Soniq  # noqa: E402
-from soniq.core.registry import clear_registry  # noqa: E402
 from soniq.core.worker import Worker  # noqa: E402
 from tests.db_utils import clear_table  # noqa: E402
 
@@ -41,10 +40,9 @@ async def app():
     await _app._ensure_initialized()
     pool = await _app._get_pool()
     await clear_table(pool)
-    clear_registry()
     yield _app
     await clear_table(pool)
-    clear_registry()
+    await _app.close()
 
 
 @pytest.fixture

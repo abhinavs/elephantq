@@ -3,14 +3,12 @@ import os
 
 import pytest
 
+from soniq import Soniq
 from tests.db_utils import TEST_DATABASE_URL, clear_table, create_test_database
 
-# Ensure test database URL is set — use setdefault so CI's SONIQ_DATABASE_URL
-# (which includes a password) is not overwritten.
 os.environ.setdefault("SONIQ_DATABASE_URL", TEST_DATABASE_URL)
 os.environ.setdefault("SONIQ_JOBS_MODULES", "tests.fixtures.cli_jobs")
 
-# Cache the URL at import time so it survives any configure(database_url=None) calls
 _TEST_DATABASE_URL = os.environ["SONIQ_DATABASE_URL"]
 
 
@@ -27,29 +25,23 @@ async def setup_test_database():
     """Set up test database once for the entire test session."""
     await create_test_database()
     yield
-    # Don't drop database here to avoid issues with concurrent tests
+
+
+@pytest.fixture
+async def soniq_app():
+    """Yield a fresh Soniq instance with a clean database state."""
+    app = Soniq(database_url=_TEST_DATABASE_URL)
+    pool = await app._get_pool()
+    await clear_table(pool)
+    yield app
+    if app.is_initialized and not app.is_closed:
+        await app.close()
 
 
 @pytest.fixture(autouse=True)
-async def clean_test_state():
-    """Clean test state before each test to ensure isolation."""
-    import soniq
-
-    global_app = soniq._global_app
-    if (
-        global_app is not None
-        and global_app.is_initialized
-        and not global_app.is_closed
-    ):
-        await global_app.close()
-
-    await soniq.configure(database_url=_TEST_DATABASE_URL)
-
-    global_app = soniq.get_global_app()
-    app_pool = await global_app._get_pool()
-    await clear_table(app_pool)
-
-    yield
-
-    if global_app.is_initialized:
-        await global_app.close()
+async def _clear_tables_before_each_test():
+    """Clear database tables before every test for isolation."""
+    app = Soniq(database_url=_TEST_DATABASE_URL)
+    pool = await app._get_pool()
+    await clear_table(pool)
+    await app.close()
