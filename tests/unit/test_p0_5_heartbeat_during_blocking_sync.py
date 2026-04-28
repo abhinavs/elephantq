@@ -1,5 +1,5 @@
 """
-P0.5 - heartbeats keep firing while a sync handler is parked in a thread.
+Heartbeats keep firing while a sync handler is parked in a thread.
 
 Contract: sync handlers run on a per-instance bounded ``ThreadPoolExecutor``
 and the worker task awaits them via ``asyncio.wrap_future``. The event
@@ -137,5 +137,5 @@ async def test_heartbeats_continue_during_blocking_sync_handler(
         f"only {heartbeats_during_block} heartbeats fired while a sync "
         f"handler was parked in time.sleep(1.0); expected >=5. The event "
         f"loop appears to have been blocked - this is the regression the "
-        f"P0.5 contract is meant to prevent."
+        f"sync-offload contract is meant to prevent."
     )

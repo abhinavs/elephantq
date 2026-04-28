@@ -36,8 +36,7 @@ class MemoryBackend:
         self._jobs: dict[str, dict[str, Any]] = {}
         self._workers: dict[str, dict[str, Any]] = {}
         self._dead_letter_jobs: dict[str, dict[str, Any]] = {}
-        # Observability metadata only - mirrors soniq_task_registry. See
-        # plan section 14.4 'Architectural boundary statement'.
+        # Observability metadata only - mirrors soniq_task_registry.
         self._task_registry: dict[tuple[str, str], dict[str, Any]] = {}
         self._lock = asyncio.Lock()
 

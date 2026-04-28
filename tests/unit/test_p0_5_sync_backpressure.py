@@ -1,5 +1,5 @@
 """
-P0.5 - sync handler offload + post-claim backpressure.
+Sync handler offload + post-claim backpressure.
 
 These tests pin the two invariants from the contract:
 

@@ -1,9 +1,9 @@
 """
 Tests for the producer_id resolver and the per-row stamp on enqueue.
 
-Plan section 14.4 / 15.7: 'who enqueued this poison message?' is the
-first question oncall asks once queues cross repo boundaries. Each
-enqueued row carries the producer_id of the instance that wrote it.
+'Who enqueued this poison message?' is the first question oncall asks
+once queues cross repo boundaries. Each enqueued row carries the
+producer_id of the instance that wrote it.
 """
 
 from __future__ import annotations

@@ -1,10 +1,10 @@
 """
 Resolve the producer_id stamped on every enqueued row.
 
-Per plan section 14.4: 'who enqueued this poison message?' is the first
-question oncall asks once queues cross repo boundaries. The stamp is
-small (~50 bytes), nullable in storage, and resolved once per process
-when the configured value is the literal sentinel ``"auto"``.
+'Who enqueued this poison message?' is the first question oncall asks
+once queues cross repo boundaries. The stamp is small (~50 bytes),
+nullable in storage, and resolved once per process when the configured
+value is the literal sentinel ``"auto"``.
 """
 
 from __future__ import annotations

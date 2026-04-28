@@ -804,8 +804,7 @@ class PostgresBackend:
         """Upsert this worker's registration for ``task_name``.
 
         Observability only: nothing in the enqueue path reads this table.
-        See plan section 14.4 'Architectural boundary statement' and the
-        boundary tests in tests/unit/test_enqueue.py.
+        See the boundary tests in tests/unit/test_enqueue.py.
         """
         async with self.acquire() as conn:
             await conn.execute(

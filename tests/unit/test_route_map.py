@@ -1,12 +1,12 @@
 """
-Tests for SONIQ_ROUTE_MAP consumer-side prefix routing (PR 22 / TODO 4.1).
+Tests for SONIQ_ROUTE_MAP consumer-side prefix routing.
 
-Plan section 14.4 / 15.8: route_map is consumer-side only. The
-producer is unaware of it; their explicit queue= lands on the row.
-The map only affects the queue the consumer's worker polls when a
-@app.job is registered without an explicit queue=.
+route_map is consumer-side only. The producer is unaware of it;
+their explicit queue= lands on the row. The map only affects the
+queue the consumer's worker polls when a @app.job is registered
+without an explicit queue=.
 
-Precedence chain (locked in TODO 4.1):
+Precedence chain:
     consumer-side at registration:
         explicit @app.job(queue=...) > route_map prefix match > "default"
     producer-side at enqueue:
@@ -147,8 +147,8 @@ async def test_producer_omits_queue_with_route_map_uses_registered_queue():
 
 @pytest.mark.asyncio
 async def test_producer_omits_queue_no_local_registration_uses_default():
-    """Per plan 4.1 the producer-omits-queue limitation: a true
-    cross-service producer with no local registration of the name and
+    """The producer-omits-queue limitation: a true cross-service
+    producer with no local registration of the name and
     no TaskRef.default_queue lands the row on 'default', not on
     whatever the consumer's route_map would map the name to. The
     producer is unaware of the consumer's routing, so a 'billing'-only

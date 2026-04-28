@@ -8,7 +8,7 @@ No runtime imports, no proxy generation, no network lookups. A reader
 of a `TaskRef` declaration can predict the exact bytes that land on the
 queue.
 
-Plan section 14.4 / 15.7 specify the shape:
+The shape:
 
     @dataclass(frozen=True, slots=True)
     class TaskRef:

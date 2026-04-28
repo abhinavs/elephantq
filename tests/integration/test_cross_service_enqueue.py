@@ -1,5 +1,5 @@
 """
-Phase 1 cross-service integration test (TODO 1.10).
+Cross-service integration test.
 
 Two Soniq instances share a single MemoryBackend instance. The producer
 has no jobs registered and runs with SONIQ_ENQUEUE_VALIDATION=none.

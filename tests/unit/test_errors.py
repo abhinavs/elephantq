@@ -82,7 +82,7 @@ class TestErrorInheritance:
 
 
 class TestCrossServiceErrorCodes:
-    """Codes added for the cross-service enqueue work (plan section 15.6)."""
+    """Codes used by the cross-service enqueue path."""
 
     @pytest.mark.parametrize(
         "code, expected",

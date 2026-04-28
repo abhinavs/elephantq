@@ -92,8 +92,8 @@ class Worker:
     async def _populate_task_registry(self) -> None:
         """Upsert this worker's task names into the observability table.
 
-        Plan section 14.4: this table is observability metadata only.
-        Failures here log at debug and do not block worker startup.
+        This table is observability metadata only. Failures here log at
+        debug and do not block worker startup.
         """
         if not hasattr(self._backend, "register_task_name"):
             return

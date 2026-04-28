@@ -1,11 +1,10 @@
 """
-Tests for the deploy-skew dashboard endpoint (PR 19 / TODO 3.3).
+Tests for the deploy-skew dashboard endpoint.
 
 The endpoint reads the soniq_task_registry observability table and
 joins against soniq_jobs to surface names with recent queued or dead-
-letter rows that no worker has registered. Plan section 14.4 / 15.8:
-this is the deploy-skew detector; the enqueue path still does not
-read the registry table.
+letter rows that no worker has registered. The endpoint *reads* the
+registry table; the enqueue path still does not.
 
 The data-layer query is Postgres-specific; integration coverage
 against a live DB lives in tests/integration/. Here we exercise:

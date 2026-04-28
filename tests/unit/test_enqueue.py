@@ -1,7 +1,5 @@
 """
-Tests for the new Soniq.enqueue (name_or_ref, *, args=dict, ...) shape.
-
-Phase 1 / PR 5: string-name path only. The TaskRef path lands in PR 13.
+Tests for Soniq.enqueue (name_or_ref, *, args=dict, ...).
 
 These tests run against MemoryBackend so they have no Postgres dependency.
 """
@@ -411,12 +409,12 @@ async def test_app_module_does_not_import_registry_table_reader():
     src = inspect.getsource(app_mod)
     assert "list_registered_task_names" not in src, (
         "soniq/app.py must not reference list_registered_task_names; "
-        "the registry table is observability only (plan section 14.4)."
+        "the registry table is observability only."
     )
 
 
 # ---------------------------------------------------------------------------
-# TaskRef arm (PR 13 / TODO 2.2)
+# TaskRef arm
 # ---------------------------------------------------------------------------
 
 

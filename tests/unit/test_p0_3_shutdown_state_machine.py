@@ -1,5 +1,5 @@
 """
-P0.3 - shutdown state machine.
+Shutdown state machine.
 
 Source of truth: ``docs/contracts/shutdown.md``. The state machine is:
 
