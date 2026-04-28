@@ -212,7 +212,7 @@ async def test_project_structure_compliance():
     required_dirs = [
         "core",  # Task decorator, queue logic, processor loop
         "cli",  # CLI commands
-        "db",  # Database utilities
+        "backends",  # Storage backends and DB helpers
     ]
 
     for dir_name in required_dirs:
