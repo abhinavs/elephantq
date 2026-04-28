@@ -35,6 +35,9 @@ from typing import (
     runtime_checkable,
 )
 
+from soniq.backends.postgres import PostgresBackend
+from soniq.backends.postgres.migration_runner import MigrationRunner
+
 if TYPE_CHECKING:
     from soniq.app import Soniq
 
@@ -762,9 +765,6 @@ class LogService:
         Idempotent. Memory and SQLite backends are no-ops.
         """
         await self._app.ensure_initialized()
-        from soniq.backends.postgres import PostgresBackend
-        from soniq.backends.postgres.migration_runner import MigrationRunner
-
         backend = self._app.backend
         if not isinstance(backend, PostgresBackend):
             return 0

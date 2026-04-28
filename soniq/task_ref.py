@@ -26,6 +26,9 @@ from __future__ import annotations
 import dataclasses
 from typing import Any, Optional, Type
 
+from .core.naming import validate_task_name
+from .settings import SoniqSettings
+
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class TaskRef:
@@ -73,11 +76,7 @@ def task_ref(
     constructed to read the env-configured pattern - we never consult the
     cached global (`docs/contracts/instance_boundary.md`).
     """
-    from .core.naming import validate_task_name
-
     if pattern is None:
-        from .settings import SoniqSettings
-
         pattern = SoniqSettings().task_name_pattern
     validate_task_name(name, pattern)
     return TaskRef(name=name, args_model=args_model, default_queue=default_queue)

@@ -14,6 +14,8 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional, Tuple
 
 from soniq.backends.helpers import rows_affected as _rows_affected
+from soniq.backends.postgres import PostgresBackend
+from soniq.backends.postgres.migration_runner import MigrationRunner
 
 if TYPE_CHECKING:
     from soniq.app import Soniq
@@ -181,9 +183,6 @@ class DeadLetterService:
         Idempotent. Memory and SQLite backends are no-ops.
         """
         await self._app.ensure_initialized()
-        from soniq.backends.postgres import PostgresBackend
-        from soniq.backends.postgres.migration_runner import MigrationRunner
-
         backend = self._app.backend
         if not isinstance(backend, PostgresBackend):
             return 0

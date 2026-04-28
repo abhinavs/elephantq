@@ -10,6 +10,7 @@ value is the literal sentinel ``"auto"``.
 from __future__ import annotations
 
 import os
+import platform
 import sys
 from typing import Optional
 
@@ -22,8 +23,6 @@ def _auto_producer_id() -> str:
     argv0 is basenamed for readability and to avoid leaking absolute
     paths in dashboards. The result is cached for the process lifetime.
     """
-    import platform
-
     hostname = platform.node() or "unknown-host"
     pid = os.getpid()
     argv0 = "python"

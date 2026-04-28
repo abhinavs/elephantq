@@ -7,6 +7,9 @@ Enables multiple isolated Soniq instances with independent configurations.
 
 import asyncio
 import logging
+import os
+import re
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from typing import (
@@ -17,17 +20,51 @@ from typing import (
     List,
     Optional,
     ParamSpec,
+    TypeVar,
     Union,
     overload,
 )
 
+import asyncpg
+from pydantic import ValidationError
+
 from .backends import StorageBackend
+from .backends.postgres import PostgresBackend
+from .backends.postgres.migration_runner import MigrationRunner
+from .backends.sqlite import SQLiteBackend
+from .core.naming import validate_task_name
+from .core.queue import _normalize_scheduled_time
 from .core.registry import JobRegistry
-from .errors import SoniqError
+from .core.retry import DEFAULT_RETRY_POLICY
+from .core.worker import Worker
+from .dashboard.app import DashboardService
+from .errors import (
+    SONIQ_TASK_ARGS_INVALID,
+    SONIQ_UNKNOWN_TASK_NAME,
+    SoniqError,
+)
+from .features.dead_letter import DeadLetterService
+from .features.logging import LogService
+from .features.scheduler import Scheduler, _coerce_schedule
+from .features.signing import SigningService
+from .features.webhooks import HTTPTransport, WebhookService
+from .observability.metrics import DEFAULT_METRICS_SINK
+from .plugin import (
+    PluginCLI,
+    PluginDashboard,
+    PluginMigrations,
+    PluginRegistry,
+    discover_plugins,
+)
 from .settings import SoniqSettings
+from .task_ref import TaskRef
+from .testing.memory_backend import MemoryBackend
+from .utils.hashing import compute_args_hash
+from .utils.producer_id import resolve_producer_id
+from .utils.rate_limit import default_warner
+from .utils.serialization import DEFAULT_SERIALIZER
 
 if TYPE_CHECKING:
-    from .task_ref import TaskRef
     from .types import QueueStats
 
 _P = ParamSpec("_P")
@@ -158,10 +195,6 @@ class Soniq:
 
         # Pluggable extension points. Defaults are wired so callers that
         # never touch these fields keep the existing behavior verbatim.
-        from .core.retry import DEFAULT_RETRY_POLICY
-        from .observability.metrics import DEFAULT_METRICS_SINK
-        from .utils.serialization import DEFAULT_SERIALIZER
-
         self._retry_policy = retry_policy or DEFAULT_RETRY_POLICY
         self._serializer = serializer or DEFAULT_SERIALIZER
         self._log_sink = log_sink  # None means "use the built-in handler"
@@ -194,13 +227,6 @@ class Soniq:
         # are lazy handles plugins reach for in their ``install()``; the
         # built-in CLI and dashboard read these to discover plugin
         # contributions at parse / render time.
-        from .plugin import (
-            PluginCLI,
-            PluginDashboard,
-            PluginMigrations,
-            discover_plugins,
-        )
-
         self._plugins: list[Any] = []
         self._cli = PluginCLI()
         self._dashboard = PluginDashboard()
@@ -287,8 +313,6 @@ class Soniq:
             return None  # PostgresBackend created in _ensure_initialized
 
         if database_url.endswith((".db", ".sqlite", ".sqlite3")):
-            from .backends.sqlite import SQLiteBackend
-
             return SQLiteBackend(database_url)
 
         return None  # Default to Postgres
@@ -297,12 +321,8 @@ class Soniq:
     def _resolve_backend_name(name: str, database_url: Optional[str] = None) -> Any:
         """Resolve a string backend name to a backend instance."""
         if name == "memory":
-            from .testing.memory_backend import MemoryBackend
-
             return MemoryBackend()
         elif name == "sqlite":
-            from .backends.sqlite import SQLiteBackend
-
             path = database_url if database_url else "soniq.db"
             return SQLiteBackend(path)
         elif name == "postgres":
@@ -370,8 +390,6 @@ class Soniq:
 
             # Create backend if not provided
             if self._backend is None:
-                from .backends.postgres import PostgresBackend
-
                 self._backend = PostgresBackend(
                     database_url=self._settings.database_url,
                     pool_min_size=self._settings.pool_min_size,
@@ -399,8 +417,6 @@ class Soniq:
         production. Promoting to a hard error puts the misconfiguration
         in front of them at startup instead of at 3am.
         """
-        from .backends.postgres import PostgresBackend
-
         if not isinstance(self._backend, PostgresBackend):
             return
         err = _pool_sizing_error(
@@ -525,8 +541,6 @@ class Soniq:
             SoniqError(SONIQ_INVALID_TASK_NAME): explicit ``name=`` was
                 passed and violates the configured task name pattern.
         """
-        from typing import Awaitable, Callable, ParamSpec, TypeVar
-
         _JP = ParamSpec("_JP")
         _JR = TypeVar("_JR")
 
@@ -561,8 +575,6 @@ class Soniq:
         I/O and never touches the backend until an async method runs.
         """
         if self._scheduler is None:
-            from .features.scheduler import Scheduler
-
             self._scheduler = Scheduler(self)
         return self._scheduler
 
@@ -574,8 +586,6 @@ class Soniq:
         to ``app._webhooks`` if you want a non-HTTP transport (e.g. tests).
         """
         if self._webhooks is None:
-            from .features.webhooks import HTTPTransport, WebhookService
-
             self._webhooks = WebhookService(self, transport=HTTPTransport())
         return self._webhooks
 
@@ -583,8 +593,6 @@ class Soniq:
     def dead_letter(self) -> Any:
         """Lazy per-app `DeadLetterService`."""
         if self._dead_letter is None:
-            from .features.dead_letter import DeadLetterService
-
             self._dead_letter = DeadLetterService(self)
         return self._dead_letter
 
@@ -592,8 +600,6 @@ class Soniq:
     def logs(self) -> Any:
         """Lazy per-app structured-log query service."""
         if self._logs is None:
-            from .features.logging import LogService
-
             self._logs = LogService(self)
         return self._logs
 
@@ -601,8 +607,6 @@ class Soniq:
     def signing(self) -> Any:
         """Lazy per-app `SigningService` (Fernet encryption helpers)."""
         if self._signing is None:
-            from .features.signing import SigningService
-
             self._signing = SigningService(self)
         return self._signing
 
@@ -615,8 +619,6 @@ class Soniq:
         property is the underlying data accessor that FastAPI handlers use.
         """
         if self._dashboard_data is None:
-            from .dashboard.app import DashboardService
-
             self._dashboard_data = DashboardService(self)
         return self._dashboard_data
 
@@ -650,8 +652,6 @@ class Soniq:
         # Normalize the schedule shape now so the error surfaces at import
         # time rather than at scheduler.start(). The Scheduler service
         # re-validates on add() in case a caller hand-builds the spec.
-        from .features.scheduler import _coerce_schedule
-
         schedule_type, schedule_value = _coerce_schedule(cron=cron, every=every)
 
         # Capture args / queue / priority / max_attempts off the @app.job
@@ -746,8 +746,6 @@ class Soniq:
         ``"stripe" in app.plugins`` and iteration both work. Use this
         to ask "is plugin X installed and at what version?"
         """
-        from .plugin import PluginRegistry
-
         return PluginRegistry(self._plugins)
 
     @property
@@ -913,29 +911,14 @@ class Soniq:
                 string ``target`` with ``**func_kwargs``, or ``target``
                 is not a callable / str / TaskRef.
         """
-        from .core.naming import validate_task_name
-        from .core.queue import _normalize_scheduled_time
-        from .errors import (
-            SONIQ_TASK_ARGS_INVALID,
-            SONIQ_UNKNOWN_TASK_NAME,
-            SoniqError,
-        )
-
         await self._ensure_initialized()
         assert self._backend is not None  # narrow type after init
-
-        import uuid
-
-        from pydantic import ValidationError
 
         # Three-way dispatch on the type of `target`. The TaskRef arm
         # short-circuits the registry-validation step (the ref *is* the
         # local declaration of the name); the callable arm derives the
         # name and uses **func_kwargs as the function args; the string
         # arm requires args=dict.
-        from .task_ref import TaskRef
-        from .utils.hashing import compute_args_hash
-
         ref: Optional[TaskRef] = None
         if isinstance(target, TaskRef):
             ref = target
@@ -1011,8 +994,6 @@ class Soniq:
                     ],
                 )
             if mode == "warn":
-                from .utils.rate_limit import default_warner
-
                 if default_warner().should_warn(job_name):
                     logger.warning(
                         "enqueue: task %r is not registered locally "
@@ -1068,13 +1049,9 @@ class Soniq:
         args_hash = compute_args_hash(args) if final_unique else None
         job_id = str(uuid.uuid4())
 
-        from .utils.producer_id import resolve_producer_id
-
         producer_id = resolve_producer_id(self._settings.producer_id)
 
         if connection is not None:
-            from .backends.postgres import PostgresBackend
-
             if isinstance(self._backend, PostgresBackend):
                 txn_id = await self._backend.create_job_transactional(
                     connection=connection,
@@ -1145,8 +1122,6 @@ class Soniq:
         access (test fixtures, advanced integration). Public callers
         should go through ``app.backend.acquire()``.
         """
-        from .backends.postgres import PostgresBackend
-
         await self._ensure_initialized()
         if not isinstance(self._backend, PostgresBackend):
             return None
@@ -1199,8 +1174,6 @@ class Soniq:
 
         self._check_pool_sizing(concurrency)
 
-        from .core.worker import Worker
-
         sync_executor, sync_pool_semaphore = self._get_sync_dispatch()
         worker = Worker(
             backend=self._backend,
@@ -1236,8 +1209,6 @@ class Soniq:
         deployments that intentionally split scheduler and worker but
         don't want this WARN cluttering the worker's logs.
         """
-        import os
-
         if os.environ.get("SONIQ_SCHEDULER_SUPPRESS_WARNING", "").lower() in {
             "1",
             "true",
@@ -1401,8 +1372,6 @@ class Soniq:
         """
         await self._ensure_initialized()
 
-        from .backends.postgres.migration_runner import MigrationRunner
-
         migration_runner = MigrationRunner(
             plugin_sources=self._migrations.list_sources()
         )
@@ -1430,8 +1399,6 @@ class Soniq:
         """
         await self._ensure_initialized()
 
-        from .backends.postgres.migration_runner import MigrationRunner
-
         migration_runner = MigrationRunner(
             plugin_sources=self._migrations.list_sources()
         )
@@ -1455,8 +1422,6 @@ class Soniq:
         Returns:
             Number of migrations applied (0 for SQLite/Memory)
         """
-        from .backends.postgres import PostgresBackend
-
         await self._ensure_initialized()
         assert self._backend is not None  # narrow type after init
 
@@ -1484,10 +1449,6 @@ class Soniq:
 
     async def _ensure_postgres_database_exists(self) -> None:
         """Create the PostgreSQL database if it doesn't exist."""
-        import re
-
-        import asyncpg as _asyncpg
-
         url = self._settings.database_url
         # Parse database name from URL
         # postgresql://user:pass@host:port/dbname
@@ -1516,7 +1477,7 @@ class Soniq:
             )
 
         try:
-            conn = await _asyncpg.connect(server_url)
+            conn = await asyncpg.connect(server_url)
             try:
                 exists = await conn.fetchval(
                     "SELECT 1 FROM pg_database WHERE datname = $1", db_name

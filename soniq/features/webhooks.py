@@ -30,6 +30,9 @@ try:
 except ImportError:
     aiohttp = None  # type: ignore[assignment]
 
+from soniq.backends.postgres import PostgresBackend
+from soniq.backends.postgres.migration_runner import MigrationRunner
+
 from .signing import SecureWebhookSecret
 
 if TYPE_CHECKING:
@@ -697,9 +700,6 @@ class WebhookService:
         Idempotent. Memory and SQLite backends are no-ops.
         """
         await self._app.ensure_initialized()
-        from soniq.backends.postgres import PostgresBackend
-        from soniq.backends.postgres.migration_runner import MigrationRunner
-
         backend = self._app.backend
         if not isinstance(backend, PostgresBackend):
             return 0

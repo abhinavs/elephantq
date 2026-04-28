@@ -14,10 +14,9 @@ Limitations:
 import json
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Any, Optional
+from typing import Any, Optional
 
-if TYPE_CHECKING:
-    from soniq.types import QueueStats
+from soniq.types import QueueStats
 
 logger = logging.getLogger(__name__)
 
@@ -513,12 +512,10 @@ class SQLiteBackend:
             rows = await cursor.fetchall()
             return [_sqlite_row_to_dict(r) for r in rows]
 
-    async def get_queue_stats(self) -> "QueueStats":
+    async def get_queue_stats(self) -> QueueStats:
         # Whole-instance counts in the canonical 6-key shape. dead_letter
         # is sourced from soniq_dead_letter_jobs (DLQ Option A, mirrored
         # from postgres). See docs/contracts/queue_stats.md.
-        from soniq.types import QueueStats
-
         assert self._conn is not None
         async with self._conn.execute(
             """

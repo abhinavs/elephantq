@@ -32,6 +32,10 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, AsyncIterator, Optional, Union
 
 from soniq.backends.helpers import rows_affected
+from soniq.backends.postgres import PostgresBackend
+from soniq.backends.postgres.migration_runner import MigrationRunner
+from soniq.core.leadership import with_advisory_lock
+from soniq.core.naming import validate_task_name
 
 if TYPE_CHECKING:
     from soniq.app import Soniq
@@ -328,9 +332,6 @@ class Scheduler:
         the scheduler keeps state in-process there.
         """
         await self._app.ensure_initialized()
-        from soniq.backends.postgres import PostgresBackend
-        from soniq.backends.postgres.migration_runner import MigrationRunner
-
         backend = self._app.backend
         if not isinstance(backend, PostgresBackend):
             return 0
@@ -351,8 +352,6 @@ class Scheduler:
         # and a real connection pool. Everything else (Memory, SQLite) keeps
         # schedules in-process: they are single-writer and have no DDL for
         # this feature.
-        from soniq.backends.postgres import PostgresBackend
-
         if isinstance(backend, PostgresBackend):
             self._store = _SqlStore(backend)
         else:
@@ -411,8 +410,6 @@ class Scheduler:
         `add()` again with the same name updates the existing schedule
         rather than creating a duplicate. Returns the schedule's name.
         """
-        from soniq.core.naming import validate_task_name
-
         pattern = self._app.settings.task_name_pattern
         if name is not None:
             job_name = validate_task_name(name, pattern)
@@ -592,8 +589,6 @@ class Scheduler:
         correctness floor regardless - leader election is an efficiency
         optimization on top.
         """
-        from soniq.core.leadership import with_advisory_lock
-
         while self._running:
             try:
                 backend = self._app.backend
