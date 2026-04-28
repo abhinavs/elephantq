@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import soniq as _soniq
+
 from ._helpers import database_url_argument, resolve_soniq_instance
 from .colors import print_status
 
@@ -24,8 +26,6 @@ async def handle_migrate_status(args) -> int:
         return 1
 
     if soniq_instance is None:
-        import soniq as _soniq
-
         soniq_instance = _soniq.get_global_app()
 
     print_status(

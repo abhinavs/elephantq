@@ -9,19 +9,19 @@ Uses asyncpg for all database operations. Supports:
 
 import json
 import logging
+import os
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, AsyncIterator, Optional
+from typing import Any, AsyncIterator, Optional
 
 import asyncpg
 
 from soniq.backends.helpers import rows_affected as _rows_affected
+from soniq.settings import get_settings
+from soniq.types import QueueStats
 
 from ...core.leadership import advisory_key
-
-if TYPE_CHECKING:
-    from soniq.types import QueueStats
 
 logger = logging.getLogger(__name__)
 
@@ -105,13 +105,9 @@ class PostgresBackend:
     @staticmethod
     def _should_skip_lock() -> bool:
         """Check if row-level locking should be skipped (debug/testing only)."""
-        import os
-
         env_val = os.environ.get("SONIQ_SKIP_UPDATE_LOCK", "").lower()
         if env_val not in {"1", "true", "yes", "on"}:
             return False
-
-        from soniq.settings import get_settings
 
         settings = get_settings()
         return settings.debug or settings.environment == "testing"
@@ -748,15 +744,13 @@ class PostgresBackend:
             rows = await conn.fetch(query, *params)
             return [_job_row_to_dict(row) for row in rows]
 
-    async def get_queue_stats(self) -> "QueueStats":
+    async def get_queue_stats(self) -> QueueStats:
         # Cross-table aggregation: dead_letter is sourced from
         # soniq_dead_letter_jobs (Option A; soniq_jobs.status='dead_letter'
         # no longer exists). Two queries in one connection acquire to keep
         # the count snapshot tight; the result is the canonical 6-key
         # QueueStats dict from soniq.types. See
         # docs/contracts/queue_stats.md.
-        from soniq.types import QueueStats
-
         async with self.acquire() as conn:
             jobs_row = await conn.fetchrow(
                 """
@@ -804,8 +798,7 @@ class PostgresBackend:
         """Upsert this worker's registration for ``task_name``.
 
         Observability only: nothing in the enqueue path reads this table.
-        See plan section 14.4 'Architectural boundary statement' and the
-        boundary tests in tests/unit/test_enqueue.py.
+        See the boundary tests in tests/unit/test_enqueue.py.
         """
         async with self.acquire() as conn:
             await conn.execute(

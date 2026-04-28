@@ -441,9 +441,8 @@ class DashboardService:
         """Surface deploy-skew: names with queued / dead-lettered rows in the
         last N minutes that have no current row in soniq_task_registry.
 
-        Plan section 14.4 / 15.8: this is the deploy-skew detector. It
-        *reads* the soniq_task_registry table; the enqueue path still does
-        not. The query joins soniq_jobs.job_name against
+        This *reads* the soniq_task_registry table; the enqueue path still
+        does not. The query joins soniq_jobs.job_name against
         soniq_task_registry.task_name and surfaces the unmatched names.
         """
         async with self._acquire() as conn:

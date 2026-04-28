@@ -20,6 +20,10 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
+from pydantic import ValidationError
+
+from soniq import Soniq
+
 logger = logging.getLogger(__name__)
 
 
@@ -65,10 +69,6 @@ async def resolve_soniq_instance(args: Any) -> Optional[Any]:
     error-message wording consistent across every subcommand that takes
     a database URL.
     """
-    from pydantic import ValidationError
-
-    from soniq import Soniq
-
     if hasattr(args, "database_url") and args.database_url:
         try:
             return Soniq(database_url=args.database_url)

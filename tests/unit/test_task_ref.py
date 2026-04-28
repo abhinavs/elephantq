@@ -1,9 +1,9 @@
 """
 Tests for TaskRef and the task_ref(...) factory.
 
-The TaskRef shape is locked in plan section 14.4 / 15.7: frozen,
-slotted, hashable, no runtime magic. These tests pin the contract so a
-future refactor cannot quietly turn TaskRef into a remote-actor proxy.
+The TaskRef shape is frozen, slotted, hashable, no runtime magic.
+These tests pin the contract so a future refactor cannot quietly turn
+TaskRef into a remote-actor proxy.
 """
 
 from __future__ import annotations

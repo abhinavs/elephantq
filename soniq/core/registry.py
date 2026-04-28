@@ -21,6 +21,9 @@ from typing import (  # noqa: F401
 
 from pydantic import BaseModel
 
+from soniq.core.naming import validate_task_name
+from soniq.settings import SoniqSettings
+
 _P = ParamSpec("_P")
 _R = TypeVar("_R")
 
@@ -105,8 +108,6 @@ class JobRegistry:
         if name is None:
             job_name = f"{func.__module__}.{func.__name__}"
         else:
-            from .naming import validate_task_name
-
             # The pattern is threaded from the owning Soniq instance via
             # `Soniq.job` (see app.py). Direct callers of register_job
             # (legacy tests, ad-hoc fixtures) may pass it explicitly; if
@@ -115,8 +116,6 @@ class JobRegistry:
             # `get_settings()` here - that would re-introduce the global
             # cache the instance-boundary contract bans.
             if _task_name_pattern is None:
-                from soniq.settings import SoniqSettings
-
                 _task_name_pattern = SoniqSettings().task_name_pattern
             job_name = validate_task_name(name, _task_name_pattern)
 

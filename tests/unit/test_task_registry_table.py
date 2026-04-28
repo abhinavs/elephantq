@@ -1,11 +1,10 @@
 """
-Tests for the soniq_task_registry observability table (phase 3).
+Tests for the soniq_task_registry observability table.
 
-Plan section 14.4 / 15.8 LOAD-BEARING INVARIANT: this table is
-observability metadata ONLY. The enqueue path never reads it. Tests
-here exercise the backend methods (register_task_name,
-list_registered_task_names) plus the boundary that
-Soniq.enqueue does not consult them.
+LOAD-BEARING INVARIANT: this table is observability metadata ONLY.
+The enqueue path never reads it. Tests here exercise the backend
+methods (register_task_name, list_registered_task_names) plus the
+boundary that Soniq.enqueue does not consult them.
 """
 
 from __future__ import annotations
@@ -90,7 +89,7 @@ async def test_list_returns_empty_when_nothing_registered():
 def test_app_module_does_not_reference_registry_table_methods():
     """Structural guard: soniq/app.py must not call
     list_registered_task_names or register_task_name. The registry
-    table is observability metadata only (plan section 14.4)."""
+    table is observability metadata only."""
     import inspect
 
     import soniq.app as app_mod
@@ -105,7 +104,7 @@ async def test_strict_enqueue_does_not_consult_registry_table():
     """Even when the registry table is fully populated for a name, strict
     enqueue still raises SONIQ_UNKNOWN_TASK_NAME if the in-process
     registry is empty. This is the load-bearing 'observability only'
-    invariant from plan section 15.8."""
+    invariant."""
     from soniq import Soniq
     from soniq.errors import SONIQ_UNKNOWN_TASK_NAME, SoniqError
 
@@ -125,7 +124,7 @@ async def test_strict_enqueue_does_not_consult_registry_table():
 
 
 # ---------------------------------------------------------------------------
-# Worker-side population (PR 18 / TODO 3.2)
+# Worker-side population
 # ---------------------------------------------------------------------------
 
 

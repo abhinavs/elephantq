@@ -23,6 +23,9 @@ import os
 import sys
 from typing import List, Optional
 
+from soniq import Soniq
+from soniq.plugin import discover_plugins
+
 from .colors import print_status
 from .dashboard import add_dashboard_cmd
 from .dead_letter import add_dead_letter_cmd
@@ -114,9 +117,6 @@ def _build_plugin_app(plugin_names: List[str]) -> object:
     their synchronous ``install()`` so they can register CLI specs.
     Deferred work (``on_startup``) waits for ``soniq setup``.
     """
-    from soniq import Soniq
-    from soniq.plugin import discover_plugins
-
     app = Soniq()
     for plugin in discover_plugins(plugin_names):
         app.use(plugin)

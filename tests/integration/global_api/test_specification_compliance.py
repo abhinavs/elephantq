@@ -27,7 +27,7 @@ async def advanced_job(message: str, count: int):
 
 @pytest.mark.asyncio
 async def test_free_features_compliance():
-    """Test all Free Features (Phase 1 - MVP) compliance"""
+    """Test all Free Features (MVP) compliance"""
 
     # ✅ PostgreSQL-based job persistence (JSON payload)
     job_id = await soniq.enqueue("basic_job", args={"message": "test persistence"})
@@ -63,7 +63,7 @@ async def test_free_features_compliance():
 
 @pytest.mark.asyncio
 async def test_pro_features_compliance():
-    """Test optional features (Phase 2) compliance"""
+    """Test optional features compliance"""
 
     # ✅ Priority queues (numeric)
     await soniq.enqueue(
@@ -212,7 +212,7 @@ async def test_project_structure_compliance():
     required_dirs = [
         "core",  # Task decorator, queue logic, processor loop
         "cli",  # CLI commands
-        "db",  # Database utilities
+        "backends",  # Storage backends and DB helpers
     ]
 
     for dir_name in required_dirs:

@@ -14,7 +14,11 @@ import time
 import traceback
 from typing import Any, List, Optional
 
+from soniq.core.middleware import build_chain
 from soniq.core.registry import JobRegistry
+from soniq.core.retry import DEFAULT_RETRY_POLICY
+from soniq.job import JobContext, Snooze
+from soniq.observability.metrics import DEFAULT_METRICS_SINK
 from soniq.settings import SoniqSettings
 
 logger = logging.getLogger(__name__)
@@ -95,7 +99,6 @@ async def _execute_job_safely(
         validated_args = args_data
 
     # Inject JobContext if the function signature has it
-    from soniq.job import JobContext
 
     func = job_meta["func"]
     sig = inspect.signature(func)
@@ -185,8 +188,6 @@ async def _execute_job_safely(
             return await func(**validated_args)
 
     if middleware:
-        from .middleware import build_chain
-
         invoke = build_chain(list(middleware), base_handler)
     else:
         invoke = base_handler
@@ -207,9 +208,7 @@ async def _call_hooks(hooks: dict, hook_name: str, *args) -> None:
     """Call all registered hooks for an event, catching errors."""
     for fn in hooks.get(hook_name, []):
         try:
-            import inspect as _inspect
-
-            if _inspect.iscoroutinefunction(fn):
+            if inspect.iscoroutinefunction(fn):
                 await fn(*args)
             else:
                 fn(*args)
@@ -254,13 +253,9 @@ async def process_job_via_backend(
     _hooks = hooks or {}
 
     if retry_policy is None:
-        from .retry import DEFAULT_RETRY_POLICY
-
         retry_policy = DEFAULT_RETRY_POLICY
 
     if metrics_sink is None:
-        from soniq.observability.metrics import DEFAULT_METRICS_SINK
-
         metrics_sink = DEFAULT_METRICS_SINK
 
     job_record = await backend.fetch_and_lock_job(
@@ -413,8 +408,6 @@ async def _dispatch_and_record(
     duration_ms = round((time.time() - start_time) * 1000, 2)
 
     if job_success:
-        from soniq.job import Snooze
-
         if isinstance(job_result, Snooze):
             requested = float(job_result.seconds)
             if requested < 0:

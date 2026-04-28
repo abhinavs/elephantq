@@ -8,11 +8,16 @@ Handles concurrency, heartbeat, signal handling, and cleanup.
 import asyncio
 import concurrent.futures
 import logging
+import os
+import platform
 import time
+import uuid
 from typing import Any, List, Optional
 
 from ..backends import StorageBackend
 from ..settings import SoniqSettings, get_settings
+from ..utils.signals import GracefulSignalHandler
+from .leadership import with_advisory_lock
 from .processor import process_job_via_backend
 from .registry import JobRegistry
 
@@ -92,12 +97,11 @@ class Worker:
     async def _populate_task_registry(self) -> None:
         """Upsert this worker's task names into the observability table.
 
-        Plan section 14.4: this table is observability metadata only.
-        Failures here log at debug and do not block worker startup.
+        This table is observability metadata only. Failures here log at
+        debug and do not block worker startup.
         """
         if not hasattr(self._backend, "register_task_name"):
             return
-        import uuid
 
         # Generate a stable per-call worker_id for the observability row.
         # The continuous path uses its own worker_id (with heartbeat); for
@@ -167,8 +171,6 @@ class Worker:
         self, concurrency: int, queues: Optional[List[str]] = None
     ) -> bool:
         """Run continuous worker with heartbeat and signal handling."""
-        from ..utils.signals import GracefulSignalHandler
-
         shutdown_event = asyncio.Event()
         notification_event = asyncio.Event()
         signal_handler = GracefulSignalHandler()
@@ -191,10 +193,6 @@ class Worker:
         heartbeat_task = None
         worker_id = None
         if hasattr(self._backend, "register_worker"):
-            import os
-            import platform
-            import uuid
-
             worker_id = str(uuid.uuid4())
             await self._backend.register_worker(
                 worker_id=worker_id,
@@ -496,8 +494,6 @@ class Worker:
         current = time.time()
         if current - self._last_cleanup < self._settings.cleanup_interval:
             return
-
-        from .leadership import with_advisory_lock
 
         try:
             async with with_advisory_lock(self._backend, "soniq.maintenance") as leader:

@@ -62,7 +62,7 @@ class TestDeliverySemantics:
 
     def test_cross_service_guide_covers_at_least_once_and_idempotent(self):
         """The cross-service guide must explain at-least-once delivery and
-        idempotency in the same paragraph (TODO 1.9)."""
+        idempotency in the same paragraph."""
         content = (DOCS_DIR / "guides" / "cross-service-jobs.md").read_text().lower()
         assert "at-least-once" in content or "at least once" in content
         assert "idempoten" in content

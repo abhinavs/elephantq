@@ -27,6 +27,7 @@ change without notice.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from importlib.metadata import entry_points
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
@@ -267,8 +268,6 @@ def discover_plugins(names: Optional[List[str]] = None) -> List[SoniqPlugin]:
     Discovery is opt-in. Importing this function never auto-loads
     anything.
     """
-    from importlib.metadata import entry_points
-
     eps = entry_points(group=_ENTRY_POINT_GROUP)
     by_name = {ep.name: ep for ep in eps}
 
