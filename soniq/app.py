@@ -1409,7 +1409,7 @@ class Soniq:
 
     async def setup(self) -> int:
         """
-        Set up Soniq — create database (if needed) and run migrations.
+        Set up Soniq - create database (if needed) and run migrations.
 
         - PostgreSQL: creates the database if it doesn't exist, then runs migrations
         - SQLite: tables created automatically by SQLiteBackend.initialize()
@@ -1422,18 +1422,18 @@ class Soniq:
         Returns:
             Number of migrations applied (0 for SQLite/Memory)
         """
+        will_use_postgres = self._backend is None or isinstance(
+            self._backend, PostgresBackend
+        )
+        if will_use_postgres:
+            await self._ensure_postgres_database_exists()
+
         await self._ensure_initialized()
-        assert self._backend is not None  # narrow type after init
+        assert self._backend is not None
 
         applied = 0
         if isinstance(self._backend, PostgresBackend):
-            # PostgreSQL: attempt to create the database, then run migrations.
-            # Only the core 0001-0009 slice runs here; optional features
-            # (scheduler, dead_letter, webhooks, logs) opt in via their
-            # own setup() call or `soniq setup --features=...`.
-            await self._ensure_postgres_database_exists()
             applied = await self._run_migrations(version_filter="000")
-        # else: SQLite / Memory create tables on initialize() - skip.
 
         await self._run_plugin_startup_hooks()
         return applied
