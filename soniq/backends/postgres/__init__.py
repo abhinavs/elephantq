@@ -242,7 +242,11 @@ class PostgresBackend:
         """Shared implementation for both regular and transactional enqueue."""
         uid = uuid.UUID(job_id)
 
-        # Queueing lock dedup — more flexible than unique, uses custom key
+        # Queueing lock dedup - more flexible than unique, uses custom key.
+        # Single-statement contract: INSERT ... ON CONFLICT DO UPDATE SET (no-op)
+        # RETURNING id. The no-op SET fires RETURNING for the existing row too,
+        # so the returned id is always a real soniq_jobs row - no synthetic
+        # caller-id fallback can leak through a between-statement race window.
         if dedup_key:
             row = await conn.fetchrow(
                 """
@@ -252,7 +256,7 @@ class PostgresBackend:
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
                 ON CONFLICT (dedup_key)
                     WHERE status = 'queued' AND dedup_key IS NOT NULL
-                DO NOTHING
+                DO UPDATE SET dedup_key = EXCLUDED.dedup_key
                 RETURNING id
                 """,
                 uid,
@@ -267,12 +271,7 @@ class PostgresBackend:
                 scheduled_at,
                 producer_id,
             )
-            if row is None:
-                existing = await conn.fetchrow(
-                    "SELECT id FROM soniq_jobs WHERE dedup_key = $1 AND status = 'queued'",
-                    dedup_key,
-                )
-                return str(existing["id"]) if existing else job_id
+            assert row is not None
             await conn.execute(
                 "SELECT pg_notify($1, $2)",
                 "soniq_new_job",
@@ -289,7 +288,7 @@ class PostgresBackend:
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                 ON CONFLICT (job_name, args_hash)
                     WHERE status = 'queued' AND unique_job = TRUE
-                DO NOTHING
+                DO UPDATE SET unique_job = EXCLUDED.unique_job
                 RETURNING id
                 """,
                 uid,
@@ -303,17 +302,7 @@ class PostgresBackend:
                 scheduled_at,
                 producer_id,
             )
-            if row is None:
-                existing = await conn.fetchrow(
-                    """
-                    SELECT id FROM soniq_jobs
-                    WHERE job_name = $1 AND args_hash = $2
-                      AND status = 'queued' AND unique_job = TRUE
-                    """,
-                    job_name,
-                    args_hash,
-                )
-                return str(existing["id"]) if existing else job_id
+            assert row is not None
             await conn.execute(
                 "SELECT pg_notify($1, $2)",
                 "soniq_new_job",
