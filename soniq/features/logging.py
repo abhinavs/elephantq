@@ -198,7 +198,7 @@ class DatabaseLogHandler(logging.Handler):
 
     def __init__(
         self,
-        app: Optional["Soniq"] = None,
+        app: "Soniq",
         *,
         table_name: str = "soniq_logs",
         batch_size: int = 100,
@@ -218,20 +218,11 @@ class DatabaseLogHandler(logging.Handler):
     async def _acquire(self) -> AsyncIterator[Any]:
         """Borrow an asyncpg connection for log writes.
 
-        Falls back to the global Soniq app when no instance was wired in.
-        Tests construct the handler without an app and rely on this fallback;
-        production code passes an explicit ``Soniq``.
+        ``self._app`` is required - the handler is always constructed
+        with an explicit ``Soniq`` instance. There is no global fallback.
         """
-        if self._app is not None:
-            await self._app.ensure_initialized()
-            async with self._app.backend.acquire() as conn:
-                yield conn
-            return
-        import soniq
-
-        app = soniq.get_global_app()
-        await app.ensure_initialized()
-        async with app.backend.acquire() as conn:
+        await self._app.ensure_initialized()
+        async with self._app.backend.acquire() as conn:
             yield conn
 
     async def setup_database(self):
@@ -523,12 +514,17 @@ class LoggingConfig:
         log_level: str = "INFO",
         log_format: str = "json",
         log_file: Optional[str] = None,
-        database_logging: bool = True,
         console_logging: bool = True,
         max_file_size: int = 100 * 1024 * 1024,  # 100MB
         backup_count: int = 5,
+        database_app: Optional["Soniq"] = None,
     ):
-        """Setup production-grade logging configuration"""
+        """Setup production-grade logging configuration.
+
+        ``database_app`` enables the ``DatabaseLogHandler`` against the
+        given Soniq instance. Omit it to skip database logging - there
+        is no implicit global app to attach to.
+        """
 
         # Create root logger
         root_logger = logging.getLogger()
@@ -564,8 +560,8 @@ class LoggingConfig:
             root_logger.addHandler(file_handler)
 
         # Database handler
-        if database_logging:
-            db_handler = DatabaseLogHandler()
+        if database_app is not None:
+            db_handler = DatabaseLogHandler(database_app)
             root_logger.addHandler(db_handler)
 
         # Set up specific loggers for different components
@@ -599,15 +595,12 @@ class LoggingConfig:
 class LogAnalyzer:
     """Log analysis and reporting tools.
 
-    Constructed against a ``Soniq`` instance for pool resolution. The
-    ``app`` parameter defaults to ``None`` so the legacy module-level
-    helpers can keep working through the global app; library code should
-    pass the instance.
+    Constructed against a ``Soniq`` instance for pool resolution.
     """
 
     def __init__(
         self,
-        app: Optional["Soniq"] = None,
+        app: "Soniq",
         *,
         table_name: str = "soniq_logs",
     ):
@@ -618,16 +611,8 @@ class LogAnalyzer:
 
     @asynccontextmanager
     async def _acquire(self) -> AsyncIterator[Any]:
-        if self._app is not None:
-            await self._app.ensure_initialized()
-            async with self._app.backend.acquire() as conn:
-                yield conn
-            return
-        import soniq
-
-        app = soniq.get_global_app()
-        await app.ensure_initialized()
-        async with app.backend.acquire() as conn:
+        await self._app.ensure_initialized()
+        async with self._app.backend.acquire() as conn:
             yield conn
 
     async def get_error_summary(self, hours: int = 24) -> Dict[str, Any]:
@@ -784,13 +769,6 @@ class LogService:
         return await self.analyzer.search_logs(query, job_id, level, hours)
 
 
-def _service() -> LogService:
-    """Build a service against the global Soniq app on demand."""
-    import soniq
-
-    return LogService(soniq.get_global_app())
-
-
 # Public API
 def get_job_logger(
     job_id: str, job_name: str, queue: str, attempt: int, max_attempts: int
@@ -803,37 +781,19 @@ def setup_logging(
     log_level: str = "INFO",
     log_format: str = "json",
     log_file: Optional[str] = None,
-    database_logging: bool = True,
+    database_app: Optional["Soniq"] = None,
 ):
-    """Setup structured logging configuration"""
+    """Setup structured logging configuration.
+
+    Pass ``database_app`` to enable database logging against a specific
+    Soniq instance.
+    """
     LoggingConfig.setup_enterprise_logging(
         log_level=log_level,
         log_format=log_format,
         log_file=log_file,
-        database_logging=database_logging,
+        database_app=database_app,
     )
-
-
-async def get_error_summary(hours: int = 24) -> Dict[str, Any]:
-    """Get error summary from logs"""
-    return await _service().get_error_summary(hours)
-
-
-async def get_performance_logs(
-    job_name: Optional[str] = None, hours: int = 24
-) -> List[Dict]:
-    """Get performance logs"""
-    return await _service().get_performance_logs(job_name, hours)
-
-
-async def search_logs(
-    query: str,
-    job_id: Optional[str] = None,
-    level: Optional[str] = None,
-    hours: int = 24,
-) -> List[Dict]:
-    """Search logs with filters"""
-    return await _service().search_logs(query, job_id, level, hours)
 
 
 def log_with_context(logger_name: str, level: str, message: str, **kwargs):

@@ -93,23 +93,18 @@ def _require_write_authorization(request: "Request") -> None:
     )
 
 
-def create_dashboard_app(soniq_app: Optional["Soniq"] = None) -> "FastAPI":
+def create_dashboard_app(soniq_app: "Soniq") -> "FastAPI":
     """Create FastAPI dashboard application.
 
-    Constructs a single ``DashboardService`` bound to ``soniq_app`` (or the
-    global Soniq instance when omitted) and stores it on the FastAPI
-    app's ``state`` so per-request handlers reach the same instance. The
-    lifespan ensures the underlying Soniq is initialized once at startup.
+    Constructs a single ``DashboardService`` bound to ``soniq_app`` and
+    stores it on the FastAPI app's ``state`` so per-request handlers
+    reach the same instance. The lifespan ensures the underlying Soniq
+    is initialized once at startup.
     """
     if not FASTAPI_AVAILABLE:
         raise ImportError(
             "FastAPI is required for dashboard. Install with: pip install fastapi uvicorn"
         )
-
-    if soniq_app is None:
-        import soniq as _soniq
-
-        soniq_app = _soniq.get_global_app()
 
     data = DashboardService(soniq_app)
 
@@ -978,9 +973,10 @@ def get_dashboard_html() -> str:
 
 
 async def run_dashboard(
+    soniq_app: "Soniq",
+    *,
     host: str = "127.0.0.1",
     port: int = 6161,
-    soniq_app: Optional["Soniq"] = None,
 ):
     """Run the dashboard server"""
     if not FASTAPI_AVAILABLE:

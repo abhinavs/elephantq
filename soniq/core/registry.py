@@ -1,8 +1,9 @@
 """
 Job Registry System
 
-Maps job names to their functions and configuration.
-Supports both instance-based and global operations.
+Maps job names to their functions and configuration. Each Soniq
+instance owns its own ``JobRegistry``; there is no process-global
+registry.
 """
 
 import functools
@@ -218,35 +219,3 @@ class JobRegistry:
     def __contains__(self, name: str) -> bool:
         """Check if job is registered."""
         return name in self._registry
-
-
-def get_job(name: str) -> Optional[Dict[str, Any]]:
-    """
-    Get job configuration by name from the global app's registry.
-
-    Args:
-        name: Fully qualified job name (module.function)
-
-    Returns:
-        Job configuration dict or None
-    """
-    import soniq
-
-    return soniq.get_global_app()._get_job_registry().get_job(name)
-
-
-def get_global_registry() -> JobRegistry:
-    """
-    Get the global app's job registry.
-
-    Returns:
-        JobRegistry from the global Soniq instance
-    """
-    import soniq
-
-    return soniq.get_global_app()._get_job_registry()
-
-
-def clear_registry() -> None:
-    """Clear global registry. Used for testing."""
-    get_global_registry().clear()
