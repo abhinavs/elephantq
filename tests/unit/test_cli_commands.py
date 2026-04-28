@@ -23,7 +23,6 @@ EXPECTED_SUBCOMMANDS = {
     "scheduler",
     "metrics",
     "dead-letter",
-    "tasks-list",
     "tasks-check",
 }
 

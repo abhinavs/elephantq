@@ -2,7 +2,7 @@
 In-memory storage backend for Soniq.
 
 Used for unit tests. No persistence, no external dependencies.
-Configure with: soniq.configure(backend="memory")
+Configure with: Soniq(backend="memory")
 """
 
 import asyncio

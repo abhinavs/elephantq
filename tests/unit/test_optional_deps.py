@@ -39,8 +39,8 @@ class TestOptionalDepGuards:
         import path should not fail at module level if they weren't)."""
         import soniq
 
-        assert hasattr(soniq, "enqueue")
-        assert hasattr(soniq, "job")
+        assert hasattr(soniq, "Soniq")
+        assert hasattr(soniq, "TaskRef")
 
     def test_pyproject_core_deps_minimal(self):
         """pyproject.toml core deps should only be asyncpg, pydantic, pydantic-settings."""

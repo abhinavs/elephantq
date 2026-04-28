@@ -48,10 +48,14 @@ async def test_log_service_methods_delegate_to_analyzer():
     service.analyzer.search_logs.assert_awaited_once_with("err", "j", "ERROR", 3)
 
 
-def test_module_level_service_factory_uses_global_app():
-    """``_service()`` is the only place that touches the global app, by
-    design - module-level ``get_error_summary`` etc. call it. Anything that
-    needs a different app should construct a ``LogService`` directly."""
+def test_no_module_level_global_factory():
+    """The legacy ``_service()`` helper and module-level
+    ``get_error_summary`` / ``get_performance_logs`` / ``search_logs``
+    wrappers were removed in 0.0.3. Callers must construct a
+    ``LogService(app)`` against an explicit ``Soniq`` instance."""
     import soniq.features.logging as logging_mod
 
-    assert callable(logging_mod._service)
+    assert not hasattr(logging_mod, "_service")
+    assert not hasattr(logging_mod, "get_error_summary")
+    assert not hasattr(logging_mod, "get_performance_logs")
+    assert not hasattr(logging_mod, "search_logs")

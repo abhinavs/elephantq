@@ -1,21 +1,15 @@
-"""``soniq tasks-list`` and ``soniq tasks-check``.
+"""``soniq tasks-check`` - drift check between TaskRef stubs and the
+shared registry table.
 
-Two thin commands over the cross-service observability surface:
+Compares the TaskRef declarations in a stub package against the
+soniq_task_registry table populated by running workers. Drift exits
+non-zero so CI can block deploys.
 
-- ``tasks-list`` prints the in-process registry (everything the current
-  process registered after importing ``SONIQ_JOBS_MODULES``). It does
-  *not* read the soniq_task_registry DB table; that table is fleet-wide
-  observability shown in the dashboard.
-
-- ``tasks-check`` compares the TaskRef declarations in a stub package
-  against the soniq_task_registry table populated by running workers.
-  Drift exits non-zero so CI can block deploys.
-
-The commands deliberately read from different sources so an operator
-running ``tasks-list`` on a producer-only deployment does not see an
-empty list and conclude the registry is empty - they see what the
-current process registered, which is the right scope for a local
-listing.
+Note: the historical ``soniq tasks-list`` command was removed in 0.0.3.
+With per-instance registries (no process-global Soniq), there is no
+"current process registry" - the registry belongs to a Soniq instance,
+and the dashboard already exposes the fleet-wide
+``soniq_task_registry`` table for the same purpose.
 """
 
 from __future__ import annotations
@@ -23,13 +17,11 @@ from __future__ import annotations
 import asyncio
 import importlib
 import inspect
-import json
 import os
 import pkgutil
 import sys
 from typing import Any, Dict, List, Optional
 
-import soniq
 from soniq.app import Soniq
 from soniq.task_ref import TaskRef
 
@@ -37,26 +29,7 @@ from ._helpers import database_url_argument
 
 
 def add_tasks_cmd(subparsers) -> None:
-    """Register ``tasks-list`` and ``tasks-check``.
-
-    The CLI surface stays flat (no nested subgroup) so existing
-    invocations - ``soniq tasks-list``, ``soniq tasks-check`` - keep
-    working unchanged.
-    """
-    list_parser = subparsers.add_parser(
-        "tasks-list",
-        help=(
-            "List task names registered by the current process "
-            "(in-process registry only)"
-        ),
-        description=(
-            "Lists task names registered by the current (in-process) "
-            "registry after importing SONIQ_JOBS_MODULES. To see what is in "
-            "the shared registry table across the fleet, use the dashboard."
-        ),
-    )
-    list_parser.set_defaults(func=handle_tasks_list)
-
+    """Register ``tasks-check`` (the only remaining tasks subcommand)."""
     check_parser = subparsers.add_parser(
         "tasks-check",
         help="Compare stub-package TaskRefs against the shared registry table",
@@ -74,54 +47,6 @@ def add_tasks_cmd(subparsers) -> None:
     )
     database_url_argument(check_parser)
     check_parser.set_defaults(func=handle_tasks_check)
-
-
-def _load_in_process_jobs() -> List[Dict[str, Any]]:
-    """Discover and return registered jobs in the current process.
-
-    Imports modules listed in SONIQ_JOBS_MODULES (comma-separated) so
-    decorator-time registrations populate the global registry, then
-    reads from ``soniq.get_global_app().registry``.
-    """
-    modules = os.environ.get("SONIQ_JOBS_MODULES", "")
-    for mod in [m.strip() for m in modules.split(",") if m.strip()]:
-        try:
-            importlib.import_module(mod)
-        except Exception as e:
-            print(
-                f"soniq tasks-list: failed to import {mod!r}: {e}",
-                file=sys.stderr,
-            )
-
-    app = soniq.get_global_app()
-    registry = app.registry
-    rows = []
-    for name, meta in registry.list_jobs().items():
-        args_model = meta.get("args_model")
-        rows.append(
-            {
-                "name": name,
-                "queue": meta.get("queue"),
-                "priority": meta.get("priority"),
-                "args_model": (
-                    getattr(args_model, "__name__", repr(args_model))
-                    if args_model is not None
-                    else None
-                ),
-            }
-        )
-    return rows
-
-
-def handle_tasks_list(args) -> int:
-    """Print the in-process registry as JSON.
-
-    To see fleet-wide registrations across all running workers, use the
-    dashboard or query ``soniq_task_registry`` directly.
-    """
-    rows = _load_in_process_jobs()
-    print(json.dumps(rows, indent=2, sort_keys=True))
-    return 0
 
 
 def _load_task_refs_from_package(package_path: str) -> List[Dict[str, Any]]:

@@ -1,17 +1,13 @@
 """
 Lint-style guard that CLI subcommands route through ``cli_app`` and do
-not call the process-global module-level wrappers in ``soniq.__init__``.
+not reintroduce process-global wrappers on top of ``soniq``.
 
 The instance-boundary contract (`docs/contracts/instance_boundary.md`)
 requires every CLI subcommand to resolve an explicit Soniq via
-``cli_app(args)`` and then call methods on that instance. Calling
-``soniq.enqueue(...)``, ``soniq.run_worker(...)``, etc. from a CLI
-subcommand reintroduces process-global state and breaks
-``--database-url`` isolation.
-
-This test scans ``soniq/cli/*.py`` for forbidden patterns at the AST
-level: any ``from soniq import <wrapper>`` or ``soniq.<wrapper>(...)``
-where ``<wrapper>`` is one of the globals listed below.
+``cli_app(args)`` and then call methods on that instance. The legacy
+module-level wrappers (``soniq.enqueue``, ``soniq.run_worker``, ...)
+were removed in 0.0.3; this test fails fast if any CLI file tries to
+reach for one again.
 """
 
 from __future__ import annotations
@@ -21,8 +17,8 @@ from pathlib import Path
 
 import pytest
 
-# Module-level async wrappers in soniq/__init__.py that thin-wrap the
-# process-global app. CLI subcommands must not call these directly.
+# Names that, if added back to soniq/__init__.py and called from a CLI
+# subcommand, would silently reintroduce process-global state.
 FORBIDDEN_GLOBAL_WRAPPERS = frozenset(
     {
         "enqueue",
@@ -37,20 +33,11 @@ FORBIDDEN_GLOBAL_WRAPPERS = frozenset(
         "list_jobs",
         "get_queue_stats",
         "configure",
+        "get_global_app",
     }
 )
 
-# Files in soniq/cli/ that legitimately reach for process globals
-# (in-process registry inspectors that do not touch the DB). Each entry
-# must be justified in a comment near the import.
-ALLOWLIST = frozenset(
-    {
-        # tasks-list reads the in-process registry populated at decorator
-        # time; tasks-check is sync and explicitly rejects the global app
-        # fallback (it builds a scoped Soniq from --database-url only).
-        "tasks.py",
-    }
-)
+ALLOWLIST: frozenset[str] = frozenset()
 
 CLI_DIR = Path(__file__).resolve().parents[2] / "soniq" / "cli"
 

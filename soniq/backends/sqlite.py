@@ -2,7 +2,7 @@
 SQLite storage backend for Soniq.
 
 Zero-setup local development backend. No server required.
-Configure with: soniq.configure(backend="sqlite")
+Configure with: Soniq(backend="sqlite")
 
 Limitations:
 - Single worker process only (no concurrent dequeue)

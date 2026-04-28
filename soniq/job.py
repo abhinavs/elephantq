@@ -46,7 +46,7 @@ class JobContext:
     parameter with this type annotation.
 
     Example:
-        @soniq.job()
+        @app.job()
         async def process_order(order_id: str, ctx: JobContext):
             print(f"Job {ctx.job_id}, attempt {ctx.attempt}")
 
