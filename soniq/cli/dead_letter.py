@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import os
 
-import soniq as _soniq
 from soniq.features.dead_letter import DeadLetterFilter
 
-from ._helpers import database_url_argument, resolve_soniq_instance
-from .colors import print_status
+from ._context import cli_app
+from ._helpers import database_url_argument
 
 
 def add_dead_letter_cmd(subparsers) -> None:
@@ -47,21 +46,9 @@ def add_dead_letter_cmd(subparsers) -> None:
 
 
 async def handle_dead_letter(args) -> int:
-    soniq_instance = await resolve_soniq_instance(args)
-    owns_instance = soniq_instance is not None
-    if soniq_instance is not None:
-        print_status(
-            "Using instance-based configuration: "
-            f"{soniq_instance.settings.database_url}",
-            "info",
-        )
-    else:
-        print_status("Using global API configuration", "info")
-        soniq_instance = _soniq.get_global_app()
+    async with cli_app(args) as app:
+        dead_letter = app.dead_letter
 
-    dead_letter = soniq_instance.dead_letter
-
-    try:
         action = args.action
         filter_criteria = DeadLetterFilter()
         filter_criteria.limit = args.limit
@@ -115,6 +102,3 @@ async def handle_dead_letter(args) -> int:
 
         print("Unknown action")
         return 1
-    finally:
-        if owns_instance and soniq_instance.is_initialized:
-            await soniq_instance.close()
