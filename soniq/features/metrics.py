@@ -5,6 +5,7 @@ System-wide performance analytics, success rates, processing times, queue statis
 
 import asyncio
 import json
+import logging
 import statistics
 import time
 from collections import defaultdict, deque
@@ -638,8 +639,6 @@ async def start_metrics_collection():
 
                 await asyncio.sleep(300)  # Clean up every 5 minutes
             except Exception as e:
-                import logging
-
                 logging.exception(f"Metrics collection error: {e}")
                 await asyncio.sleep(60)
 

@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import os
 
+import soniq
+
 from ._helpers import (
     configure_cli_logging,
     database_url_argument,
@@ -40,8 +42,6 @@ def add_scheduler_cmd(subparsers) -> None:
 
 
 async def handle_scheduler(args) -> int:
-    import soniq
-
     soniq_instance = await resolve_soniq_instance(args)
     if soniq_instance is not None:
         print_status(

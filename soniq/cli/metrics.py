@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+import json
+from dataclasses import asdict
+
+from soniq import Soniq
+from soniq.features.metrics import MetricsService
+
 from ._helpers import database_url_argument, resolve_soniq_instance
 from .colors import print_status
 
@@ -33,24 +39,16 @@ async def handle_metrics(args) -> int:
     # (`docs/contracts/instance_boundary.md`).
     soniq_instance = await resolve_soniq_instance(args)
     if soniq_instance is None:
-        from soniq import Soniq
-
         soniq_instance = Soniq()
     print_status(
         f"Using Soniq instance: {soniq_instance.settings.database_url}",
         "info",
     )
 
-    from dataclasses import asdict
-
-    from soniq.features.metrics import MetricsService
-
     service = MetricsService(soniq_instance)
     metrics = await service.get_system_metrics(timeframe_hours=args.hours)
     payload = asdict(metrics)
     if args.format == "json":
-        import json
-
         print(json.dumps(payload, indent=2, default=str))
     else:
         print("Soniq Metrics:")

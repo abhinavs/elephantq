@@ -5,6 +5,9 @@ from __future__ import annotations
 import os
 import sys
 
+import soniq
+from soniq.discovery import discover_and_import_modules, parse_jobs_modules
+
 from ._helpers import (
     configure_cli_logging,
     database_url_argument,
@@ -45,8 +48,6 @@ def add_start_cmd(subparsers) -> None:
 
 
 async def handle_start(args) -> int:
-    from soniq.discovery import discover_and_import_modules, parse_jobs_modules
-
     log_level: str = (
         getattr(args, "log_level", None) or os.getenv("SONIQ_LOG_LEVEL") or "INFO"
     )
@@ -104,8 +105,6 @@ async def handle_start(args) -> int:
                 concurrency=args.concurrency, queues=queues, run_once=args.run_once
             )
         else:
-            import soniq
-
             await soniq.run_worker(
                 concurrency=args.concurrency, queues=queues, run_once=args.run_once
             )

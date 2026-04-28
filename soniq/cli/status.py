@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 
+import soniq as _soniq
+
 from ._helpers import database_url_argument, resolve_soniq_instance
 from .colors import StatusIcon, print_status
 
@@ -40,8 +42,6 @@ async def handle_status(args) -> int:
         app = soniq_instance
         owns_instance = True
     else:
-        import soniq as _soniq
-
         print_status("Using global API configuration", "info")
         app = _soniq.get_global_app()
         owns_instance = False

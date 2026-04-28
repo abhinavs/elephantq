@@ -20,11 +20,18 @@ listing.
 
 from __future__ import annotations
 
+import asyncio
 import importlib
+import inspect
 import json
 import os
+import pkgutil
 import sys
 from typing import Any, Dict, List, Optional
+
+import soniq
+from soniq.app import Soniq
+from soniq.task_ref import TaskRef
 
 from ._helpers import database_url_argument
 
@@ -86,8 +93,6 @@ def _load_in_process_jobs() -> List[Dict[str, Any]]:
                 file=sys.stderr,
             )
 
-    import soniq
-
     app = soniq.get_global_app()
     registry = app.registry
     rows = []
@@ -123,10 +128,6 @@ def _load_task_refs_from_package(package_path: str) -> List[Dict[str, Any]]:
     """Import a Python package directory or module and collect TaskRef
     instances declared inside it. Returns dicts with name, args_model,
     and default_queue."""
-    import inspect
-
-    from soniq.task_ref import TaskRef
-
     abs_path = os.path.abspath(package_path)
     if os.path.isdir(abs_path):
         parent = os.path.dirname(abs_path)
@@ -158,8 +159,6 @@ def _load_task_refs_from_package(package_path: str) -> List[Dict[str, Any]]:
 
     visit(module)
     if hasattr(module, "__path__"):
-        import pkgutil
-
         for info in pkgutil.iter_modules(module.__path__, prefix=f"{module.__name__}."):
             try:
                 visit(importlib.import_module(info.name))
@@ -173,8 +172,6 @@ def _load_task_refs_from_package(package_path: str) -> List[Dict[str, Any]]:
 
 async def _load_registry_table_names(database_url: Optional[str]) -> List[str]:
     """Fetch the task names registered in the soniq_task_registry table."""
-    from soniq.app import Soniq
-
     app = Soniq(database_url=database_url) if database_url else Soniq()
     await app._ensure_initialized()
     try:
@@ -210,8 +207,6 @@ def handle_tasks_check(args) -> int:
 
     refs = _load_task_refs_from_package(args.package)
     ref_names = {r["name"] for r in refs}
-
-    import asyncio
 
     table_names = set(asyncio.run(_load_registry_table_names(db_url)))
 

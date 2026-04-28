@@ -3,6 +3,7 @@ Dead Letter Queue Management.
 Management of permanently failed jobs, resurrection, bulk operations.
 """
 
+import csv
 import json
 import logging
 import re
@@ -601,8 +602,6 @@ class DeadLetterService:
             return filename
 
         elif format.lower() == "csv":
-            import csv
-
             filename = (
                 f"dead_letter_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
             )

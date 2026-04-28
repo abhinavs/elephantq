@@ -2,6 +2,19 @@
 
 from __future__ import annotations
 
+import os
+
+from soniq.features.dead_letter import (
+    bulk_delete_dead_letter_jobs,
+    bulk_resurrect_jobs,
+    cleanup_old_dead_letter_jobs,
+    create_filter,
+    delete_dead_letter_job,
+    export_dead_letter_jobs,
+    list_dead_letter_jobs,
+    resurrect_job,
+)
+
 from ._helpers import database_url_argument, resolve_soniq_instance
 from .colors import print_status
 
@@ -52,17 +65,6 @@ async def handle_dead_letter(args) -> int:
     else:
         print_status("Using global API configuration", "info")
 
-    from soniq.features.dead_letter import (
-        bulk_delete_dead_letter_jobs,
-        bulk_resurrect_jobs,
-        cleanup_old_dead_letter_jobs,
-        create_filter,
-        delete_dead_letter_job,
-        export_dead_letter_jobs,
-        list_dead_letter_jobs,
-        resurrect_job,
-    )
-
     action = args.action
     filter_criteria = create_filter()
     filter_criteria.limit = args.limit
@@ -108,8 +110,6 @@ async def handle_dead_letter(args) -> int:
             return 1
         filename = await export_dead_letter_jobs(filter_criteria, format=args.format)
         if args.output and args.output != filename:
-            import os
-
             os.replace(filename, args.output)
             filename = args.output
         print(filename)
