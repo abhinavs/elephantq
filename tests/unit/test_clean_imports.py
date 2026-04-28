@@ -31,10 +31,10 @@ def test_webhooks_importable_from_features():
 
 
 def test_dead_letter_importable_from_features():
-    """from soniq.features.dead_letter import list_dead_letter_jobs"""
-    from soniq.features.dead_letter import list_dead_letter_jobs
+    """from soniq.features.dead_letter import DeadLetterService"""
+    from soniq.features.dead_letter import DeadLetterService
 
-    assert callable(list_dead_letter_jobs)
+    assert callable(DeadLetterService)
 
 
 def test_metrics_importable_from_features():

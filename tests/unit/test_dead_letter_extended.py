@@ -7,17 +7,16 @@ from datetime import datetime, timezone
 from soniq.features.dead_letter import (
     DeadLetterFilter,
     DeadLetterJob,
-    create_filter,
 )
 
 
-class TestCreateFilter:
-    def test_create_filter_returns_filter(self):
-        f = create_filter()
+class TestDeadLetterFilterDefaults:
+    def test_default_filter_is_empty(self):
+        f = DeadLetterFilter()
         assert isinstance(f, DeadLetterFilter)
 
-    def test_create_filter_customizable(self):
-        f = create_filter()
+    def test_filter_customizable(self):
+        f = DeadLetterFilter()
         f.job_names = ["mod.task"]
         f.queues = ["default"]
         f.reasons = ["timeout"]

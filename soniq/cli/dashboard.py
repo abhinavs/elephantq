@@ -38,5 +38,5 @@ async def handle_dashboard(args) -> int:
 
     from soniq.dashboard.server import run_dashboard
 
-    rc = await run_dashboard(host=args.host, port=args.port)
+    rc = await run_dashboard(host=args.host, port=args.port, soniq_app=soniq_instance)
     return int(rc) if rc is not None else 0
