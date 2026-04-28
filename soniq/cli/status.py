@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import logging
 
-import soniq as _soniq
-
-from ._helpers import database_url_argument, resolve_soniq_instance
+from ._context import cli_app
+from ._helpers import database_url_argument
 from .colors import StatusIcon, print_status
 
 logger = logging.getLogger(__name__)
@@ -27,26 +26,7 @@ def add_status_cmd(subparsers) -> None:
 
 
 async def handle_status(args) -> int:
-    try:
-        soniq_instance = await resolve_soniq_instance(args)
-    except Exception as e:
-        print_status(f"Configuration error: {e}", "error")
-        return 1
-
-    if soniq_instance is not None:
-        print_status(
-            "Using instance-based configuration: "
-            f"{soniq_instance.settings.database_url}",
-            "info",
-        )
-        app = soniq_instance
-        owns_instance = True
-    else:
-        print_status("Using global API configuration", "info")
-        app = _soniq.get_global_app()
-        owns_instance = False
-
-    try:
+    async with cli_app(args) as app:
         await app._ensure_initialized()
         print(f"\n{StatusIcon.rocket()} Soniq System Status")
 
@@ -129,6 +109,3 @@ async def handle_status(args) -> int:
                 print_status(f"Failed to get recent jobs: {e}", "error")
 
         return 0
-    finally:
-        if owns_instance and app.is_initialized:
-            await app.close()

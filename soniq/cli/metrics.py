@@ -31,27 +31,31 @@ def add_metrics_cmd(subparsers) -> None:
 
 
 async def handle_metrics(args) -> int:
-    # Always resolve to an explicit Soniq instance: either from
-    # --database-url or, when absent, from a fresh Soniq() that reads
-    # SONIQ_DATABASE_URL from the env. The historical "fall back to the
-    # global app" branch is gone - it leaked process-global state into a
-    # CLI command that already accepts an explicit URL
-    # (`docs/contracts/instance_boundary.md`).
+    # Deliberate deviation from `cli_app`: metrics never falls back to
+    # the process-global app. We always build a fresh, scoped Soniq from
+    # --database-url or $SONIQ_DATABASE_URL so this CLI cannot leak
+    # process-global state (`docs/contracts/instance_boundary.md`).
     soniq_instance = await resolve_soniq_instance(args)
+    owns_instance = soniq_instance is not None
     if soniq_instance is None:
         soniq_instance = Soniq()
+        owns_instance = True
     print_status(
         f"Using Soniq instance: {soniq_instance.settings.database_url}",
         "info",
     )
 
-    service = MetricsService(soniq_instance)
-    metrics = await service.get_system_metrics(timeframe_hours=args.hours)
-    payload = asdict(metrics)
-    if args.format == "json":
-        print(json.dumps(payload, indent=2, default=str))
-    else:
-        print("Soniq Metrics:")
-        for key, value in payload.items():
-            print(f"  {key}: {value}")
-    return 0
+    try:
+        service = MetricsService(soniq_instance)
+        metrics = await service.get_system_metrics(timeframe_hours=args.hours)
+        payload = asdict(metrics)
+        if args.format == "json":
+            print(json.dumps(payload, indent=2, default=str))
+        else:
+            print("Soniq Metrics:")
+            for key, value in payload.items():
+                print(f"  {key}: {value}")
+        return 0
+    finally:
+        if owns_instance and soniq_instance.is_initialized:
+            await soniq_instance.close()

@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-import soniq as _soniq
-
-from ._helpers import database_url_argument, resolve_soniq_instance
+from ._context import cli_app
+from ._helpers import database_url_argument
 from .colors import print_status
 
 
@@ -20,43 +19,33 @@ def add_setup_cmd(subparsers) -> None:
 
 async def handle_setup(args) -> int:
     try:
-        soniq_instance = await resolve_soniq_instance(args)
-    except Exception as e:
-        print_status(f"Configuration error: {e}", "error")
-        return 1
+        async with cli_app(args) as app:
+            print_status("Setting up Soniq database...", "info")
 
-    owns_instance = soniq_instance is not None
-    if soniq_instance is None:
-        soniq_instance = _soniq.get_global_app()
+            status = await app._get_migration_status(version_filter="000")
+            applied_count = await app._run_migrations(version_filter="000")
 
-    try:
-        print_status("Setting up Soniq database...", "info")
+            print(f"  Found {status['total_migrations']} core migrations")
 
-        print_status(
-            "Using instance-based configuration "
-            f"(database: {soniq_instance.settings.database_url})",
-            "info",
-        )
-        status = await soniq_instance._get_migration_status(version_filter="000")
-        applied_count = await soniq_instance._run_migrations(version_filter="000")
+            if status["pending_migrations"]:
+                print(
+                    f"  Applying {len(status['pending_migrations'])} pending migrations..."
+                )
+                for migration in status["pending_migrations"]:
+                    print(f"    - {migration}")
+            else:
+                print("  Core schema is already up to date")
 
-        print(f"  Found {status['total_migrations']} core migrations")
+            if applied_count > 0:
+                print_status(
+                    f"Applied {applied_count} migrations successfully", "success"
+                )
+            else:
+                print_status(
+                    "Database setup completed (no migrations needed)", "success"
+                )
 
-        if status["pending_migrations"]:
-            print(
-                f"  Applying {len(status['pending_migrations'])} pending migrations..."
-            )
-            for migration in status["pending_migrations"]:
-                print(f"    - {migration}")
-        else:
-            print("  Core schema is already up to date")
-
-        if applied_count > 0:
-            print_status(f"Applied {applied_count} migrations successfully", "success")
-        else:
-            print_status("Database setup completed (no migrations needed)", "success")
-
-        return 0
+            return 0
     except Exception as e:
         msg = str(e).lower()
         if "connection" in msg or "connect" in msg:
@@ -71,6 +60,3 @@ async def handle_setup(args) -> int:
         else:
             print_status(f"Setup failed: {e}", "error")
         return 1
-    finally:
-        if owns_instance and soniq_instance and soniq_instance.is_initialized:
-            await soniq_instance.close()
