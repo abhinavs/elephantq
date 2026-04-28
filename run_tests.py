@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
-Soniq Test Runner - Runs tests in organized batches with API isolation
+Soniq Test Runner - Runs tests in organized batches
 
-This script runs tests in the new isolated structure:
-- Global API tests: Use soniq.job, soniq.enqueue, etc.
+This script runs tests in the following structure:
 - Instance API tests: Use app = Soniq(), app.job, etc.
 - Infrastructure tests: Test underlying systems (CLI, connections, etc.)
 - Unit tests: Test individual modules
@@ -100,9 +99,9 @@ def run_flake8():
 
 
 def main():
-    """Run all test batches with new API isolation structure"""
+    """Run all test batches"""
     print("🚀 Soniq Comprehensive Test Suite")
-    print("Running tests with API isolation for maximum reliability...")
+    print("Running tests...")
 
     # Change to the script's directory (should be the soniq root)
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -139,39 +138,6 @@ def main():
         (
             "Smoke Tests",
             ["tests/smoke/"],
-        ),
-        # GLOBAL API TESTS - Use soniq.job, soniq.enqueue, etc.
-        (
-            "Global API - Job Management & Introspection",
-            ["tests/integration/global_api/test_job_introspection.py"],
-        ),
-        (
-            "Global API - Corrupted Data Handling",
-            ["tests/integration/global_api/test_corrupted_data_handling.py"],
-        ),
-        (
-            "Global API - Edge Cases",
-            ["tests/integration/global_api/test_edge_cases.py"],
-        ),
-        (
-            "Global API - Error Handling Edge Cases",
-            ["tests/integration/global_api/test_error_handling_edge_cases.py"],
-        ),
-        (
-            "Global API - Production Scenarios",
-            ["tests/integration/global_api/test_production_scenarios.py"],
-        ),
-        (
-            "Global API - Scheduling & Timing",
-            ["tests/integration/global_api/test_scheduling.py"],
-        ),
-        (
-            "Global API - Specification Compliance",
-            ["tests/integration/global_api/test_specification_compliance.py"],
-        ),
-        (
-            "Global API - TTL & Job Cleanup",
-            ["tests/integration/global_api/test_ttl_functionality.py"],
         ),
         # INSTANCE API TESTS - Use app = Soniq(), app.job, etc.
         (

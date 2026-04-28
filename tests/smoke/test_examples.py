@@ -23,7 +23,6 @@ PROJECT_ROOT = Path(__file__).parent.parent.parent
 def test_example_syntax(example):
     """Every example must be valid Python."""
     source = example.read_text()
-    # This will raise SyntaxError if the file is not valid Python
     ast.parse(source, filename=str(example))
 
 
@@ -31,16 +30,10 @@ def test_recurring_jobs_uses_real_api():
     """recurring_jobs.py must use the actual soniq API, not fictional methods."""
     source = (EXAMPLES_DIR / "recurring_jobs.py").read_text()
 
-    # These patterns indicate the broken API calls from the review
-    assert (
-        "soniq.schedule(" not in source or "run_at" in source or "run_in" in source
-    ), (
-        "recurring_jobs.py calls soniq.schedule() with a cron string, "
-        "but soniq.schedule() requires run_at or run_in keyword arguments"
+    assert "app.schedule(" not in source or "run_at" in source or "run_in" in source, (
+        "recurring_jobs.py calls app.schedule() with a cron string, "
+        "but app.schedule() requires run_at or run_in keyword arguments"
     )
-    # The cron-string DSL returns plain strings; there is no `.schedule(fn)`
-    # terminal. Schedules are wired via `@app.periodic(cron=...)` or
-    # `app.scheduler.add(...)`.
     assert ").schedule(" not in source, (
         "recurring_jobs.py calls a `.schedule(...)` terminal which does not "
         "exist. Use `@app.periodic(cron=...)` or `app.scheduler.add(...)`."
@@ -48,11 +41,11 @@ def test_recurring_jobs_uses_real_api():
 
 
 def test_transactional_enqueue_setup_call():
-    """transactional_enqueue.py must not pass unsupported args to soniq.setup()."""
+    """transactional_enqueue.py must not pass unsupported args to setup()."""
     source = (EXAMPLES_DIR / "transactional_enqueue.py").read_text()
 
     assert "setup(database_url=" not in source, (
-        "transactional_enqueue.py passes database_url to soniq.setup(), "
+        "transactional_enqueue.py passes database_url to setup(), "
         "but setup() takes no arguments"
     )
 
@@ -79,7 +72,6 @@ def test_example_imports_resolve(example):
                 __import__(mod)
         elif isinstance(node, ast.ImportFrom):
             if node.module and not node.module.startswith("fastapi"):
-                # Skip fastapi since it's optional for examples
                 top = node.module.split(".")[0]
                 __import__(top)
 
@@ -89,7 +81,7 @@ def test_examples_use_clean_imports():
     for example in EXAMPLES_DIR.glob("*.py"):
         source = example.read_text()
         assert "soniq.features" not in source, (
-            f"{example.name} imports from soniq.features — "
+            f"{example.name} imports from soniq.features - "
             f"use soniq or soniq.<module> instead"
         )
 
