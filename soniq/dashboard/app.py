@@ -41,17 +41,19 @@ class DashboardService:
                     COUNT(*) as total,
                     COUNT(*) FILTER (WHERE status = 'queued') as queued,
                     COUNT(*) FILTER (WHERE status = 'done') as done,
-                    COUNT(*) FILTER (WHERE status = 'failed') as failed,
-                    COUNT(*) FILTER (WHERE status = 'dead_letter') as dead_letter
+                    COUNT(*) FILTER (WHERE status = 'failed') as failed
                 FROM soniq_jobs
                 """
+            )
+            dlq_count = await conn.fetchval(
+                "SELECT COUNT(*) FROM soniq_dead_letter_jobs"
             )
             return {
                 "total": stats["total"],
                 "queued": stats["queued"],
                 "done": stats["done"],
                 "failed": stats["failed"],
-                "dead_letter": stats["dead_letter"],
+                "dead_letter": int(dlq_count or 0),
             }
 
     async def get_recent_jobs(
@@ -101,17 +103,14 @@ class DashboardService:
                 ORDER BY total_jobs DESC
                 """
             )
-            try:
-                dlq_rows = await conn.fetch(
-                    """
-                    SELECT queue, COUNT(*) AS dead_letter
-                    FROM soniq_dead_letter_jobs
-                    GROUP BY queue
-                    """
-                )
-                dlq_by_queue = {r["queue"]: int(r["dead_letter"]) for r in dlq_rows}
-            except Exception:
-                dlq_by_queue = {}
+            dlq_rows = await conn.fetch(
+                """
+                SELECT queue, COUNT(*) AS dead_letter
+                FROM soniq_dead_letter_jobs
+                GROUP BY queue
+                """
+            )
+            dlq_by_queue = {r["queue"]: int(r["dead_letter"]) for r in dlq_rows}
             results: List[Dict[str, Any]] = []
             for row in rows:
                 d = dict(row)
@@ -185,19 +184,51 @@ class DashboardService:
                 job_uuid = uuid.UUID(job_id)
             except ValueError:
                 return False
-            result = await conn.execute(
-                """
-                UPDATE soniq_jobs
-                SET status = 'queued',
-                    attempts = 0,
-                    last_error = NULL,
-                    updated_at = NOW()
-                WHERE id = $1
-                AND status IN ('failed', 'dead_letter')
-                """,
-                job_uuid,
-            )
-            return result == "UPDATE 1"  # type: ignore[no-any-return]
+            async with conn.transaction():
+                dlq_row = await conn.fetchrow(
+                    """
+                    SELECT id, job_name, args, queue, priority, max_attempts,
+                           original_created_at
+                    FROM soniq_dead_letter_jobs
+                    WHERE id = $1
+                    FOR UPDATE
+                    """,
+                    job_uuid,
+                )
+                if dlq_row is not None:
+                    await conn.execute(
+                        """
+                        INSERT INTO soniq_jobs
+                            (id, job_name, args, queue, priority, max_attempts,
+                             attempts, status, last_error, created_at, updated_at)
+                        VALUES ($1, $2, $3, $4, $5, $6, 0, 'queued', NULL, $7, NOW())
+                        """,
+                        dlq_row["id"],
+                        dlq_row["job_name"],
+                        dlq_row["args"],
+                        dlq_row["queue"],
+                        dlq_row["priority"],
+                        dlq_row["max_attempts"],
+                        dlq_row["original_created_at"],
+                    )
+                    await conn.execute(
+                        "DELETE FROM soniq_dead_letter_jobs WHERE id = $1",
+                        job_uuid,
+                    )
+                    return True
+                result = await conn.execute(
+                    """
+                    UPDATE soniq_jobs
+                    SET status = 'queued',
+                        attempts = 0,
+                        last_error = NULL,
+                        updated_at = NOW()
+                    WHERE id = $1
+                    AND status = 'failed'
+                    """,
+                    job_uuid,
+                )
+                return result == "UPDATE 1"  # type: ignore[no-any-return]
 
     async def delete_job(self, job_id: str) -> bool:
         async with self._acquire() as conn:
@@ -265,8 +296,7 @@ class DashboardService:
                     DATE_TRUNC('hour', created_at) as hour,
                     COUNT(*) as total_jobs,
                     COUNT(*) FILTER (WHERE status = 'done') as completed,
-                    COUNT(*) FILTER (WHERE status = 'failed') as failed,
-                    COUNT(*) FILTER (WHERE status = 'dead_letter') as dead_letter
+                    COUNT(*) FILTER (WHERE status = 'failed') as failed
                 FROM soniq_jobs
                 WHERE created_at >= $1
                 GROUP BY DATE_TRUNC('hour', created_at)
@@ -274,13 +304,25 @@ class DashboardService:
                 """,
                 since,
             )
+            dlq_buckets = await conn.fetch(
+                """
+                SELECT
+                    DATE_TRUNC('hour', moved_to_dead_letter_at) as hour,
+                    COUNT(*) as dead_letter
+                FROM soniq_dead_letter_jobs
+                WHERE moved_to_dead_letter_at >= $1
+                GROUP BY DATE_TRUNC('hour', moved_to_dead_letter_at)
+                """,
+                since,
+            )
+            dlq_by_hour = {r["hour"]: int(r["dead_letter"]) for r in dlq_buckets}
             return [
                 {
                     "hour": row["hour"].isoformat(),
                     "total_jobs": row["total_jobs"],
                     "completed": row["completed"],
                     "failed": row["failed"],
-                    "dead_letter": row["dead_letter"],
+                    "dead_letter": dlq_by_hour.get(row["hour"], 0),
                 }
                 for row in timeline
             ]
@@ -408,7 +450,7 @@ class DashboardService:
                 """
                 SELECT
                     COUNT(*) as total_recent,
-                    COUNT(*) FILTER (WHERE status IN ('failed', 'dead_letter')) as failed_recent
+                    COUNT(*) FILTER (WHERE status = 'failed') as failed_recent
                 FROM soniq_jobs
                 WHERE updated_at > NOW() - INTERVAL '1 hour'
                 """
@@ -448,19 +490,29 @@ class DashboardService:
         async with self._acquire() as conn:
             rows = await conn.fetch(
                 """
+                WITH recent AS (
+                    SELECT job_name, 'queued'::text AS bucket, updated_at AS seen_at
+                    FROM soniq_jobs
+                    WHERE updated_at > NOW() - ($1 || ' minutes')::interval
+                      AND status = 'queued'
+                    UNION ALL
+                    SELECT job_name, 'dead_letter'::text AS bucket,
+                           moved_to_dead_letter_at AS seen_at
+                    FROM soniq_dead_letter_jobs
+                    WHERE moved_to_dead_letter_at
+                          > NOW() - ($1 || ' minutes')::interval
+                )
                 SELECT
-                    j.job_name,
-                    COUNT(*) FILTER (WHERE j.status = 'queued') AS queued,
-                    COUNT(*) FILTER (WHERE j.status = 'dead_letter') AS dead_letter,
-                    MAX(j.updated_at) AS last_seen
-                FROM soniq_jobs AS j
-                WHERE j.updated_at > NOW() - ($1 || ' minutes')::interval
-                  AND j.status IN ('queued', 'dead_letter')
-                  AND NOT EXISTS (
-                      SELECT 1 FROM soniq_task_registry AS r
-                      WHERE r.task_name = j.job_name
-                  )
-                GROUP BY j.job_name
+                    job_name,
+                    COUNT(*) FILTER (WHERE bucket = 'queued') AS queued,
+                    COUNT(*) FILTER (WHERE bucket = 'dead_letter') AS dead_letter,
+                    MAX(seen_at) AS last_seen
+                FROM recent
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM soniq_task_registry AS r
+                    WHERE r.task_name = recent.job_name
+                )
+                GROUP BY job_name
                 ORDER BY last_seen DESC
                 """,
                 str(window_minutes),

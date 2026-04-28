@@ -1,8 +1,9 @@
 -- Core schema: jobs, workers, producer_id, task registry.
 --
--- Always applied by Soniq.setup(). Optional features (scheduler,
--- dead_letter, webhooks, logs) live in their own migration files and
--- only apply when the feature opts in via its own setup().
+-- Always applied by Soniq.setup(). Soniq-owned feature tables
+-- (scheduler, dead_letter, webhooks, logs) live in their own migration
+-- files but ship in the same core slice (0001-0099) so every install
+-- gets them on first setup. See migrations/README.md.
 
 -- ---------------------------------------------------------------------------
 -- Jobs
