@@ -16,15 +16,16 @@ Within the core range:
 
 | Version     | Feature       | Applied by                       |
 |-------------|---------------|----------------------------------|
-| `0001`      | core schema   | `Soniq.setup()`                  |
-| `0010`      | scheduler     | `Scheduler.setup()`              |
-| `0020`      | dead letter   | `DeadLetterService.setup()`      |
-| `0021`      | webhooks      | `WebhookService.setup()`         |
-| `0022`      | logs          | `LogService.setup()`             |
+| `0001`      | core schema           | `Soniq.setup()`                  |
+| `0002`      | DLQ option-A cleanup  | `Soniq.setup()`                  |
+| `0003`      | dead-letter table     | `Soniq.setup()`                  |
+| `0010`      | scheduler             | `Scheduler.setup()`              |
+| `0021`      | webhooks              | `WebhookService.setup()`         |
+| `0022`      | logs                  | `LogService.setup()`             |
 
 `Soniq.setup()` only applies the `0001-0009` core slice. Optional
 features apply their own slice on first use, or the operator can opt in
-up front with `soniq setup --features=scheduler,dead_letter,webhooks,logs`.
+up front with `soniq setup --features=scheduler,webhooks,logs`.
 
 Additive core changes (a new column or table that lives in the core
 write path) get a new file in the `0002-0009` range, not an edit to

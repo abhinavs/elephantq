@@ -15,8 +15,6 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional, Tuple
 
 from soniq.backends.helpers import rows_affected as _rows_affected
-from soniq.backends.postgres import PostgresBackend
-from soniq.backends.postgres.migration_runner import MigrationRunner
 
 if TYPE_CHECKING:
     from soniq.app import Soniq
@@ -175,21 +173,19 @@ class DeadLetterService:
             yield conn
 
     async def setup_database(self):
-        """Verify dead letter table exists. Tables are created by migrations."""
-        pass  # Tables created by soniq setup / migrations
+        """Verify dead letter table exists. Tables are created by core migrations."""
+        pass
 
     async def setup(self) -> int:
-        """Apply dead letter migrations (``0020_*``).
+        """No-op in 0.0.3+: the DLQ table is part of the core schema and is
+        applied by ``Soniq.setup()`` (migration ``0003_dead_letter.sql``).
 
-        Idempotent. Memory and SQLite backends are no-ops.
+        Kept on the service surface so callers that previously invoked
+        ``app.dead_letter.setup()`` get a clean zero rather than an
+        AttributeError. Returns 0 (no migrations applied here).
         """
         await self._app.ensure_initialized()
-        backend = self._app.backend
-        if not isinstance(backend, PostgresBackend):
-            return 0
-        return await MigrationRunner(backend=backend).run_migrations(
-            version_filter="0020"
-        )
+        return 0
 
     # NOTE: ``move_job_to_dead_letter`` was removed in 0.0.3. The DLQ move
     # is now a backend primitive (``backend.mark_job_dead_letter``) and the

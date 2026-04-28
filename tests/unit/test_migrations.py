@@ -29,8 +29,8 @@ class TestMigrationStructure:
         assert files == [
             "0001_core.sql",
             "0002_dead_letter_option_a.sql",
+            "0003_dead_letter.sql",
             "0010_scheduler.sql",
-            "0020_dead_letter.sql",
             "0021_webhooks.sql",
             "0022_logs.sql",
         ]
@@ -39,22 +39,22 @@ class TestMigrationStructure:
         runner = MigrationRunner()
         migrations = runner.discover_migrations()
         versions = [v for v, _, _ in migrations]
-        assert versions == ["0001", "0002", "0010", "0020", "0021", "0022"]
+        assert versions == ["0001", "0002", "0003", "0010", "0021", "0022"]
 
     def test_version_filter_core(self):
         runner = MigrationRunner()
-        # Core slice that Soniq.setup() applies. Core covers 0001 (schema)
-        # and 0002 (DLQ Option A schema-tightening: drops 'dead_letter'
-        # from soniq_jobs.status, see docs/contracts/dead_letter.md).
+        # Core slice that Soniq.setup() applies. Core covers 0001 (schema),
+        # 0002 (DLQ Option A schema-tightening: drops 'dead_letter' from
+        # soniq_jobs.status), and 0003 (the DLQ table itself - always
+        # created so dashboard/metrics queries have a stable target).
         versions = [v for v, _, _ in runner.discover_migrations(version_filter="000")]
-        assert versions == ["0001", "0002"]
+        assert versions == ["0001", "0002", "0003"]
 
     def test_version_filter_single_feature(self):
         runner = MigrationRunner()
         # Each feature setup() targets exactly its slice.
         for prefix, expected in [
             ("0010", ["0010"]),
-            ("0020", ["0020"]),
             ("0021", ["0021"]),
             ("0022", ["0022"]),
         ]:
@@ -103,7 +103,7 @@ class TestFeatureContents:
         assert "soniq_recurring_jobs" in content
 
     def test_dead_letter(self):
-        content = (MIGRATIONS_DIR / "0020_dead_letter.sql").read_text()
+        content = (MIGRATIONS_DIR / "0003_dead_letter.sql").read_text()
         assert "soniq_dead_letter_jobs" in content
 
     def test_webhooks(self):

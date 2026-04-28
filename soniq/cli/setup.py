@@ -12,7 +12,6 @@ from .colors import print_status
 # which version-prefix each feature uses.
 _FEATURE_SETUP_ATTRS = {
     "scheduler": "scheduler",
-    "dead_letter": "dead_letter",
     "webhooks": "webhooks",
     "logs": "logs",
 }
