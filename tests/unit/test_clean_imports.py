@@ -38,7 +38,7 @@ def test_dead_letter_importable_from_features():
 
 
 def test_metrics_importable_from_features():
-    """from soniq.features.metrics import get_system_metrics"""
-    from soniq.features.metrics import get_system_metrics
+    """from soniq.features.metrics import MetricsService"""
+    from soniq.features.metrics import MetricsService
 
-    assert callable(get_system_metrics)
+    assert callable(MetricsService)

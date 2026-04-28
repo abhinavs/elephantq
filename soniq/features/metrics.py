@@ -4,8 +4,6 @@ System-wide performance analytics, success rates, processing times, queue statis
 """
 
 import asyncio
-import json
-import logging
 import statistics
 import time
 from collections import defaultdict, deque
@@ -158,35 +156,18 @@ class MetricsCollector:
 class MetricsAnalyzer:
     """Advanced metrics analysis and reporting.
 
-    Bound to a ``Soniq`` for pool resolution. ``app`` defaults to ``None``
-    so the legacy module-level helpers can run against the global app;
-    new code should pass the explicit instance.
+    Bound to a ``Soniq`` for pool resolution; multi-instance deployments
+    must keep metrics queries scoped to the correct database, so the
+    analyzer always carries an explicit app reference (see
+    `docs/contracts/instance_boundary.md`).
     """
 
-    def __init__(
-        self,
-        collector: MetricsCollector,
-        app: Optional["Soniq"] = None,
-    ):
+    def __init__(self, collector: MetricsCollector, app: "Soniq"):
         self.collector = collector
         self._app = app
 
     @asynccontextmanager
     async def _acquire(self) -> AsyncIterator[Any]:
-        # The historical fallback to `soniq.get_global_app()` is removed:
-        # the analyzer must be constructed with an explicit `app` so that
-        # multi-instance deployments don't bleed metrics queries across
-        # databases (`docs/contracts/instance_boundary.md`). Use
-        # `MetricsService(app)` from a CLI command or test fixture - the
-        # module-level `_metrics_analyzer` is still fine for in-memory
-        # collection (`record_job_start` / `record_job_completion`)
-        # because that path does not touch the DB.
-        if self._app is None:
-            raise RuntimeError(
-                "MetricsAnalyzer was constructed without a Soniq app; "
-                "DB-backed metrics require an explicit instance. Build one "
-                "via `MetricsService(app).get_system_metrics(...)`."
-            )
         await self._app.ensure_initialized()
         async with self._app.backend.acquire() as conn:
             yield conn
@@ -283,38 +264,49 @@ class MetricsAnalyzer:
             )
 
     async def _get_queue_stats(
-        self, conn: asyncpg.Connection, timeframe_hours: int
+        self, conn: asyncpg.Connection, timeframe_hours: int | str
     ) -> List[QueueStats]:
-        """Get statistics for all queues"""
+        """Per-queue rollup. DLQ counts come from soniq_dead_letter_jobs
+        (Option A); soniq_jobs.status never holds 'dead_letter'."""
+        window = str(timeframe_hours)
         queue_data = await conn.fetch(
             """
-            SELECT 
+            SELECT
                 queue,
                 SUM(CASE WHEN status = 'queued' THEN 1 ELSE 0 END) as queued_count,
                 SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) as processing_count,
                 SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) as done_count,
                 SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count,
-                SUM(CASE WHEN status = 'dead_letter' THEN 1 ELSE 0 END) as dead_letter_count,
-                AVG(CASE WHEN status IN ('done', 'failed') 
-                    THEN EXTRACT(EPOCH FROM (updated_at - created_at)) * 1000 
+                AVG(CASE WHEN status IN ('done', 'failed')
+                    THEN EXTRACT(EPOCH FROM (updated_at - created_at)) * 1000
                     ELSE NULL END) as avg_processing_time_ms
-            FROM soniq_jobs 
+            FROM soniq_jobs
             WHERE created_at >= NOW() - ($1 || ' hours')::INTERVAL
             GROUP BY queue
         """,
-            timeframe_hours,
+            window,
         )
+        dlq_data = await conn.fetch(
+            """
+            SELECT queue, COUNT(*) as dead_letter_count
+            FROM soniq_dead_letter_jobs
+            WHERE moved_to_dead_letter_at >= NOW() - ($1 || ' hours')::INTERVAL
+            GROUP BY queue
+            """,
+            window,
+        )
+        dlq_by_queue = {r["queue"]: int(r["dead_letter_count"]) for r in dlq_data}
 
         stats = []
+        seen_queues = set()
         for row in queue_data:
+            seen_queues.add(row["queue"])
             done_count = row["done_count"]
             failed_count = row["failed_count"]
             total_completed = done_count + failed_count
             success_rate = (
                 (done_count / total_completed * 100) if total_completed > 0 else 0.0
             )
-
-            # Calculate throughput using collector data if available
             throughput = await self.collector.calculate_throughput(row["queue"], 60)
 
             stats.append(
@@ -324,9 +316,27 @@ class MetricsAnalyzer:
                     processing_count=row["processing_count"],
                     done_count=done_count,
                     failed_count=failed_count,
-                    dead_letter_count=row["dead_letter_count"],
+                    dead_letter_count=dlq_by_queue.get(row["queue"], 0),
                     avg_processing_time_ms=float(row["avg_processing_time_ms"] or 0),
                     success_rate=success_rate,
+                    throughput_per_minute=throughput,
+                )
+            )
+
+        for queue, dlq_count in dlq_by_queue.items():
+            if queue in seen_queues:
+                continue
+            throughput = await self.collector.calculate_throughput(queue, 60)
+            stats.append(
+                QueueStats(
+                    queue_name=queue,
+                    queued_count=0,
+                    processing_count=0,
+                    done_count=0,
+                    failed_count=0,
+                    dead_letter_count=dlq_count,
+                    avg_processing_time_ms=0.0,
+                    success_rate=0.0,
                     throughput_per_minute=throughput,
                 )
             )
@@ -555,91 +565,3 @@ class MetricsService:
 
     async def check_alerts(self) -> List[Dict]:
         return await self.alerts.check_alerts()
-
-
-# Module-level collector/analyzer kept as the global app's instances. They
-# back the convenience wrappers below so existing import-and-call usage
-# keeps working; library code should construct ``MetricsService(app)``.
-_metrics_collector = MetricsCollector()
-_metrics_analyzer = MetricsAnalyzer(_metrics_collector)
-_alert_manager = AlertManager(_metrics_analyzer)
-
-
-# Public API
-async def record_job_start(job_id: str, job_name: str, queue: str):
-    """Record job start for metrics collection"""
-    await _metrics_collector.record_job_start(job_id, job_name, queue)
-
-
-async def record_job_completion(
-    job_id: str,
-    status: str,
-    duration_ms: float,
-    memory_usage_mb: Optional[float] = None,
-    cpu_usage_percent: Optional[float] = None,
-):
-    """Record job completion for metrics collection"""
-    await _metrics_collector.record_job_completion(
-        job_id, status, duration_ms, memory_usage_mb, cpu_usage_percent
-    )
-
-
-async def get_system_metrics(timeframe_hours: int = 1) -> SystemMetrics:
-    """Get comprehensive system metrics"""
-    return await _metrics_analyzer.get_system_metrics(timeframe_hours)
-
-
-async def get_queue_stats(timeframe_hours: int = 1) -> List[QueueStats]:
-    """Get statistics for all queues"""
-    metrics = await get_system_metrics(timeframe_hours)
-    return metrics.queue_stats
-
-
-async def generate_performance_report(timeframe_hours: int = 24) -> Dict:
-    """Generate a comprehensive performance report"""
-    return await _metrics_analyzer.generate_performance_report(timeframe_hours)
-
-
-async def check_performance_alerts() -> List[Dict]:
-    """Check for performance alerts"""
-    return await _alert_manager.check_alerts()
-
-
-async def export_metrics_json(
-    timeframe_hours: int = 24, file_path: str = "metrics_export.json"
-):
-    """Export metrics to JSON file"""
-    report = await generate_performance_report(timeframe_hours)
-
-    with open(file_path, "w") as f:
-        json.dump(report, f, indent=2, default=str)
-
-    return file_path
-
-
-# Background metrics collection task
-async def start_metrics_collection():
-    """Start background metrics collection"""
-
-    async def collection_loop():
-        while True:
-            try:
-                # Periodic cleanup of old metrics
-                cutoff = datetime.now(timezone.utc) - timedelta(
-                    hours=_metrics_collector.retention_hours
-                )
-                _metrics_collector.job_metrics = deque(
-                    [
-                        m
-                        for m in _metrics_collector.job_metrics
-                        if m.timestamp >= cutoff
-                    ],
-                    maxlen=10000,
-                )
-
-                await asyncio.sleep(300)  # Clean up every 5 minutes
-            except Exception as e:
-                logging.exception(f"Metrics collection error: {e}")
-                await asyncio.sleep(60)
-
-    return asyncio.create_task(collection_loop())
