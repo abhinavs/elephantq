@@ -55,14 +55,11 @@ soniq start --concurrency 4
 The code above works, but you'll want to tighten a few things before deploying for real:
 
 - **Use environment variables** instead of hardcoding `database_url`. Soniq reads `SONIQ_DATABASE_URL` automatically.
+- **Set `SONIQ_JOBS_MODULES`** so workers can import your job functions on startup (e.g., `SONIQ_JOBS_MODULES=myapp.tasks`).
 - **Tune concurrency.** The default is 4 concurrent job slots per worker. Raise it for I/O-heavy workloads, lower it for CPU-bound ones.
-- **Enable feature flags** for the capabilities you need. All features are off by default. The most common production flags:
-    - `SONIQ_DEAD_LETTER_QUEUE_ENABLED=true` -- inspect permanently failed jobs instead of losing them.
-    - `SONIQ_METRICS_ENABLED=true` -- expose Prometheus counters (`prometheus_client` ships with the default install).
-    - `SONIQ_LOGGING_ENABLED=true` -- structured JSON logging for log aggregators.
-    - `SONIQ_TIMEOUTS_ENABLED=true` -- enforce per-job execution time limits.
+- **Tune timeouts and retries per job.** `@app.job(timeout=..., max_retries=...)` covers the common cases; `SONIQ_JOB_TIMEOUT` and `SONIQ_MAX_RETRIES` set the global defaults.
 
-See [installation.md](installation.md) for the full list of extras and feature flags.
+See [installation.md](installation.md) for optional extras (`dashboard`, `webhooks`, `sqlite`).
 
 ## Delivery semantics
 

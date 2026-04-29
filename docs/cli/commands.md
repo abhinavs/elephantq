@@ -110,8 +110,6 @@ heartbeat, and resource usage (CPU/memory) when available.
 
 Manage jobs that exhausted all retries.
 
-Requires `SONIQ_DEAD_LETTER_QUEUE_ENABLED=true`.
-
 ```bash
 soniq dead-letter <action> [options]
 ```
@@ -124,11 +122,13 @@ soniq dead-letter <action> [options]
 soniq dead-letter list [--limit 50] [--filter JOB_NAME]
 ```
 
-**resurrect** -- move a job back to the queue for another attempt.
+**replay** -- mint a fresh job from a dead-letter row. The DLQ row stays
+as the audit trail; a new `soniq_jobs` row is created with a new UUID
+and `resurrection_count` is incremented.
 
 ```bash
-soniq dead-letter resurrect <job-id> [<job-id> ...]
-soniq dead-letter resurrect --all
+soniq dead-letter replay <job-id> [<job-id> ...]
+soniq dead-letter replay --all
 ```
 
 **delete** -- permanently remove a dead-letter job.
@@ -138,11 +138,12 @@ soniq dead-letter delete <job-id> [<job-id> ...]
 soniq dead-letter delete --all
 ```
 
-**cleanup** -- remove dead-letter jobs older than N days.
+**cleanup** -- remove dead-letter jobs older than N days. The `--dry-run`
+flag is accepted for symmetry but is currently a no-op: cleanup always
+deletes.
 
 ```bash
 soniq dead-letter cleanup --days 30
-soniq dead-letter cleanup --days 7 --dry-run   # preview what would be deleted
 ```
 
 **export** -- export dead-letter jobs to a file.
@@ -160,7 +161,7 @@ soniq dead-letter export --format csv --output dead_letter.csv
 | `--filter` | `str` | | Filter by job name pattern. |
 | `--all` | flag | off | Apply action to all matching jobs. |
 | `--days` | `int` | `30` | Age threshold for `cleanup`. |
-| `--dry-run` | flag | off | Preview `cleanup` without deleting. |
+| `--dry-run` | flag | off | Accepted on `cleanup` for symmetry; not honoured -- cleanup always deletes. |
 | `--format` | `csv \| json` | `csv` | Export format. |
 | `--output` | `str` | | Output file path (required for `export`). |
 
@@ -169,7 +170,7 @@ soniq dead-letter export --format csv --output dead_letter.csv
 
 Launch the web dashboard for monitoring jobs, queues, and workers.
 
-Requires `pip install soniq[dashboard]` and `SONIQ_DASHBOARD_ENABLED=true`.
+Requires `pip install soniq[dashboard]`.
 
 ```bash
 soniq dashboard [--host HOST] [--port PORT] [--reload]
@@ -182,22 +183,19 @@ soniq dashboard [--host HOST] [--port PORT] [--reload]
 | `--reload` | flag | off | Auto-reload on code changes (development only). |
 
 ```bash
-export SONIQ_DASHBOARD_ENABLED=true
 soniq dashboard --host 0.0.0.0 --port 6161
 ```
 
 Open `http://localhost:6161` in your browser.
 
 The dashboard is read-only by default. Set `SONIQ_DASHBOARD_WRITE_ENABLED=true`
-to enable retry, delete, and cancel buttons.
+to enable replay, delete, and cancel actions.
 
 
 ## scheduler
 
 Start the recurring job scheduler. It checks for due `@periodic` jobs and
 enqueues them.
-
-Requires `SONIQ_SCHEDULING_ENABLED=true`.
 
 ```bash
 soniq scheduler [--check-interval SECONDS] [--status]

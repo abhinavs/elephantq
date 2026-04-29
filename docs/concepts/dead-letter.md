@@ -1,24 +1,12 @@
 # Dead Letter Queue
 
-The dead-letter queue (DLQ) captures jobs that have exhausted all retries. Instead of disappearing into `failed` status, they land in a separate table where you can inspect, debug, and resurrect them.
+The dead-letter queue (DLQ) captures jobs that have exhausted all retries. They land in a separate `soniq_dead_letter_jobs` table where you can inspect, debug, and replay them.
 
-## Enabling the DLQ
+## Setup
 
-The DLQ ships as part of every Soniq install. Run its migration once
-(idempotent) before workers start writing to it:
-
-```python
-from soniq import Soniq
-
-app = Soniq(database_url="postgresql://localhost/myapp")
-await app.dead_letter.setup()
-```
-
-Or from the CLI: `soniq setup --features=dead_letter`.
-
-Once the table exists, any job that fails after its final retry attempt is
-moved to `soniq_dead_letter_jobs` with status `dead_letter`. Until you run
-the migration, failed jobs stay in `failed` status in the main table.
+The DLQ table is part of the core schema. Run `soniq setup` once to create
+the schema; after that, any job that fails after its final retry attempt
+is moved into `soniq_dead_letter_jobs` automatically.
 
 ## How jobs get there
 
@@ -42,12 +30,14 @@ soniq dead-letter list --limit 20
 soniq dead-letter list --filter "send_welcome_email"
 ```
 
-### Resurrect a job
+### Replay a job
 
-Resurrect creates a new job with the same function and arguments, reset to `queued` status:
+Replay creates a new `soniq_jobs` row with the same function and arguments,
+reset to `queued` status. The original DLQ row stays as the audit trail and
+its `resurrection_count` is incremented:
 
 ```bash
-soniq dead-letter resurrect abc123-def456
+soniq dead-letter replay abc123-def456
 ```
 
 ### Delete a dead-letter job

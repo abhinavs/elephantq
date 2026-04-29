@@ -1,13 +1,15 @@
 # Recipe: Scheduled Reports
 
-A pattern for generating recurring reports on a cron schedule using `@soniq.periodic`.
+A pattern for generating recurring reports on a cron schedule using `@app.periodic`.
 
 ## The job
 
 ```python
-import soniq
+from soniq import Soniq
 
-@soniq.periodic(cron="0 9 * * 1")  # Every Monday at 9 AM
+app = Soniq(database_url="postgresql://localhost/myapp")
+
+@app.periodic(cron="0 9 * * 1")  # Every Monday at 9 AM
 async def weekly_sales_report():
     start, end = get_last_week_range()
     data = await fetch_sales_data(start, end)
@@ -19,18 +21,15 @@ async def weekly_sales_report():
     )
 ```
 
-The `@soniq.periodic` decorator registers both the job and its schedule. The scheduler picks it up automatically.
+The `@app.periodic` decorator registers both the job and its schedule. The scheduler picks it up automatically.
 
-## Enabling the scheduler
+## Running the scheduler
 
-The scheduler is a separate process that creates job instances on schedule. Enable it and run it alongside your worker:
+The scheduler is a separate process that creates job instances on schedule. Run it alongside your worker:
 
 ```bash
-# Required environment variable
-export SONIQ_SCHEDULING_ENABLED=true
-
 # Terminal 1: Scheduler (creates jobs on schedule)
-soniq scheduler
+SONIQ_JOBS_MODULES="app.reports" soniq scheduler
 
 # Terminal 2: Worker (processes created jobs)
 SONIQ_JOBS_MODULES="app.reports" soniq start
@@ -43,15 +42,15 @@ The scheduler checks registered periodic jobs and enqueues them when their sched
 Cron expressions for specific times:
 
 ```python
-@soniq.periodic(cron="0 9 * * *")       # Daily at 9 AM
+@app.periodic(cron="0 9 * * *")       # Daily at 9 AM
 async def daily_digest():
     ...
 
-@soniq.periodic(cron="0 0 1 * *")       # First of every month
+@app.periodic(cron="0 0 1 * *")       # First of every month
 async def monthly_summary():
     ...
 
-@soniq.periodic(cron="*/15 * * * *")     # Every 15 minutes
+@app.periodic(cron="*/15 * * * *")     # Every 15 minutes
 async def check_stale_orders():
     ...
 ```
@@ -62,16 +61,16 @@ Interval helpers for simpler cases (use the cron-string builders or a `timedelta
 from datetime import timedelta
 from soniq import every
 
-@soniq.periodic(cron=every(10).minutes())
+@app.periodic(cron=every(10).minutes())
 async def cleanup_temp_files():
     ...
 
-@soniq.periodic(cron=every(1).hours())
+@app.periodic(cron=every(1).hours())
 async def sync_inventory():
     ...
 
 # Sub-minute uses every= directly (cron has no second resolution).
-@soniq.periodic(every=timedelta(seconds=30))
+@app.periodic(every=timedelta(seconds=30))
 async def health_ping():
     ...
 ```
@@ -79,34 +78,21 @@ async def health_ping():
 You can combine `@periodic` with any `@job` option:
 
 ```python
-@soniq.periodic(cron="0 9 * * 1", queue="reports", max_retries=2, timeout=300)
+@app.periodic(cron="0 9 * * 1", queue="reports", max_retries=2, timeout=300)
 async def weekly_report():
     ...
-```
-
-## Instance API
-
-With the Instance API, define periodic jobs on your `Soniq` instance. Note that `periodic` is only available on the global API. Register the job normally and configure the schedule separately, or use the global decorator:
-
-```python
-import soniq
-from soniq import Soniq
-
-eq = Soniq(database_url="postgresql://localhost/myapp")
-
-@soniq.periodic(cron="0 9 * * 1")
-async def weekly_report():
-    data = await fetch_weekly_data()
-    await send_report(data)
 ```
 
 ## Complete example
 
 ```python
 # app/reports.py
-import soniq
+from soniq import Soniq
 
-@soniq.periodic(cron="0 9 * * 1", queue="reports", timeout=300)
+app = Soniq(database_url="postgresql://localhost/myapp")
+
+
+@app.periodic(cron="0 9 * * 1", queue="reports", timeout=300)
 async def weekly_sales_report():
     start, end = get_last_week_range()
     data = await fetch_sales_data(start, end)
@@ -119,7 +105,7 @@ async def weekly_sales_report():
     )
 
 
-@soniq.periodic(cron="0 6 * * *", queue="reports")
+@app.periodic(cron="0 6 * * *", queue="reports")
 async def daily_error_digest():
     errors = await fetch_errors_since_yesterday()
     if not errors:
@@ -133,9 +119,8 @@ async def daily_error_digest():
 
 ```bash
 # Run everything
-SONIQ_DATABASE_URL="postgresql://localhost/myapp" \
-SONIQ_SCHEDULING_ENABLED=true \
-SONIQ_JOBS_MODULES="app.reports"
+export SONIQ_DATABASE_URL="postgresql://localhost/myapp"
+export SONIQ_JOBS_MODULES="app.reports"
 
 # In separate terminals:
 soniq scheduler

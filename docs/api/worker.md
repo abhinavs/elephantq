@@ -36,14 +36,6 @@ await app.run_worker(
 | `run_once` | `bool` | `False` | Process all available jobs and exit. Useful for testing and cron-driven setups. |
 | `queues` | `list[str] \| None` | `None` | Restrict to these queue names. `None` means process all queues. |
 
-The global API exposes the same function:
-
-```python
-import soniq
-
-await soniq.run_worker(concurrency=8, queues=["urgent", "default"])
-```
-
 ### What happens during run_worker
 
 1. The app auto-initializes if needed (connects to the database, runs lazy setup).

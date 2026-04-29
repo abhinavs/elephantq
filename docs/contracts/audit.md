@@ -22,7 +22,7 @@ Smoke category:
 | docs/cli/commands.md:86                      | `soniq workers`                 | soniq/cli/workers.py (`add_workers_cmd`)                                                     | implemented | auto-smoke     |
 | docs/cli/commands.md:116                     | `soniq dead-letter`             | soniq/cli/dead_letter.py:9 (`add_dead_letter_cmd`)                                           | implemented | manual-only    |
 | docs/cli/commands.md:124                     | `soniq dead-letter list`        | soniq/cli/dead_letter.py:72                                                                  | implemented | auto-smoke     |
-| docs/cli/commands.md:130                     | `soniq dead-letter resurrect`   | soniq/cli/dead_letter.py:78                                                                  | implemented | manual-only    |
+| docs/cli/commands.md:130                     | `soniq dead-letter replay`      | soniq/cli/dead_letter.py:78                                                                  | implemented | manual-only    |
 | docs/cli/commands.md:137                     | `soniq dead-letter delete`      | soniq/cli/dead_letter.py (action=delete)                                                     | implemented | manual-only    |
 | docs/cli/commands.md:144                     | `soniq dead-letter cleanup`     | soniq/cli/dead_letter.py (action=cleanup)                                                    | implemented | manual-only    |
 | docs/cli/commands.md:151                     | `soniq dead-letter export`      | soniq/cli/dead_letter.py (action=export)                                                     | implemented | manual-only    |

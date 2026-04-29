@@ -123,20 +123,6 @@ SONIQ_JOBS_MODULES="app.main" \
 soniq start --concurrency 4
 ```
 
-## Global API vs Instance API
-
-| Scenario | Recommended |
-| --- | --- |
-| FastAPI or any ASGI app | Instance API |
-| Multiple databases or tenants | Instance API |
-| Testing with isolated state | Instance API |
-| Simple scripts and CLIs | Global API |
-| Quick prototyping | Global API |
-
-The Instance API gives you explicit control over initialization and shutdown. The Global API uses a shared singleton under the hood, which is convenient for scripts but awkward when you need precise lifecycle management.
-
-In FastAPI apps, always use the Instance API. It integrates cleanly with the lifespan pattern and avoids hidden global state.
-
 ## Multiple instances
 
 Each `Soniq` instance is fully isolated with its own connection pool and job registry. This is useful for multi-tenant setups:
@@ -152,13 +138,14 @@ async def lifespan(app: FastAPI):
     await tenant_b.close()
 ```
 
-## Accessing the connection pool
+## Borrowing a connection
 
-For advanced use cases like [transactional enqueue](transactional-enqueue.md), you can access the underlying connection pool:
+For workflows like [transactional enqueue](transactional-enqueue.md), borrow
+a connection from the backend:
 
 ```python
-pool = await eq.get_pool()
-async with pool.acquire() as conn:
+await eq.ensure_initialized()
+async with eq.backend.acquire() as conn:
     async with conn.transaction():
         await conn.execute("INSERT INTO orders ...")
         await eq.enqueue(send_invoice, connection=conn, order_id=order_id)

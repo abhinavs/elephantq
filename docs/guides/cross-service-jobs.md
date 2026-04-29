@@ -112,7 +112,7 @@ The handler can run more than once because of:
 
 - Producer retries after a network blip
 - Worker crashes mid-execution (the row is requeued)
-- Manual retry via `app.retry_job(...)` or the dashboard
+- Manual replay via `app.dead_letter.replay(...)` or the dashboard
 
 **Handlers must be idempotent.** The recommended pattern is an
 application-level idempotency key threaded through `dedup_key`:

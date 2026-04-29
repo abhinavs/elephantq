@@ -32,10 +32,10 @@ await app.enqueue(send_welcome, to="dev@example.com")
 ```bash
 # set up tables and start processing
 soniq setup
-soniq start --concurrency 4
+SONIQ_JOBS_MODULES=jobs soniq start --concurrency 4
 ```
 
-Four steps. Define a job, enqueue it, set up the database, start a worker.
+Four steps. Define a job, enqueue it, set up the database, start a worker. `SONIQ_JOBS_MODULES` tells the worker which modules to import so it can find your `@app.job` definitions.
 
 > **Local dev without Postgres?** Use SQLite: `Soniq(database_url='local.db')`.
 > For production, always use PostgreSQL.
@@ -45,7 +45,8 @@ Four steps. Define a job, enqueue it, set up the database, start a worker.
 Enqueue a job inside your database transaction. If the transaction rolls back, the job never existed.
 
 ```python
-async with pool.acquire() as conn:
+await app.ensure_initialized()
+async with app.backend.acquire() as conn:
     async with conn.transaction():
         await conn.execute("INSERT INTO orders ...")
         await app.enqueue(send_invoice, connection=conn, order_id=order_id)

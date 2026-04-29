@@ -1,15 +1,4 @@
-"""
-SQLite storage backend for Soniq.
-
-Zero-setup local development backend. No server required.
-Configure with: Soniq(backend="sqlite")
-
-Limitations:
-- Single worker process only (no concurrent dequeue)
-- No push notifications (polling only)
-- No transactional enqueue with external connections
-- Good enough for local dev, prototyping, and simple deployments
-"""
+"""SQLite storage backend. Zero-setup local dev, single-writer, polling only."""
 
 import json
 import logging
@@ -35,19 +24,11 @@ def _require_aiosqlite() -> None:
 
 
 class SQLiteBackend:
-    """
-    SQLite storage backend for local development.
-
-    Uses WAL mode and busy_timeout for reasonable performance.
-    Single-writer — only one worker process per database file.
-    """
 
     def __init__(self, path: str = "soniq.db") -> None:
         _require_aiosqlite()
         self._path = path
         self._conn: Optional[aiosqlite.Connection] = None
-
-    # --- Capabilities ---
 
     @property
     def supports_push_notify(self) -> bool:
@@ -60,8 +41,6 @@ class SQLiteBackend:
     @property
     def supports_advisory_locks(self) -> bool:
         return False
-
-    # --- Lifecycle ---
 
     async def initialize(self) -> None:
         self._conn = await aiosqlite.connect(self._path)
@@ -107,13 +86,8 @@ class SQLiteBackend:
             CREATE INDEX IF NOT EXISTS idx_eq_jobs_queue_status
                 ON soniq_jobs (queue, status);
 
-            -- Mirrors the postgres defensive CHECK from
-            -- 0002_dead_letter_option_a.sql. SQLite has no ENUM and the
-            -- column-level CHECK above already rejects the value, but a
-            -- BEFORE-trigger lets the rejection surface as an explicit
-            -- contract violation regardless of how a future column
-            -- migration touches the CHECK shape. See
-            -- docs/contracts/dead_letter.md.
+            -- BEFORE-trigger mirrors the postgres CHECK: surfaces the DLQ contract violation
+            -- even if a future migration changes the column-level CHECK shape.
             CREATE TRIGGER IF NOT EXISTS soniq_jobs_reject_dead_letter_insert
             BEFORE INSERT ON soniq_jobs
             FOR EACH ROW WHEN NEW.status = 'dead_letter'
@@ -169,7 +143,7 @@ class SQLiteBackend:
             """
         )
 
-        # Upgrade existing databases that predate the `result` column.
+        # Upgrade existing databases missing columns added after initial release.
         cursor = await self._conn.execute("PRAGMA table_info(soniq_jobs)")
         columns = {row[1] for row in await cursor.fetchall()}
         if "result" not in columns:
@@ -180,8 +154,6 @@ class SQLiteBackend:
             )
 
         await self._conn.commit()
-
-    # --- Job CRUD ---
 
     async def create_job(
         self,
@@ -201,7 +173,6 @@ class SQLiteBackend:
         assert self._conn is not None
         now = _now_iso()
 
-        # Unique dedup
         if unique and args_hash:
             async with self._conn.execute(
                 """
@@ -214,7 +185,6 @@ class SQLiteBackend:
                 if row:
                     return str(row["id"])
 
-        # Queueing lock dedup
         if dedup_key:
             async with self._conn.execute(
                 "SELECT id FROM soniq_jobs WHERE dedup_key = ? AND status = 'queued'",
@@ -225,7 +195,6 @@ class SQLiteBackend:
                     return str(row["id"])
 
         sched = scheduled_at.isoformat() if scheduled_at else None
-        # SQLite stores args as TEXT; serialize at the backend boundary.
         args_serialized = json.dumps(args, default=str)
         await self._conn.execute(
             """
@@ -253,8 +222,6 @@ class SQLiteBackend:
         )
         await self._conn.commit()
         return job_id
-
-    # --- Worker dequeue ---
 
     async def fetch_and_lock_job(
         self,
@@ -309,8 +276,6 @@ class SQLiteBackend:
     ) -> None:
         pass  # No push notification
 
-    # --- Job status transitions ---
-
     async def mark_job_done(
         self, job_id: str, *, result_ttl: Optional[int] = None, result: Any = None
     ) -> None:
@@ -320,8 +285,6 @@ class SQLiteBackend:
         else:
             ttl = result_ttl if result_ttl is not None else 3600
             expires = (datetime.now(timezone.utc) + timedelta(seconds=ttl)).isoformat()
-            # Skip the result column write when the job returned None;
-            # most jobs are `-> None` and storing 'null' is just bytes.
             if result is None:
                 await self._conn.execute(
                     "UPDATE soniq_jobs SET status='done', expires_at=?, updated_at=? WHERE id=?",
@@ -368,13 +331,8 @@ class SQLiteBackend:
         reason: str,
         tags: Optional[dict] = None,
     ) -> None:
-        # DLQ Option A: copy the source row into soniq_dead_letter_jobs and
-        # delete it from soniq_jobs in a single transaction. aiosqlite runs
-        # in implicit-transaction mode (we commit at the end), so a crash
-        # before commit() leaves both tables in their pre-move state. The
-        # SELECT/INSERT/DELETE share a single python lock on self._conn,
-        # so concurrent writers cannot wedge halfway. See
-        # docs/contracts/dead_letter.md and docs/design/dlq_option_a.md.
+        # DLQ Option A: move row to soniq_dead_letter_jobs. aiosqlite's implicit transaction
+        # keeps both tables consistent on crash; the Python lock on self._conn prevents races.
         assert self._conn is not None
         async with self._conn.execute(
             "SELECT * FROM soniq_jobs WHERE id=?",
@@ -504,9 +462,6 @@ class SQLiteBackend:
             return [_sqlite_row_to_dict(r) for r in rows]
 
     async def get_queue_stats(self) -> QueueStats:
-        # Whole-instance counts in the canonical 6-key shape. dead_letter
-        # is sourced from soniq_dead_letter_jobs (DLQ Option A, mirrored
-        # from postgres). See docs/contracts/queue_stats.md.
         assert self._conn is not None
         async with self._conn.execute(
             """
@@ -536,8 +491,6 @@ class SQLiteBackend:
             dead_letter=dead_letter,
             cancelled=cancelled,
         )
-
-    # --- Worker tracking ---
 
     async def register_worker(
         self,
@@ -615,13 +568,7 @@ class SQLiteBackend:
         await self._conn.commit()
         return len(stale)
 
-    # --- Task registry (observability metadata only) ---
-    #
-    # SQLite is the local-dev backend; the task registry is observability
-    # metadata surfaced through the dashboard / `soniq tasks check`, both
-    # of which target Postgres deployments. The methods exist so SQLite
-    # satisfies the ``TaskRegistryStore`` Protocol but do not persist
-    # anything - operators on SQLite read task names from logs.
+    # Task registry methods are no-ops on SQLite - this metadata targets Postgres deployments.
 
     async def register_task_name(
         self,
@@ -634,8 +581,6 @@ class SQLiteBackend:
 
     async def list_registered_task_names(self) -> list[dict]:
         return []
-
-    # --- Maintenance ---
 
     async def delete_expired_jobs(self) -> int:
         assert self._conn is not None
@@ -658,15 +603,13 @@ def _now_iso() -> str:
 
 
 def _sqlite_row_to_dict(row: Any) -> dict:
-    """Convert an aiosqlite Row to the standard job dict format."""
+    """Convert an aiosqlite Row to the standard job dict format. Deserializes TEXT-stored JSON fields."""
     d = dict(row)
-    # Parse JSON args
     if isinstance(d.get("args"), str):
         try:
             d["args"] = json.loads(d["args"])
         except (json.JSONDecodeError, TypeError):
             pass
-    # Parse JSON result if present
     if "result" in d and isinstance(d["result"], str):
         try:
             d["result"] = json.loads(d["result"])
