@@ -2,10 +2,12 @@
 Structured Logging with Job Context.
 Structured JSON logging, job-specific loggers, performance context.
 
-The default destination is ``DatabaseLogHandler``, which writes structured
-records into ``soniq_logs``. There is no public sink-replacement knob in
-0.0.3; configure stdlib ``logging`` handlers directly if you want a
-different destination.
+The `LogSink` Protocol formalizes the contract Soniq's logging path
+expects of its destination. It is intentionally a subset of the standard
+`logging.Handler` API so any stdlib-compatible handler (file, stream,
+SysLog, third-party Sentry/Datadog handlers) can be passed to
+`Soniq(log_sink=...)` directly. The shipped default is `DatabaseLogHandler`,
+which writes structured records into `soniq_logs`.
 """
 
 import asyncio
@@ -29,10 +31,25 @@ from typing import (
     Dict,
     List,
     Optional,
+    Protocol,
+    runtime_checkable,
 )
 
 if TYPE_CHECKING:
     from soniq.app import Soniq
+
+
+@runtime_checkable
+class LogSink(Protocol):
+    """A `logging.Handler`-compatible destination for Soniq log records.
+
+    Any object that exposes `emit(record)` and an optional `close()`
+    satisfies the Protocol. That includes the stdlib's `StreamHandler`,
+    `RotatingFileHandler`, `SysLogHandler`, and the bundled
+    `DatabaseLogHandler`.
+    """
+
+    def emit(self, record: logging.LogRecord) -> None: ...
 
 
 _VALID_TABLE_NAME = re.compile(r"^[a-z_][a-z0-9_]*$")
@@ -715,9 +732,9 @@ class LogAnalyzer:
 class LogService:
     """High-level log query service bound to a Soniq instance.
 
-    Wraps a per-app ``LogAnalyzer``. The service is purely about
-    *reading* the structured log table; configuring an alternative log
-    destination is done through stdlib ``logging`` handlers.
+    Wraps a per-app ``LogAnalyzer``. The ``LogSink`` Protocol is the
+    extension point for plugging in non-database log destinations; this
+    service is purely about *reading* the structured log table.
     """
 
     def __init__(self, app: "Soniq"):

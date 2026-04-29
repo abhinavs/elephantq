@@ -1,12 +1,15 @@
 """
-Soniq exposes two pluggable extension points in 0.0.3:
+Soniq exposes three pluggable extension points in 0.0.3:
 
 - `RetryPolicy` (`soniq.core.retry`)
+- `LogSink` (`soniq.features.logging`)
 - `MetricsSink` (`soniq.observability`)
 
 Each ships a default implementation and a `Soniq(...)` constructor
 parameter. These tests pin the contract.
 """
+
+import logging
 
 import pytest
 
@@ -18,6 +21,7 @@ from soniq.core.retry import (
     ExponentialBackoff,
     RetryPolicy,
 )
+from soniq.features.logging import LogSink
 from soniq.testing.memory_backend import MemoryBackend
 
 
@@ -37,16 +41,35 @@ def test_soniq_accepts_custom_retry_policy():
     assert app._retry_policy.delay_for(attempt=1, job_meta={}, exc=Exception()) == 0.1
 
 
-def test_soniq_no_serializer_or_log_sink_attrs():
-    """The half-wired ``serializer`` and ``log_sink`` knobs were removed
-    in 0.0.3. The constructor swallows unknown kwargs through
-    ``SoniqSettings(extra='ignore')``, so we pin removal at the
+def test_log_sink_protocol_accepts_stdlib_handler():
+    """`LogSink` is the contract used by the plugin examples; a stdlib
+    `logging.Handler` must satisfy it without subclassing."""
+    handler = logging.StreamHandler()
+    assert isinstance(handler, LogSink)
+
+
+def test_soniq_accepts_custom_log_sink():
+    class _Sink:
+        def __init__(self):
+            self.records: list[logging.LogRecord] = []
+
+        def emit(self, record: logging.LogRecord) -> None:
+            self.records.append(record)
+
+    sink = _Sink()
+    app = Soniq(database_url="postgresql://user:pass@localhost/test", log_sink=sink)
+    assert app.log_sink is sink
+    assert app._log_sink is sink
+
+
+def test_soniq_no_serializer_attr():
+    """The half-wired ``serializer`` knob was removed in 0.0.3. The
+    constructor swallows unknown kwargs through
+    ``SoniqSettings(extra='ignore')``, so pin removal at the
     attribute / property level instead."""
     app = Soniq(database_url="postgresql://user:pass@localhost/test")
     assert not hasattr(app, "serializer")
-    assert not hasattr(app, "log_sink")
     assert not hasattr(app, "_serializer")
-    assert not hasattr(app, "_log_sink")
 
 
 @pytest.mark.asyncio

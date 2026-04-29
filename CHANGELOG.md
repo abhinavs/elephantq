@@ -94,15 +94,14 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - The `soniq tasks-list` CLI subcommand is removed. With per-instance
   registries it had no well-defined notion of "all tasks" outside a
   running app. Use `app.list_jobs(...)` against an instance instead.
-- The `serializer=` and `log_sink=` constructor knobs (and the
-  matching `app.serializer` / `app.log_sink` properties) are removed.
-  Both were stored on the instance but no code path read them, so
-  custom values were silently ignored. The `Serializer` Protocol and
-  `JSONSerializer` helper (`soniq.utils.serialization`) and the
-  `LogSink` Protocol (`soniq.features.logging`) are removed alongside
-  them. Job arguments and results continue to be JSON-encoded
-  end-to-end against JSONB / JSON-text columns; configure log
-  destinations through stdlib `logging` handlers instead.
+- The `serializer=` constructor knob (and the matching `app.serializer`
+  property) is removed. It was stored on the instance but no code path
+  read it, so custom values were silently ignored. The `Serializer`
+  Protocol and `JSONSerializer` helper (`soniq.utils.serialization`)
+  are removed alongside it. Job arguments and results continue to be
+  JSON-encoded end-to-end against JSONB / JSON-text columns. The
+  `log_sink=` knob and `LogSink` Protocol stay; they are part of the
+  documented plugin extension surface.
 
 ### Known limitations
 

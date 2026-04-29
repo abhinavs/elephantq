@@ -14,6 +14,7 @@ Public extension points a plugin can use:
 - ``app.job(name=..., ...)``              - register handlers
 - ``app.scheduler.add(...)``              - schedule recurring work
 - ``app.metrics_sink = sink``             - replace metrics destination
+- ``app.log_sink = sink``                 - replace log destination
 - ``app.cli.add_command(spec)``           - add a ``soniq <name>`` subcommand
 - ``app.dashboard.add_panel(spec)``       - add a dashboard panel
 - ``app.migrations.register_source(...)`` - ship plugin-owned tables
