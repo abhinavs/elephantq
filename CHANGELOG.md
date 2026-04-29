@@ -89,6 +89,36 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - DLQ rows are written by the runtime only. There is no public
   `DeadLetterService.move(job_id)` helper; manual DLQ insertion was
   never a documented operation and is removed.
+- `soniq_jobs.status` is pinned to four live values:
+  `queued / processing / done / cancelled`. Failures either re-queue
+  (`status` flips back to `queued`) or move into
+  `soniq_dead_letter_jobs`; there is no `failed` row state any more.
+  Migration `0007_drop_failed_status.sql` re-queues any pre-existing
+  `'failed'` rows so legacy installs do not lose work, then tightens
+  the `CHECK` constraint to reject the value. See
+  `docs/contracts/job_lifecycle.md`.
+- `JobStatus.FAILED` and `JobStatus.DEAD_LETTER` are removed from the
+  enum; only `QUEUED / PROCESSING / DONE / CANCELLED` remain. Backend
+  `retry_job(job_id)` (on every storage backend, the `JobStore`
+  Protocol, and the `Soniq.retry_job(...)` shim) is removed - it
+  operated on `status='failed'` rows that no longer exist. Callers that
+  want to put a dead-lettered job back in the queue must go through
+  `app.dead_letter.replay(dlq_id)` (see next bullet).
+- `DeadLetterService.resurrect_job` / `bulk_resurrect` are renamed to
+  `replay` / `bulk_replay` to match the contract terminology in
+  `docs/contracts/dead_letter.md`. The CLI action `soniq dead-letter
+  resurrect` is renamed to `soniq dead-letter replay`. Replay
+  semantics are now uniform across the CLI and dashboard: the DLQ row
+  is preserved as the audit trail, `resurrection_count` is incremented,
+  and a fresh `soniq_jobs` row is enqueued with a new id.
+- The dashboard's per-job retry endpoint and button are removed
+  (`POST /api/jobs/{id}/retry`). Operators replay a dead-letter row
+  through `POST /api/dead-letter/{dlq_id}/replay` instead.
+  `DashboardService.retry_job(...)` is replaced by
+  `replay_dead_letter(...)`. Dashboard stats payloads no longer carry a
+  `failed` key; `get_job_stats` returns
+  `{total, queued, processing, done, cancelled, dead_letter}` and
+  `get_job_metrics` reports `dead_lettered` for the time-window count.
 - Packaging is batteries-included for runtime. `croniter` and
   `prometheus_client` are now default dependencies of `soniq` (so
   `@periodic` and `PrometheusMetricsSink` work from a plain
