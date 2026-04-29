@@ -87,7 +87,7 @@ soniq status --verbose
 
 ### Prometheus scraping
 
-When metrics are enabled and the monitoring extra is installed, counters are registered with `prometheus-client`. Mount the endpoint in your FastAPI app:
+When metrics are enabled, counters are registered with `prometheus-client` (a default runtime dependency in 0.0.3+, no extra to install). Mount the endpoint in your FastAPI app:
 
 ```python
 from prometheus_client import make_asgi_app
