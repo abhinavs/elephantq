@@ -134,4 +134,4 @@ ignore_missing_imports = true
 #   soniq/__init__.py, soniq/app.py, soniq/job.py, soniq/task_ref.py,
 #   soniq/errors.py, soniq/settings.py, soniq/plugin.py,
 #   soniq/schedules.py, soniq/core/middleware.py, soniq/core/retry.py,
-#   soniq/observability/metrics.py, soniq/utils/serialization.py
+#   soniq/observability/metrics.py

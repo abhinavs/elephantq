@@ -738,16 +738,9 @@ class PostgresBackend:
                 FROM soniq_jobs
                 """
             )
-            # The DLQ table is created by the dead_letter feature's
-            # migration (0020); on installs that haven't opted in, treat
-            # the count as zero so get_queue_stats never raises on a fresh
-            # core-only deployment.
-            try:
-                dlq_count = await conn.fetchval(
-                    "SELECT COUNT(*) FROM soniq_dead_letter_jobs"
-                )
-            except asyncpg.UndefinedTableError:
-                dlq_count = 0
+            dlq_count = await conn.fetchval(
+                "SELECT COUNT(*) FROM soniq_dead_letter_jobs"
+            )
         queued = int(jobs_row["queued"] or 0)
         processing = int(jobs_row["processing"] or 0)
         done = int(jobs_row["done"] or 0)
