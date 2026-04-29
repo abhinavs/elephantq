@@ -74,10 +74,7 @@ Retries at: 5s, 10s, 20s, 40s, 80s, 160s, 300s, 300s. The delay never exceeds `r
 
 ## After max retries
 
-When a job exhausts all retries, one of two things happens:
-
-- **DLQ enabled** (`SONIQ_DEAD_LETTER_QUEUE_ENABLED=true`): The job moves to the dead-letter queue with status `dead_letter`. See [Dead Letter Queue](dead-letter.md).
-- **DLQ disabled** (default): The job stays in `failed` status permanently.
+When a job exhausts all retries, the row is moved out of `soniq_jobs` and into the dead-letter table `soniq_dead_letter_jobs`. The original `soniq_jobs` row is deleted in the same transaction. See [Dead Letter Queue](dead-letter.md) to inspect or replay these jobs.
 
 ## Examples
 

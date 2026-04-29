@@ -62,32 +62,19 @@ app = Soniq(backend="memory")
 
 **Memory** stores jobs in a Python dict. Useful for unit tests where you don't want any external dependencies.
 
-## Feature flags
+## Optional features
 
-Every optional feature is **disabled by default**. Enable them with environment variables or a `.env` file:
+Optional capabilities are activated by running the matching process or by installing the right extra. Nothing else needs a feature flag:
 
-```bash
-# .env
-SONIQ_DASHBOARD_ENABLED=true
-SONIQ_SCHEDULING_ENABLED=true
-SONIQ_DEAD_LETTER_QUEUE_ENABLED=true
-```
-
-Here are the available flags:
-
-| Environment variable | What it enables | Extra needed |
-|---|---|---|
-| `SONIQ_SCHEDULING_ENABLED` | Recurring jobs and cron schedules | -- (default) |
-| `SONIQ_DEAD_LETTER_QUEUE_ENABLED` | Dead-letter queue for permanently failed jobs | -- |
-| `SONIQ_TIMEOUTS_ENABLED` | Per-job timeout enforcement | -- |
-| `SONIQ_METRICS_ENABLED` | Prometheus-style counters and health metrics | -- (default) |
-| `SONIQ_LOGGING_ENABLED` | Structured JSON logging | `logging` |
-| `SONIQ_WEBHOOKS_ENABLED` | HTTP webhook notifications on job events | `webhooks` |
-| `SONIQ_SIGNING_ENABLED` | Webhook payload signing and secret helpers | `webhooks` |
-| `SONIQ_DASHBOARD_ENABLED` | Web UI for inspecting queues and jobs | `dashboard` |
-| `SONIQ_DASHBOARD_WRITE_ENABLED` | Retry/delete/cancel buttons in the dashboard | `dashboard` |
-
-All flags accept `true`/`false` (case-insensitive). If the required extra isn't installed, Soniq will raise an import error at startup with a clear message about which package to install.
+| Capability | How to turn it on |
+|---|---|
+| Dead-letter queue | Always on. Failed jobs that exhaust retries land in `soniq_dead_letter_jobs`. |
+| Per-job timeouts | Always on (default `SONIQ_JOB_TIMEOUT=300` seconds). Override per-job with `@app.job(timeout=...)` or set `SONIQ_JOB_TIMEOUT=0` to disable. |
+| Recurring jobs | Run `soniq scheduler` alongside your worker. |
+| Web dashboard | `pip install soniq[dashboard]` and run `soniq dashboard`. Dashboard mutations require `SONIQ_DASHBOARD_WRITE_ENABLED=true`. |
+| Structured logging | `pip install soniq[logging]` and set `SONIQ_LOG_FORMAT=structured`. |
+| HTTP webhooks | `pip install soniq[webhooks]` and configure `app.webhooks`. |
+| Prometheus metrics | Wire a `PrometheusMetricsSink` on the `Soniq(...)` constructor. The default sink is a no-op. |
 
 ## Verifying the install
 

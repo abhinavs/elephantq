@@ -15,14 +15,11 @@ These must be set before any worker starts.
 
 ```bash
 export SONIQ_LOG_LEVEL=INFO
-export SONIQ_SCHEDULING_ENABLED=true
-export SONIQ_DEAD_LETTER_QUEUE_ENABLED=true
-export SONIQ_METRICS_ENABLED=true
-export SONIQ_LOGGING_ENABLED=true
-export SONIQ_TIMEOUTS_ENABLED=true
+export SONIQ_LOG_FORMAT=structured
+export SONIQ_JOB_TIMEOUT=300
 ```
 
-All feature flags are disabled by default. In production, you almost certainly want timeouts (prevents runaway jobs), dead-letter queue (captures permanently failed jobs for inspection), and metrics (gives you visibility).
+The dead-letter queue and per-job timeouts are always on. Metrics are emitted through whatever `metrics_sink` you wire onto the `Soniq(...)` constructor (default is a no-op).
 
 ## Worker configuration
 
@@ -48,7 +45,7 @@ Key settings:
 ## Retries, timeouts, and idempotency
 
 - Set retries per job, especially for external API calls. Use backoff for flaky integrations.
-- Enable timeouts: `SONIQ_TIMEOUTS_ENABLED=true`.
+- Tune timeouts per job with `@app.job(timeout=...)`; the global default is `SONIQ_JOB_TIMEOUT=300` seconds.
 - **Design all jobs to be idempotent.** Soniq provides at-least-once delivery - a job may execute more than once if a worker crashes after execution but before the status update. Use database upserts, dedup checks, or idempotency keys for side effects like emails or payments.
 
 ## Queue design
@@ -62,9 +59,7 @@ Key settings:
 Enable structured logging and metrics collection:
 
 ```bash
-export SONIQ_LOGGING_ENABLED=true
 export SONIQ_LOG_FORMAT=structured    # JSON output, easy to ship
-export SONIQ_METRICS_ENABLED=true
 ```
 
 `prometheus_client` ships with the default `pip install soniq` - no
@@ -105,7 +100,7 @@ Prometheus config:
   metrics_path: /metrics
 ```
 
-When the dashboard is enabled, the `/api/metrics` endpoint serves the same data. Point Grafana at it for richer visualizations.
+If you run `soniq dashboard`, the `/api/metrics` endpoint serves the same data. Point Grafana at it for richer visualizations.
 
 ### Health check thresholds
 
@@ -119,16 +114,16 @@ Soniq raises health warnings when metrics cross these thresholds:
 | Disk usage | 90% | `SONIQ_DISK_USAGE_THRESHOLD` |
 | CPU usage | 95% | `SONIQ_CPU_USAGE_THRESHOLD` |
 
-## Feature flags to enable in production
+## Operational pieces to wire up
 
-| Flag | Why |
+| What | How |
 |------|-----|
-| `SONIQ_TIMEOUTS_ENABLED=true` | Prevents runaway jobs. Default timeout is 300s per job. |
-| `SONIQ_DEAD_LETTER_QUEUE_ENABLED=true` | Jobs that exhaust retries land here instead of disappearing. Inspect and replay with `soniq dead-letter list` and `soniq dead-letter replay <id>`. |
-| `SONIQ_METRICS_ENABLED=true` | Exposes job counts, throughput, processing times. Required for dashboards and alerts. |
-| `SONIQ_LOGGING_ENABLED=true` | Structured logging for your log aggregation pipeline. |
-| `SONIQ_SCHEDULING_ENABLED=true` | Required if you use recurring jobs or delayed scheduling. |
-| `SONIQ_DASHBOARD_ENABLED=true` | Web dashboard for monitoring. Use read-only mode by default; enable `SONIQ_DASHBOARD_WRITE_ENABLED=true` only in trusted environments. |
+| Per-job timeouts | Always on. Default `SONIQ_JOB_TIMEOUT=300`. Override per-job with `@app.job(timeout=...)`. |
+| Dead-letter queue | Always on. Inspect and replay with `soniq dead-letter list` / `soniq dead-letter replay <id>`. |
+| Metrics | Pass `metrics_sink=PrometheusMetricsSink()` to `Soniq(...)` and scrape `/metrics`. |
+| Logging | Set `SONIQ_LOG_FORMAT=structured` for JSON logs your aggregator can parse. |
+| Recurring jobs | Run `soniq scheduler` alongside your worker. |
+| Dashboard | `pip install soniq[dashboard]` and run `soniq dashboard`. Set `SONIQ_DASHBOARD_WRITE_ENABLED=true` only in trusted environments. |
 
 ## Production defaults
 

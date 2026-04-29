@@ -118,7 +118,6 @@ User=soniq
 Group=soniq
 WorkingDirectory=/opt/soniq
 Environment=SONIQ_DATABASE_URL=postgresql://soniq:password@localhost/soniq_prod
-Environment=SONIQ_DASHBOARD_ENABLED=true
 ExecStart=/opt/soniq/venv/bin/soniq dashboard --host=0.0.0.0 --port=8000
 Restart=always
 RestartSec=5
@@ -194,8 +193,6 @@ services:
     environment:
       SONIQ_DATABASE_URL: postgresql://soniq:${POSTGRES_PASSWORD:-changeme}@postgres:5432/soniq_prod
       SONIQ_JOBS_MODULES: myapp.jobs
-      SONIQ_TIMEOUTS_ENABLED: "true"
-      SONIQ_DEAD_LETTER_QUEUE_ENABLED: "true"
     command: ["soniq", "start", "--concurrency=4"]
     deploy:
       resources:
@@ -213,7 +210,6 @@ services:
         condition: service_healthy
     environment:
       SONIQ_DATABASE_URL: postgresql://soniq:${POSTGRES_PASSWORD:-changeme}@postgres:5432/soniq_prod
-      SONIQ_DASHBOARD_ENABLED: "true"
     ports:
       - "8000:8000"
     command: ["soniq", "dashboard", "--host=0.0.0.0", "--port=8000"]
@@ -255,10 +251,8 @@ metadata:
   namespace: soniq
 data:
   SONIQ_LOG_LEVEL: "INFO"
+  SONIQ_LOG_FORMAT: "structured"
   SONIQ_JOBS_MODULES: "myapp.jobs"
-  SONIQ_TIMEOUTS_ENABLED: "true"
-  SONIQ_DEAD_LETTER_QUEUE_ENABLED: "true"
-  SONIQ_METRICS_ENABLED: "true"
 ```
 
 ### Worker Deployment
@@ -416,7 +410,7 @@ redirect_stderr=true
 stdout_logfile=/var/log/soniq/dashboard.log
 stdout_logfile_maxbytes=10MB
 stdout_logfile_backups=5
-environment=SONIQ_DATABASE_URL="postgresql://soniq:password@localhost/soniq_prod",SONIQ_DASHBOARD_ENABLED="true"
+environment=SONIQ_DATABASE_URL="postgresql://soniq:password@localhost/soniq_prod"
 ```
 
 ### Managing with Supervisor
