@@ -150,8 +150,8 @@ Include these headers with every delivery so receivers can route, verify, and de
 For critical events, enqueue the webhook inside the same transaction as the business data:
 
 ```python
-pool = await eq.get_pool()
-async with pool.acquire() as conn:
+await eq.ensure_initialized()
+async with eq.backend.acquire() as conn:
     async with conn.transaction():
         order_id = await conn.fetchval("INSERT INTO orders (...) RETURNING id", ...)
         await eq.enqueue(

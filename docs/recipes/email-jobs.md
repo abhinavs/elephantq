@@ -64,8 +64,8 @@ async def send_email_with_backoff(user_id: int):
 **Transactional enqueue.** If you're creating the user row and enqueuing the email in the same request, wrap them in a transaction so neither happens without the other:
 
 ```python
-pool = await eq.get_pool()
-async with pool.acquire() as conn:
+await eq.ensure_initialized()
+async with eq.backend.acquire() as conn:
     async with conn.transaction():
         user_id = await conn.fetchval("INSERT INTO users (...) VALUES (...) RETURNING id", ...)
         await eq.enqueue(send_welcome_email, connection=conn, user_id=user_id)
