@@ -43,7 +43,7 @@ def _bootstrap_venv(project_root: str) -> None:
         print(f"   Details: {exc}")
     try:
         subprocess.check_call(
-            [venv_python, "-m", "pip", "install", "-e", ".[dev,dashboard,monitoring]"],
+            [venv_python, "-m", "pip", "install", "-e", ".[dev]"],
             cwd=project_root,
         )
     except subprocess.CalledProcessError as exc:
