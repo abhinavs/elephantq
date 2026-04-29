@@ -667,12 +667,7 @@ class WebhookDispatcher:
 
 
 class WebhookService:
-    """High-level webhook interface bound to a Soniq instance.
-
-    Owns the per-app ``WebhookRegistry`` and ``WebhookDispatcher``. Replaces
-    the old global ``WebhookManager`` whose pool access reached for the
-    global app. The legacy class name is kept as an alias below.
-    """
+    """High-level webhook interface bound to a Soniq instance."""
 
     def __init__(
         self,
