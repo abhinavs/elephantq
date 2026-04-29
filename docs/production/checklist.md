@@ -85,8 +85,6 @@ pip install soniq[monitoring]
 ### CLI access
 
 ```bash
-soniq metrics --hours 1
-soniq metrics --format json --hours 24
 soniq status --verbose
 ```
 

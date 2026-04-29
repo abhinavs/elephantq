@@ -102,6 +102,17 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   JSON-encoded end-to-end against JSONB / JSON-text columns. The
   `log_sink=` knob and `LogSink` Protocol stay; they are part of the
   documented plugin extension surface.
+- The `soniq.features.metrics` module is removed, along with the
+  `soniq metrics` CLI subcommand. The in-memory `MetricsCollector` /
+  `MetricsAnalyzer` / `AlertManager` / `MetricsService` stack was an
+  analytics-on-historical-state layer that overlapped the
+  runtime-events-out `MetricsSink` seam in `soniq.observability`. There
+  is now exactly one metrics surface: implement
+  `soniq.observability.MetricsSink` (or use the bundled
+  `PrometheusMetricsSink` under `pip install soniq[monitoring]`) and
+  pass it as `Soniq(metrics_sink=...)`. Dashboards that need historical
+  rollups should query the `soniq_*` tables directly or scrape the
+  Prometheus sink.
 
 ### Known limitations
 

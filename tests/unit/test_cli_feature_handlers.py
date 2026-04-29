@@ -1,6 +1,6 @@
 """
 Tests for the feature subcommands (``dashboard``, ``scheduler``,
-``metrics``, ``dead-letter``).
+``dead-letter``).
 
 After the flat-CLI rewrite (S8) each subcommand lives in its own
 module exposing one ``add_X_cmd(subparsers)`` function. These tests
@@ -17,7 +17,6 @@ import pytest
 from soniq.cli.dashboard import add_dashboard_cmd
 from soniq.cli.dead_letter import add_dead_letter_cmd
 from soniq.cli.main import build_parser
-from soniq.cli.metrics import add_metrics_cmd
 from soniq.cli.scheduler import add_scheduler_cmd
 
 
@@ -61,22 +60,6 @@ class TestAddSchedulerCmd:
         assert args.status is True
 
 
-class TestAddMetricsCmd:
-    def test_default_format_and_hours(self):
-        parser, sub = _bare_subparser()
-        add_metrics_cmd(sub)
-        args = parser.parse_args(["metrics"])
-        assert args.format == "table"
-        assert args.hours == 24
-
-    def test_json_format_and_custom_hours(self):
-        parser, sub = _bare_subparser()
-        add_metrics_cmd(sub)
-        args = parser.parse_args(["metrics", "--format", "json", "--hours", "6"])
-        assert args.format == "json"
-        assert args.hours == 6
-
-
 class TestAddDeadLetterCmd:
     def test_action_choices(self):
         parser, sub = _bare_subparser()
@@ -107,7 +90,7 @@ class TestTopLevelParserWiresAllFeatures:
     def test_lists_every_feature_subcommand(self):
         parser = build_parser()
         # Parse one no-op arg per feature subcommand to assert each is wired.
-        for cmd in ("dashboard", "scheduler", "metrics"):
+        for cmd in ("dashboard", "scheduler"):
             args = parser.parse_args([cmd])
             assert args.command == cmd
             assert callable(args.func)

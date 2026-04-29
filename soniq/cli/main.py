@@ -29,7 +29,6 @@ from soniq.plugin import discover_plugins
 from .colors import print_status
 from .dashboard import add_dashboard_cmd
 from .dead_letter import add_dead_letter_cmd
-from .metrics import add_metrics_cmd
 from .migrate_status import add_migrate_status_cmd
 from .scheduler import add_scheduler_cmd
 from .setup import add_setup_cmd
@@ -82,7 +81,6 @@ For more information, visit: https://github.com/abhinavs/soniq
     add_migrate_status_cmd(sub)
     add_dashboard_cmd(sub)
     add_scheduler_cmd(sub)
-    add_metrics_cmd(sub)
     add_dead_letter_cmd(sub)
     add_tasks_cmd(sub)
 
