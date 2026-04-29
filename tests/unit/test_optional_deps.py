@@ -112,3 +112,79 @@ class TestBatteriesIncluded:
 
         assert hasattr(soniq, "Soniq")
         assert hasattr(soniq, "TaskRef")
+
+
+# Built at runtime so this test file does not itself match the search.
+_PHANTOM_EXTRAS = tuple(f"soniq[{name}]" for name in ("scheduling", "monitoring"))
+_PRUNED_DIRS = {
+    ".git",
+    ".venv",
+    "venv",
+    "node_modules",
+    "__pycache__",
+    ".mypy_cache",
+    ".pytest_cache",
+    "dist",
+    "build",
+    ".tox",
+}
+_PRUNED_DIR_SUFFIXES = (".egg-info",)
+_TEXT_SUFFIXES = {
+    ".py",
+    ".md",
+    ".rst",
+    ".txt",
+    ".toml",
+    ".yaml",
+    ".yml",
+    ".cfg",
+    ".ini",
+    ".sh",
+    "",
+}
+_REPO_ROOT = Path(__file__).parent.parent.parent
+_ALLOWLIST = {
+    _REPO_ROOT / "CHANGELOG.md",
+    Path(__file__).resolve(),
+}
+
+
+def test_no_phantom_extras_referenced_in_repo():
+    """``soniq[scheduling]`` / ``soniq[monitoring]`` were never real
+    packaging extras (the names came from earlier draft docs). Guard
+    against them creeping back into install commands or examples.
+
+    The CHANGELOG is allowlisted because the breaking-change paragraph
+    legitimately quotes the dropped names so operators know what to
+    remove from their install scripts.
+    """
+    import os
+
+    offenders: list[str] = []
+    for current, dirnames, filenames in os.walk(_REPO_ROOT):
+        dirnames[:] = [
+            d
+            for d in dirnames
+            if d not in _PRUNED_DIRS
+            and not any(d.endswith(suffix) for suffix in _PRUNED_DIR_SUFFIXES)
+        ]
+        for name in filenames:
+            path = Path(current) / name
+            if path in _ALLOWLIST:
+                continue
+            if path.suffix not in _TEXT_SUFFIXES:
+                continue
+            try:
+                content = path.read_text(encoding="utf-8")
+            except (UnicodeDecodeError, OSError):
+                continue
+            for needle in _PHANTOM_EXTRAS:
+                if needle in content:
+                    rel = path.relative_to(_REPO_ROOT)
+                    offenders.append(f"{rel}: {needle}")
+
+    assert not offenders, (
+        "Phantom extras referenced outside CHANGELOG. These extras do "
+        "not exist in pyproject.toml and must not appear in install "
+        "instructions or examples:\n  " + "\n  ".join(offenders)
+    )
