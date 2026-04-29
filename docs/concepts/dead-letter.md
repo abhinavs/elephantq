@@ -88,8 +88,8 @@ jobs = await app.dead_letter.list_dead_letter_jobs()
 # Get a specific job
 job = await app.dead_letter.get_dead_letter_job("abc123-def456")
 
-# Resurrect with options
-new_job_id = await app.dead_letter.resurrect_job(
+# Replay with options
+new_job_id = await app.dead_letter.replay(
     "abc123-def456",
     reset_attempts=True,       # start fresh (default)
     new_max_attempts=10,       # give it more tries this time
@@ -123,10 +123,10 @@ jobs = await app.dead_letter.list_dead_letter_jobs(f)
 f = DeadLetterFilter()
 f.job_names = ["myapp.tasks.sync_inventory"]
 
-new_job_ids = await app.dead_letter.bulk_resurrect(
+new_job_ids = await app.dead_letter.bulk_replay(
     f, reset_attempts=True, new_max_attempts=5
 )
-print(f"Resurrected {len(new_job_ids)} jobs")
+print(f"Replayed {len(new_job_ids)} jobs")
 ```
 
 ## Debugging a failed job
@@ -146,13 +146,13 @@ When a job lands in the DLQ, follow this workflow:
 
 3. **Fix the root cause.** Deploy a code fix, restore a downstream service, or correct the input data.
 
-4. **Resurrect.** Create a new job from the dead-letter entry. The original arguments are preserved.
+4. **Replay.** Create a new job from the dead-letter entry. The original arguments are preserved; the DLQ row stays as the audit trail.
 
     ```python
-    new_id = await app.dead_letter.resurrect_job(job_id)
+    new_id = await app.dead_letter.replay(job_id)
     ```
 
-5. **Verify.** Check that the resurrected job completes successfully.
+5. **Verify.** Check that the replayed job completes successfully.
 
     ```python
     status = await app.get_job(new_id)

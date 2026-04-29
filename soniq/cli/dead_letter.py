@@ -18,10 +18,10 @@ def add_dead_letter_cmd(subparsers) -> None:
     )
     parser.add_argument(
         "action",
-        choices=["list", "resurrect", "delete", "cleanup", "export"],
+        choices=["list", "replay", "delete", "cleanup", "export"],
         help="Action to perform",
     )
-    parser.add_argument("job_ids", nargs="*", help="Job IDs (for resurrect)")
+    parser.add_argument("job_ids", nargs="*", help="Job IDs (for replay)")
     parser.add_argument("--all", action="store_true", help="Apply action to all jobs")
     parser.add_argument("--filter", help="Filter by job name pattern")
     parser.add_argument("--limit", type=int, default=50, help="Maximum jobs to show")
@@ -61,13 +61,13 @@ async def handle_dead_letter(args) -> int:
                 print(f"{job.id}  {job.job_name}  {job.dead_letter_reason}")
             return 0
 
-        if action == "resurrect":
+        if action == "replay":
             if args.all:
-                await dead_letter.bulk_resurrect(filter_criteria)
+                await dead_letter.bulk_replay(filter_criteria)
                 return 0
             if args.job_ids:
                 for job_id in args.job_ids:
-                    await dead_letter.resurrect_job(job_id)
+                    await dead_letter.replay(job_id)
                 return 0
             return 1
 

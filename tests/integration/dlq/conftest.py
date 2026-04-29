@@ -108,7 +108,7 @@ def make_job_id():
 # ---------------------------------------------------------------------------
 
 
-async def _pg_resurrect(backend, dead_letter_id: str) -> str:
+async def _pg_replay(backend, dead_letter_id: str) -> str:
     new_job_id_val = str(uuid.uuid4())
     async with backend.acquire() as conn:
         async with conn.transaction():
@@ -144,7 +144,7 @@ async def _pg_resurrect(backend, dead_letter_id: str) -> str:
     return new_job_id_val
 
 
-async def _sqlite_resurrect(backend, dead_letter_id: str) -> str:
+async def _sqlite_replay(backend, dead_letter_id: str) -> str:
     import json as _json
     from datetime import datetime, timezone
 
@@ -184,7 +184,7 @@ async def _sqlite_resurrect(backend, dead_letter_id: str) -> str:
     return new_job_id_val
 
 
-async def _memory_resurrect(backend, dead_letter_id: str) -> str:
+async def _memory_replay(backend, dead_letter_id: str) -> str:
     from datetime import datetime, timezone
 
     new_job_id_val = str(uuid.uuid4())
@@ -206,15 +206,15 @@ async def _memory_resurrect(backend, dead_letter_id: str) -> str:
     return new_job_id_val
 
 
-async def resurrect(backend, dead_letter_id: str) -> str:
+async def replay(backend, dead_letter_id: str) -> str:
     """Backend-agnostic replay: copy DLQ row to soniq_jobs, bump counter."""
     cls_name = type(backend).__name__
     if cls_name == "PostgresBackend":
-        return await _pg_resurrect(backend, dead_letter_id)
+        return await _pg_replay(backend, dead_letter_id)
     if cls_name == "SQLiteBackend":
-        return await _sqlite_resurrect(backend, dead_letter_id)
+        return await _sqlite_replay(backend, dead_letter_id)
     if cls_name == "MemoryBackend":
-        return await _memory_resurrect(backend, dead_letter_id)
+        return await _memory_replay(backend, dead_letter_id)
     raise AssertionError(f"unknown backend: {cls_name}")
 
 

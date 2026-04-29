@@ -64,7 +64,7 @@ class TestAddDeadLetterCmd:
     def test_action_choices(self):
         parser, sub = _bare_subparser()
         add_dead_letter_cmd(sub)
-        for action in ("list", "resurrect", "delete", "cleanup", "export"):
+        for action in ("list", "replay", "delete", "cleanup", "export"):
             args = parser.parse_args(["dead-letter", action])
             assert args.action == action
 
@@ -74,11 +74,11 @@ class TestAddDeadLetterCmd:
         with pytest.raises(SystemExit):
             parser.parse_args(["dead-letter", "nope"])
 
-    def test_resurrect_collects_job_ids(self):
+    def test_replay_collects_job_ids(self):
         parser, sub = _bare_subparser()
         add_dead_letter_cmd(sub)
-        args = parser.parse_args(["dead-letter", "resurrect", "id-1", "id-2"])
-        assert args.action == "resurrect"
+        args = parser.parse_args(["dead-letter", "replay", "id-1", "id-2"])
+        assert args.action == "replay"
         assert args.job_ids == ["id-1", "id-2"]
 
 

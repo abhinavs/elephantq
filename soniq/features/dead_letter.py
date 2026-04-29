@@ -1,6 +1,6 @@
 """
 Dead Letter Queue Management.
-Management of permanently failed jobs, resurrection, bulk operations.
+Management of permanently failed jobs, replay, bulk operations.
 """
 
 import csv
@@ -193,7 +193,7 @@ class DeadLetterService:
     # to forcibly DLQ a job should re-enqueue with ``max_attempts=0`` or
     # raise from a handler. See docs/contracts/dead_letter.md.
 
-    async def resurrect_job(
+    async def replay(
         self,
         dead_letter_id: str,
         reset_attempts: bool = True,
@@ -201,10 +201,16 @@ class DeadLetterService:
         new_priority: Optional[int] = None,
         new_queue: Optional[str] = None,
     ) -> Optional[str]:
-        """Resurrect a job from the dead letter queue"""
+        """Replay a job from the dead letter queue.
+
+        Inserts a new ``soniq_jobs`` row (fresh id, ``status='queued'``,
+        ``attempts=0`` by default) and increments ``resurrection_count``
+        on the DLQ row in the same transaction. The DLQ row is preserved
+        as the audit trail; operators can replay the same row multiple
+        times. See ``docs/contracts/dead_letter.md``.
+        """
         async with self._acquire() as conn:
             async with conn.transaction():
-                # Get dead letter job
                 dead_job = await conn.fetchrow(
                     f"""
                     SELECT * FROM {self.table_name} WHERE id = $1
@@ -217,32 +223,24 @@ class DeadLetterService:
                     logger.warning(f"Dead letter job {dead_letter_id} not found")
                     return None
 
-                # Check if job function is still registered on this
-                # instance's registry. Going through `self._app.registry`
-                # keeps the lookup scoped to the Soniq that owns this
-                # service - no global app fallback
-                # (`docs/contracts/instance_boundary.md`).
                 job_meta = self._app.registry.get_job(dead_job["job_name"])
                 if not job_meta:
                     logger.error(
-                        f"Cannot resurrect job {dead_letter_id}: job {dead_job['job_name']} not registered"
+                        f"Cannot replay job {dead_letter_id}: job {dead_job['job_name']} not registered"
                     )
                     return None
 
-                # Create new job ID
                 new_job_id = str(uuid.uuid4())
 
-                # Prepare job parameters
                 attempts = 0 if reset_attempts else dead_job["attempts"]
                 max_attempts = new_max_attempts or dead_job["max_attempts"]
                 priority = new_priority or dead_job["priority"]
                 queue = new_queue or dead_job["queue"]
 
-                # Insert new job
                 await conn.execute(
                     """
                     INSERT INTO soniq_jobs (
-                        id, job_name, args, max_attempts, priority, queue, 
+                        id, job_name, args, max_attempts, priority, queue,
                         attempts, status, scheduled_at
                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'queued', NOW())
                 """,
@@ -255,7 +253,6 @@ class DeadLetterService:
                     attempts,
                 )
 
-                # Update dead letter record
                 await conn.execute(
                     f"""
                     UPDATE {self.table_name}
@@ -266,34 +263,33 @@ class DeadLetterService:
                     uuid.UUID(dead_letter_id),
                 )
 
-                logger.info(f"Resurrected job {dead_letter_id} as {new_job_id}")
+                logger.info(f"Replayed job {dead_letter_id} as {new_job_id}")
                 return new_job_id
 
-    async def bulk_resurrect(
+    async def bulk_replay(
         self,
         filter_criteria: DeadLetterFilter,
         reset_attempts: bool = True,
         new_max_attempts: Optional[int] = None,
     ) -> List[str]:
-        """Resurrect multiple jobs matching filter criteria"""
-        # Get matching dead letter jobs
+        """Replay multiple jobs matching filter criteria."""
         dead_jobs = await self.list_dead_letter_jobs(filter_criteria)
 
-        resurrected_jobs = []
+        replayed_jobs = []
         for dead_job in dead_jobs:
             try:
-                new_job_id = await self.resurrect_job(
+                new_job_id = await self.replay(
                     dead_job.id,
                     reset_attempts=reset_attempts,
                     new_max_attempts=new_max_attempts,
                 )
                 if new_job_id:
-                    resurrected_jobs.append(new_job_id)
+                    replayed_jobs.append(new_job_id)
             except Exception as e:
-                logger.error(f"Failed to resurrect job {dead_job.id}: {e}")
+                logger.error(f"Failed to replay job {dead_job.id}: {e}")
 
-        logger.info(f"Bulk resurrected {len(resurrected_jobs)} jobs")
-        return resurrected_jobs
+        logger.info(f"Bulk replayed {len(replayed_jobs)} jobs")
+        return replayed_jobs
 
     async def delete_dead_letter_job(self, dead_letter_id: str) -> bool:
         """Permanently delete a dead letter job"""
