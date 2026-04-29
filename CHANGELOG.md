@@ -78,6 +78,23 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Default SQLite backend filename is `soniq.db`.
 - Connection pool sizing is validated at worker startup: `SONIQ_POOL_MAX_SIZE` must be at least `SONIQ_CONCURRENCY + SONIQ_POOL_HEADROOM`; the worker refuses to start otherwise.
 
+### Removed
+
+- The process-global Soniq convenience surface is gone. There is no
+  module-level `soniq.job`, `soniq.enqueue`, `soniq.run_worker`,
+  `soniq.configure`, `soniq.get_global_app`, `soniq.schedule`, or any
+  other top-level helper that operated on a hidden global app. All
+  public APIs hang off a `Soniq` instance: construct one
+  (`app = Soniq(database_url=...)`), decorate with `@app.job(...)` /
+  `@app.periodic(...)`, and call `await app.enqueue(...)` /
+  `await app.run_worker(...)`. The CLI builds its own `Soniq` instance
+  per subcommand from `SONIQ_DATABASE_URL` and discovered job modules;
+  there is no shared state between processes. Logging configuration is
+  the only state that is still process-global.
+- The `soniq tasks-list` CLI subcommand is removed. With per-instance
+  registries it had no well-defined notion of "all tasks" outside a
+  running app. Use `app.list_jobs(...)` against an instance instead.
+
 ### Known limitations
 
 - Sync handler hard-kill on shutdown can re-deliver a job whose handler

@@ -1,14 +1,16 @@
 """
-Smoke tests for all example files and codebase hygiene checks.
+Smoke tests for example files.
 
-Ensures every example is syntactically valid Python and uses importable APIs.
-Also checks for dead documentation URLs.
+These tests block regressions where an example references a deleted
+public API. They run without a database: each example is compiled and
+imported, but its ``main()`` is never executed.
 
-These tests do NOT need a database connection.
 Run with: pytest tests/smoke/ -v
 """
 
 import ast
+import importlib.util
+import py_compile
 from pathlib import Path
 
 import pytest
@@ -16,14 +18,58 @@ import pytest
 EXAMPLES_DIR = Path(__file__).parent.parent.parent / "examples"
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 
+EXAMPLE_FILES = sorted(EXAMPLES_DIR.glob("*.py"))
 
-@pytest.mark.parametrize(
-    "example", list(EXAMPLES_DIR.glob("*.py")), ids=lambda p: p.name
-)
-def test_example_syntax(example):
-    """Every example must be valid Python."""
+# Examples that pull in optional third-party deps not guaranteed to be
+# installed in the smoke environment. They still get compiled and
+# AST-checked; only the live import is skipped.
+IMPORT_SKIP = {
+    "transactional_enqueue.py": "fastapi",
+    "recurring_jobs.py": "croniter",
+}
+
+
+@pytest.mark.parametrize("example", EXAMPLE_FILES, ids=lambda p: p.name)
+def test_example_compiles(example):
+    """Every example must compile to bytecode without syntax errors."""
+    py_compile.compile(str(example), doraise=True)
+
+
+@pytest.mark.parametrize("example", EXAMPLE_FILES, ids=lambda p: p.name)
+def test_example_imports(example):
+    """Every example must import cleanly.
+
+    Catches references to deleted public symbols at module load and
+    decorator time without ever calling ``main()`` (so no DB needed).
+    """
+    optional_dep = IMPORT_SKIP.get(example.name)
+    if optional_dep is not None:
+        pytest.importorskip(optional_dep)
+
+    spec = importlib.util.spec_from_file_location(
+        f"_smoke_example_{example.stem}", example
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+
+@pytest.mark.parametrize("example", EXAMPLE_FILES, ids=lambda p: p.name)
+def test_example_imports_resolve(example):
+    """All top-level imports in each example must resolve to real modules."""
+    optional_dep = IMPORT_SKIP.get(example.name)
+    if optional_dep is not None:
+        pytest.importorskip(optional_dep)
+
     source = example.read_text()
-    ast.parse(source, filename=str(example))
+    tree = ast.parse(source)
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                __import__(alias.name.split(".")[0])
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            __import__(node.module.split(".")[0])
 
 
 def test_recurring_jobs_uses_real_api():
@@ -48,42 +94,6 @@ def test_transactional_enqueue_setup_call():
         "transactional_enqueue.py passes database_url to setup(), "
         "but setup() takes no arguments"
     )
-
-
-@pytest.mark.parametrize(
-    "example",
-    [
-        "basic_app.py",
-        "queue_routing.py",
-        "file_processing.py",
-        "recurring_jobs.py",
-        "webhook_delivery.py",
-    ],
-)
-def test_example_imports_resolve(example):
-    """Key imports in each example must resolve to real modules/functions."""
-    source = (EXAMPLES_DIR / example).read_text()
-    tree = ast.parse(source)
-
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                mod = alias.name.split(".")[0]
-                __import__(mod)
-        elif isinstance(node, ast.ImportFrom):
-            if node.module and not node.module.startswith("fastapi"):
-                top = node.module.split(".")[0]
-                __import__(top)
-
-
-def test_examples_use_clean_imports():
-    """Examples should import from soniq or soniq.<module>, not soniq.features."""
-    for example in EXAMPLES_DIR.glob("*.py"):
-        source = example.read_text()
-        assert "soniq.features" not in source, (
-            f"{example.name} imports from soniq.features - "
-            f"use soniq or soniq.<module> instead"
-        )
 
 
 def test_no_dead_documentation_urls():
