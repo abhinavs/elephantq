@@ -151,8 +151,9 @@ class Soniq:
                 Also settable post-construct via ``app.retry_policy = ...``
                 up until ``await app.setup()`` runs.
             log_sink: Optional `soniq.features.logging.LogSink` instance.
-                When provided, log records flow into this sink instead of
-                (or in addition to) the built-in ``DatabaseLogHandler``.
+                Any object exposing the stdlib ``logging.Handler.emit``
+                shape satisfies the Protocol; pass a stdlib handler or a
+                third-party Sentry / Datadog handler directly.
                 Also settable post-construct via ``app.log_sink = ...``.
             metrics_sink: Optional `soniq.observability.MetricsSink`
                 instance. Defaults to `NoopMetricsSink`. Pass
