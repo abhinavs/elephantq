@@ -62,7 +62,6 @@ from .testing.memory_backend import MemoryBackend
 from .utils.hashing import compute_args_hash
 from .utils.producer_id import resolve_producer_id
 from .utils.rate_limit import default_warner
-from .utils.serialization import DEFAULT_SERIALIZER
 
 if TYPE_CHECKING:
     from .types import QueueStats
@@ -132,8 +131,6 @@ class Soniq:
         database_url: Optional[str] = None,
         backend: Optional[Any] = None,
         retry_policy: Optional[Any] = None,
-        serializer: Optional[Any] = None,
-        log_sink: Optional[Any] = None,
         metrics_sink: Optional[Any] = None,
         plugins: Optional[List[Any]] = None,
         autoload_plugins: bool = False,
@@ -152,16 +149,6 @@ class Soniq:
                 `retry_jitter` set via the `@app.job(...)` decorator.
                 Also settable post-construct via ``app.retry_policy = ...``
                 up until ``await app.setup()`` runs.
-            serializer: Optional `soniq.utils.serialization.Serializer`
-                instance. Defaults to `JSONSerializer`. Custom serializers
-                are advisory only at present: backends store via JSONB /
-                JSON-text and read via the same path, so non-JSON formats
-                require a serializer-aware backend.
-                Also settable post-construct via ``app.serializer = ...``.
-            log_sink: Optional `soniq.features.logging.LogSink` instance.
-                When provided, log records flow into this sink instead of
-                (or in addition to) the built-in ``DatabaseLogHandler``.
-                Also settable post-construct via ``app.log_sink = ...``.
             metrics_sink: Optional `soniq.observability.MetricsSink`
                 instance. Defaults to `NoopMetricsSink`. Pass
                 `PrometheusMetricsSink()` to expose per-job metrics
@@ -196,8 +183,6 @@ class Soniq:
         # Pluggable extension points. Defaults are wired so callers that
         # never touch these fields keep the existing behavior verbatim.
         self._retry_policy = retry_policy or DEFAULT_RETRY_POLICY
-        self._serializer = serializer or DEFAULT_SERIALIZER
-        self._log_sink = log_sink  # None means "use the built-in handler"
         self._metrics_sink = metrics_sink or DEFAULT_METRICS_SINK
 
         # Settings with overrides
@@ -275,15 +260,6 @@ class Soniq:
         self._retry_policy = value
 
     @property
-    def serializer(self) -> Any:
-        return self._serializer
-
-    @serializer.setter
-    def serializer(self, value: Any) -> None:
-        self._check_setup_frozen("serializer")
-        self._serializer = value
-
-    @property
     def metrics_sink(self) -> Any:
         return self._metrics_sink
 
@@ -291,15 +267,6 @@ class Soniq:
     def metrics_sink(self, value: Any) -> None:
         self._check_setup_frozen("metrics_sink")
         self._metrics_sink = value
-
-    @property
-    def log_sink(self) -> Any:
-        return self._log_sink
-
-    @log_sink.setter
-    def log_sink(self, value: Any) -> None:
-        self._check_setup_frozen("log_sink")
-        self._log_sink = value
 
     @staticmethod
     def _auto_detect_backend(database_url: str) -> Any:
