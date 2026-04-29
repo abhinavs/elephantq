@@ -30,7 +30,7 @@ Key settings:
 | Variable | Default | Guidance |
 |----------|---------|----------|
 | `SONIQ_CONCURRENCY` | `4` | Number of concurrent jobs per worker process. Tune per workload and CPU -- IO-bound work tolerates higher values, CPU-bound work needs lower. |
-| `SONIQ_QUEUES` | `default` | Comma-separated list of queues this worker processes. |
+| `--queues` (CLI flag) | all queues | Comma-separated list passed to `soniq start --queues=...`. No env-var equivalent on the worker entrypoint; if unset, the worker pulls from every queue. |
 | `SONIQ_HEARTBEAT_INTERVAL` | `5` | How often workers send heartbeats (seconds). Lower values detect crashes faster but add minor DB load. |
 | `SONIQ_HEARTBEAT_TIMEOUT` | `300` | Seconds before a silent worker is considered dead. Its in-flight jobs get reset to `queued`. |
 | `SONIQ_CLEANUP_INTERVAL` | `300` | How often workers scan for stale peers (seconds). |
@@ -132,7 +132,7 @@ Conservative values that work well for most deployments:
 | Variable | Value | Notes |
 |----------|-------|-------|
 | `SONIQ_CONCURRENCY` | `4` | Safe starting point. Increase for IO-bound workloads. |
-| `SONIQ_QUEUES` | `default` | Override per worker group. |
+| `--queues` (CLI flag) | all queues | Pass `--queues=urgent,default` to scope a worker group to specific queues. |
 | `SONIQ_MAX_RETRIES` | `3` | Per-job override with `@app.job(max_retries=5)`. |
 | `SONIQ_JOB_TIMEOUT` | `300` | 5 minutes. Override per-job with `@app.job(timeout=600)`. Set to `0` to disable. |
 | `SONIQ_HEARTBEAT_INTERVAL` | `5` | Seconds between heartbeats. |
