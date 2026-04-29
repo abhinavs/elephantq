@@ -22,6 +22,7 @@ Within the core range:
 | `0004`  | `0004_scheduler.sql`            | `Soniq.setup()` |
 | `0005`  | `0005_webhooks.sql`             | `Soniq.setup()` |
 | `0006`  | `0006_logs.sql`                 | `Soniq.setup()` |
+| `0007`  | `0007_drop_failed_status.sql`   | `Soniq.setup()` |
 
 `Soniq.setup()` applies the `0001-0099` core slice. There is no
 `--features` flag any more: 0.0.3 always creates every soniq-owned table
@@ -46,6 +47,21 @@ that contract on the schema by:
 The DLQ table itself is `0003`, not `0002` - keeping the schema
 tightening separate from the table creation makes the intent of each
 migration legible at a glance.
+
+### What "drop failed status" means (`0007`)
+
+`docs/contracts/job_lifecycle.md` pins the live `soniq_jobs.status`
+values to `queued / processing / done / cancelled`. Failures either
+re-queue (status flips back to `queued`) or move into
+`soniq_dead_letter_jobs`; there is no `failed` row state. `0007`
+reconciles legacy installs by:
+
+1. Re-queuing any pre-existing `status='failed'` rows so the rebuilt
+   `CHECK` does not reject them.
+2. Replacing the column-level `CHECK` on `soniq_jobs.status` (and
+   dropping the redundant `soniq_jobs_status_no_dead_letter` guard
+   that `0002` added) with a single constraint pinning the four live
+   values.
 
 ### Additive core changes
 
