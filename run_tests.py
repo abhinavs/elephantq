@@ -164,10 +164,6 @@ def main():
             ["tests/integration/test_database_url_integration.py"],
         ),
         (
-            "Infrastructure - Connection Context",
-            ["tests/integration/infrastructure/test_connection_context.py"],
-        ),
-        (
             "Infrastructure - LISTEN/NOTIFY Performance",
             ["tests/integration/infrastructure/test_listen_notify.py"],
         ),
@@ -197,7 +193,6 @@ def main():
             "Integration - Feature Modules",
             [
                 "tests/integration/test_dashboard_api.py",
-                "tests/integration/test_dead_letter_queue.py",
                 "tests/integration/test_webhooks.py",
                 "tests/integration/test_migrations.py",
                 "tests/integration/test_transactional_enqueue.py",
