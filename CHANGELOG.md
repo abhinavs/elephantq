@@ -17,7 +17,7 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - CLI: `soniq setup`, `soniq start`, `soniq scheduler`, `soniq dashboard`, `soniq status`, `soniq workers`, dead-letter management.
 - Optional web dashboard (`soniq dashboard`), behind a feature flag.
 - Structured logging, webhook delivery, and metrics behind optional extras.
-- Pluggable extension points: `RetryPolicy`, `Serializer`, `LogSink`, and `MetricsSink`. Each ships a default and a `Soniq(...)` constructor parameter. `PrometheusMetricsSink` (under `pip install soniq[monitoring]`) emits `soniq_jobs_started_total`, `soniq_jobs_completed_total`, `soniq_job_duration_seconds`, and `soniq_jobs_in_progress` against a configurable registry / prefix.
+- Pluggable extension points: `RetryPolicy`, `Serializer`, `LogSink`, and `MetricsSink`. Each ships a default and a `Soniq(...)` constructor parameter. `PrometheusMetricsSink` (importable from a plain `pip install soniq` - `prometheus_client` is a default dependency) emits `soniq_jobs_started_total`, `soniq_jobs_completed_total`, `soniq_job_duration_seconds`, and `soniq_jobs_in_progress` against a configurable registry / prefix.
 
 ### Cross-service enqueue
 
@@ -89,6 +89,15 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - DLQ rows are written by the runtime only. There is no public
   `DeadLetterService.move(job_id)` helper; manual DLQ insertion was
   never a documented operation and is removed.
+- Packaging is batteries-included for runtime. `croniter` and
+  `prometheus_client` are now default dependencies of `soniq` (so
+  `@periodic` and `PrometheusMetricsSink` work from a plain
+  `pip install soniq`). The `soniq[scheduling]` and `soniq[monitoring]`
+  extras are removed - operators with those in their requirements files
+  must drop the markers (the bare `pip install soniq` covers both).
+  `psutil` is no longer a dependency of any extra (it was only used by
+  the deleted `soniq.features.metrics` module). The `dashboard`,
+  `sqlite`, `webhooks`, and `logging` extras are unchanged.
 
 ### Fixed
 
@@ -147,7 +156,8 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   runtime-events-out `MetricsSink` seam in `soniq.observability`. There
   is now exactly one metrics surface: implement
   `soniq.observability.MetricsSink` (or use the bundled
-  `PrometheusMetricsSink` under `pip install soniq[monitoring]`) and
+  `PrometheusMetricsSink`, importable from a plain `pip install soniq`
+  since `prometheus_client` is a default dependency) and
   pass it as `Soniq(metrics_sink=...)`. Dashboards that need historical
   rollups should query the `soniq_*` tables directly or scrape the
   Prometheus sink.

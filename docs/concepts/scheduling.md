@@ -1,12 +1,8 @@
 # Scheduling
 
-Soniq supports one-off delayed jobs and recurring schedules.
-
-## Setup
-
-```bash
-pip install soniq[scheduling]   # installs croniter for cron expressions
-```
+Soniq supports one-off delayed jobs and recurring schedules. The
+recurring scheduler ships in the default install (`croniter` is a
+default dependency as of 0.0.3) - no extra needed.
 
 ## One-off scheduling
 

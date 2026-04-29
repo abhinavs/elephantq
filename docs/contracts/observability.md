@@ -33,8 +33,8 @@ propagates and marks the job as failed even if the handler succeeded.
 historical state. Operators who need historical rollups have two
 choices:
 
-- Run `PrometheusMetricsSink` (under `pip install soniq[monitoring]`)
-  and let Prometheus + Grafana do the aggregation.
+- Run `PrometheusMetricsSink` (`prometheus_client` ships with the
+  default install) and let Prometheus + Grafana do the aggregation.
 - Query the `soniq_*` lifecycle tables directly. The dashboard's
   `/api/job-stats`, `/api/queue-stats`, and friends already expose the
   most common rollups; SQL against `soniq_jobs` and

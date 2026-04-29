@@ -67,11 +67,9 @@ export SONIQ_LOG_FORMAT=structured    # JSON output, easy to ship
 export SONIQ_METRICS_ENABLED=true
 ```
 
-Install the monitoring extra for Prometheus support:
-
-```bash
-pip install soniq[monitoring]
-```
+`prometheus_client` ships with the default `pip install soniq` - no
+extra needed. Wire it via `Soniq(metrics_sink=PrometheusMetricsSink())`
+or leave the default `NoopMetricsSink` in place if you do not scrape.
 
 ### What gets tracked
 
@@ -80,7 +78,6 @@ pip install soniq[monitoring]
 - Throughput (jobs per minute)
 - Success rate
 - Per-queue stats (depth, processing time, throughput)
-- System resources (CPU, memory, disk via `psutil`)
 
 ### CLI access
 

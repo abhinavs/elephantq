@@ -25,7 +25,6 @@ EXAMPLE_FILES = sorted(EXAMPLES_DIR.glob("*.py"))
 # AST-checked; only the live import is skipped.
 IMPORT_SKIP = {
     "transactional_enqueue.py": "fastapi",
-    "recurring_jobs.py": "croniter",
 }
 
 

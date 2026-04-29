@@ -103,7 +103,7 @@ def create_dashboard_app(soniq_app: "Soniq") -> "FastAPI":
     """
     if not FASTAPI_AVAILABLE:
         raise ImportError(
-            "FastAPI is required for dashboard. Install with: pip install fastapi uvicorn"
+            "Dashboard requires the dashboard extra. Install with: pip install 'soniq[dashboard]'"
         )
 
     data = DashboardService(soniq_app)
@@ -981,7 +981,7 @@ async def run_dashboard(
     """Run the dashboard server"""
     if not FASTAPI_AVAILABLE:
         raise ImportError(
-            "FastAPI is required for dashboard. Install with: pip install fastapi uvicorn"
+            "Dashboard requires the dashboard extra. Install with: pip install 'soniq[dashboard]'"
         )
 
     app = create_dashboard_app(soniq_app=soniq_app)

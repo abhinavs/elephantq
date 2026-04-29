@@ -1,6 +1,6 @@
 """Recurring jobs example.
 
-Requires: pip install soniq[scheduling]
+Runs on a plain `pip install soniq` - `croniter` is a default dependency.
 
 Start the scheduler process:
   soniq scheduler

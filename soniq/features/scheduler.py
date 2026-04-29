@@ -31,6 +31,8 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, AsyncIterator, Optional, Union
 
+from croniter import croniter  # type: ignore[import-untyped]
+
 from soniq.backends.helpers import rows_affected
 from soniq.backends.postgres import PostgresBackend
 from soniq.core.leadership import with_advisory_lock
@@ -40,20 +42,6 @@ if TYPE_CHECKING:
     from soniq.app import Soniq
 
 logger = logging.getLogger(__name__)
-
-
-try:
-    from croniter import croniter  # type: ignore[import-untyped]
-except ImportError:
-    croniter = None  # type: ignore[assignment,misc]
-
-
-def _require_croniter() -> None:
-    if croniter is None:
-        raise ImportError(
-            "croniter is required for cron-based recurring jobs. "
-            "Install with: pip install soniq[scheduling]"
-        )
 
 
 # Dataclass-shaped record used in-memory and as the row payload for
@@ -86,7 +74,6 @@ def _calculate_next_run(
             return None
         return current_time + timedelta(seconds=secs)
     if schedule_type == "cron":
-        _require_croniter()
         return croniter(schedule_value, current_time).get_next(datetime)  # type: ignore[no-any-return]
     return None
 
@@ -100,7 +87,6 @@ def _coerce_schedule(*, cron: Any, every: Any) -> tuple[str, str]:
 
     if cron is not None:
         expr = str(cron)  # builders override __str__
-        _require_croniter()
         if not croniter.is_valid(expr):
             raise ValueError(
                 f"Invalid cron expression: {expr!r}. "
