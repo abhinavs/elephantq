@@ -85,7 +85,7 @@ class SQLiteBackend:
                 args TEXT NOT NULL,
                 args_hash TEXT,
                 status TEXT NOT NULL DEFAULT 'queued'
-                    CHECK (status IN ('queued', 'processing', 'done', 'failed', 'cancelled')),
+                    CHECK (status IN ('queued', 'processing', 'done', 'cancelled')),
                 attempts INTEGER DEFAULT 0,
                 max_attempts INTEGER DEFAULT 3,
                 queue TEXT DEFAULT 'default',
@@ -449,15 +449,6 @@ class SQLiteBackend:
         assert self._conn is not None
         cursor = await self._conn.execute(
             "UPDATE soniq_jobs SET status='cancelled', updated_at=? WHERE id=? AND status='queued'",
-            (_now_iso(), job_id),
-        )
-        await self._conn.commit()
-        return bool(cursor.rowcount and cursor.rowcount > 0)
-
-    async def retry_job(self, job_id: str) -> bool:
-        assert self._conn is not None
-        cursor = await self._conn.execute(
-            "UPDATE soniq_jobs SET status='queued', attempts=0, last_error=NULL, updated_at=? WHERE id=? AND status='failed'",
             (_now_iso(), job_id),
         )
         await self._conn.commit()

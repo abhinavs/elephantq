@@ -309,17 +309,6 @@ class MemoryBackend:
             job["updated_at"] = datetime.now(timezone.utc)
             return True
 
-    async def retry_job(self, job_id: str) -> bool:
-        async with self._lock:
-            job = self._jobs.get(job_id)
-            if not job or job["status"] != "failed":
-                return False
-            job["status"] = "queued"
-            job["attempts"] = 0
-            job["last_error"] = None
-            job["updated_at"] = datetime.now(timezone.utc)
-            return True
-
     async def delete_job(self, job_id: str) -> bool:
         async with self._lock:
             if job_id in self._jobs:

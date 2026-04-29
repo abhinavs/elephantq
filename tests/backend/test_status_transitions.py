@@ -100,11 +100,11 @@ async def test_result_ttl_zero_deletes_immediately(backend):
     assert await backend.get_job("j1") is None
 
 
-async def test_retry_job_after_dead_letter_returns_false(backend):
-    """Under DLQ Option A the row leaves soniq_jobs on dead-letter, so
-    retry_job (which only operates on soniq_jobs) cannot resurrect it.
-    Resurrection lives on DeadLetterService.replay - see
-    docs/contracts/dead_letter.md."""
+async def test_dead_letter_removes_row_from_soniq_jobs(backend):
+    """Under DLQ Option A the row leaves ``soniq_jobs`` on dead-letter
+    and lives exclusively in ``soniq_dead_letter_jobs``. Resurrection
+    lives on ``DeadLetterService.replay`` - see
+    ``docs/contracts/dead_letter.md``."""
     await backend.create_job(
         job_id="j1",
         job_name="mod.func",
@@ -123,20 +123,4 @@ async def test_retry_job_after_dead_letter_returns_false(backend):
         reason="max_retries_exceeded",
     )
 
-    assert await backend.retry_job("j1") is False
     assert await backend.get_job("j1") is None
-
-
-async def test_retry_queued_job_returns_false(backend):
-    """retry_job on a queued job should return False."""
-    await backend.create_job(
-        job_id="j1",
-        job_name="mod.func",
-        args={},
-        args_hash=None,
-        max_attempts=3,
-        priority=100,
-        queue="default",
-        unique=False,
-    )
-    assert await backend.retry_job("j1") is False

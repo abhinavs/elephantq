@@ -28,7 +28,6 @@ FORBIDDEN_GLOBAL_WRAPPERS = frozenset(
         "get_job",
         "get_result",
         "cancel_job",
-        "retry_job",
         "delete_job",
         "list_jobs",
         "get_queue_stats",

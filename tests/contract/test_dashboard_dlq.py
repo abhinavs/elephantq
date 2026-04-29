@@ -5,10 +5,10 @@ Per ``docs/contracts/dead_letter.md`` (Option A), dead-letter rows live
 exclusively in ``soniq_dead_letter_jobs``. ``soniq_jobs.status`` does
 not contain ``'dead_letter'`` (the column-level CHECK rejects it).
 
-The dashboard's ``DashboardService.get_job_stats`` and ``retry_job``
-must therefore consult ``soniq_dead_letter_jobs`` for DLQ counts and
-DLQ-row retry semantics. Pre-fix, both queried
-``soniq_jobs.status = 'dead_letter'`` which can never match.
+The dashboard's ``DashboardService.get_job_stats`` consults
+``soniq_dead_letter_jobs`` for DLQ counts; ``replay_dead_letter``
+delegates to ``DeadLetterService.replay`` so the DLQ row is preserved
+as the audit trail and a fresh ``soniq_jobs`` row is enqueued.
 """
 
 from __future__ import annotations
@@ -81,26 +81,36 @@ async def test_get_job_stats_dlq_count_reads_from_dlq_table(app):
 
 
 @pytest.mark.asyncio
-async def test_retry_job_resurrects_dlq_row_back_to_jobs(app):
-    """retry_job(<dlq id>) must move the DLQ row back into soniq_jobs as queued."""
+async def test_replay_dead_letter_creates_new_queued_job_and_preserves_dlq_row(app):
+    """``replay_dead_letter`` enqueues a fresh ``soniq_jobs`` row with a
+    new id and increments ``resurrection_count`` on the DLQ row.
+
+    The DLQ row is preserved as the audit trail; the original id stays
+    in ``soniq_dead_letter_jobs`` and operators can replay multiple times.
+    """
+
+    # Register the seeded job_name so DeadLetterService.replay accepts it.
+    @app.job(name="test.dlq")
+    async def _noop() -> None:
+        return None
+
     dlq_id = await _seed_dlq_row(app)
     data = DashboardService(app)
 
-    success = await data.retry_job(dlq_id)
-    assert success, "retry_job on a DLQ row must succeed"
+    new_job_id = await data.replay_dead_letter(dlq_id)
+    assert new_job_id, "replay_dead_letter on a DLQ row must succeed"
+    assert new_job_id != dlq_id, "Replay must mint a fresh soniq_jobs.id"
 
     pool = await app._get_pool()
     async with pool.acquire() as conn:
-        jobs_row = await conn.fetchrow(
-            "SELECT status FROM soniq_jobs WHERE id = $1", uuid.UUID(dlq_id)
+        new_row = await conn.fetchrow(
+            "SELECT status FROM soniq_jobs WHERE id = $1", uuid.UUID(new_job_id)
         )
         dlq_row = await conn.fetchrow(
-            "SELECT id FROM soniq_dead_letter_jobs WHERE id = $1", uuid.UUID(dlq_id)
+            "SELECT id, resurrection_count FROM soniq_dead_letter_jobs WHERE id = $1",
+            uuid.UUID(dlq_id),
         )
 
-    assert jobs_row is not None, "Retry should have re-inserted the row into soniq_jobs"
-    assert jobs_row["status"] == "queued"
-    assert dlq_row is None, (
-        "DLQ row should be removed after retry (cleanly resurrected back into "
-        "the live queue)"
-    )
+    assert new_row is not None and new_row["status"] == "queued"
+    assert dlq_row is not None, "DLQ row must be preserved as audit trail"
+    assert dlq_row["resurrection_count"] == 1

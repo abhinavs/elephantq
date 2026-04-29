@@ -189,14 +189,18 @@ def create_dashboard_app(soniq_app: "Soniq") -> "FastAPI":
         """Get job processing metrics"""
         return await data.get_job_metrics(hours=hours)
 
-    @app.post("/api/jobs/{job_id}/retry")
-    async def api_retry_job(job_id: str, request: Request) -> Dict[str, str]:
-        """Retry a failed job"""
+    @app.post("/api/dead-letter/{dead_letter_id}/replay")
+    async def api_replay_dead_letter(
+        dead_letter_id: str, request: Request
+    ) -> Dict[str, str]:
+        """Replay a dead-letter row back into the live queue."""
         _require_write_authorization(request)
-        success = await data.retry_job(job_id)
-        if not success:
-            raise HTTPException(status_code=400, detail="Unable to retry job")
-        return {"message": "Job queued for retry"}
+        new_job_id = await data.replay_dead_letter(dead_letter_id)
+        if not new_job_id:
+            raise HTTPException(
+                status_code=400, detail="Unable to replay dead-letter job"
+            )
+        return {"message": "Dead-letter job replayed", "job_id": new_job_id}
 
     @app.delete("/api/jobs/{job_id}")
     async def api_delete_job(job_id: str, request: Request) -> Dict[str, str]:
@@ -518,12 +522,10 @@ def get_dashboard_html() -> str:
         }
         .status-done { background: rgba(114, 227, 167, 0.18); color: #bdf7d9; }
         .status-queued { background: rgba(255, 209, 102, 0.18); color: #ffe2a3; }
-        .status-failed { background: rgba(255, 107, 107, 0.18); color: #ffc0c0; }
-        .status-dead_letter { background: rgba(255, 107, 107, 0.12); color: #ffb0b0; }
+        .status-cancelled { background: rgba(255, 107, 107, 0.12); color: #ffb0b0; }
         [data-theme="light"] .status-done { background: rgba(42, 160, 122, 0.18); color: #1b5e4b; }
         [data-theme="light"] .status-queued { background: rgba(255, 176, 74, 0.22); color: #6b4a00; }
-        [data-theme="light"] .status-failed { background: rgba(224, 75, 75, 0.18); color: #7a1e1e; }
-        [data-theme="light"] .status-dead_letter { background: rgba(224, 75, 75, 0.12); color: #7a1e1e; }
+        [data-theme="light"] .status-cancelled { background: rgba(224, 75, 75, 0.12); color: #7a1e1e; }
         .loading {
             text-align: center;
             padding: 16px;
@@ -769,8 +771,8 @@ def get_dashboard_html() -> str:
                     <div class="stat-label">Done</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-number">${stats.failed}</div>
-                    <div class="stat-label">Failed</div>
+                    <div class="stat-number">${stats.processing}</div>
+                    <div class="stat-label">Processing</div>
                 </div>
                 <div class="stat-card">
                     <div class="stat-number">${stats.dead_letter}</div>
@@ -815,7 +817,6 @@ def get_dashboard_html() -> str:
             `;
 
             jobs.forEach(job => {
-                const canRetry = job.status === 'failed' || job.status === 'dead_letter';
                 html += `
                     <tr>
                         <td>${job.job_name.split('.').pop()}</td>
@@ -825,7 +826,6 @@ def get_dashboard_html() -> str:
                         <td>${formatDate(job.created_at)}</td>
                         ${actionsEnabled ? `
                         <td>
-                            ${canRetry ? `<button class="btn btn-primary" onclick="retryJob('${job.id}')">Retry</button>` : ''}
                             <button class="btn btn-danger" onclick="deleteJob('${job.id}')">Delete</button>
                         </td>` : ''}
                     </tr>
@@ -855,8 +855,9 @@ def get_dashboard_html() -> str:
                             <th>Queue</th>
                             <th>Total</th>
                             <th>Queued</th>
+                            <th>Processing</th>
                             <th>Done</th>
-                            <th>Failed</th>
+                            <th>Cancelled</th>
                             <th>Dead Letter</th>
                             <th>Avg Processing</th>
                         </tr>
@@ -870,8 +871,9 @@ def get_dashboard_html() -> str:
                         <td>${queue.queue}</td>
                         <td>${queue.total_jobs}</td>
                         <td>${queue.queued}</td>
+                        <td>${queue.processing}</td>
                         <td>${queue.done}</td>
-                        <td>${queue.failed}</td>
+                        <td>${queue.cancelled}</td>
                         <td>${queue.dead_letter}</td>
                         <td>${formatDuration(queue.avg_processing_time_ms)}</td>
                     </tr>
@@ -900,8 +902,8 @@ def get_dashboard_html() -> str:
                         <div class="stat-label">Successful</div>
                     </div>
                     <div class="stat-card">
-                        <div class="stat-number">${metrics.failed}</div>
-                        <div class="stat-label">Failed</div>
+                        <div class="stat-number">${metrics.dead_lettered}</div>
+                        <div class="stat-label">Dead Lettered</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-number">${metrics.success_rate}%</div>
@@ -919,18 +921,6 @@ def get_dashboard_html() -> str:
             `;
 
             document.getElementById('metrics').innerHTML = html;
-        }
-
-        async function retryJob(jobId) {
-            if (!confirm('Retry this job?')) return;
-            try {
-                const response = await fetch(`/api/jobs/${jobId}/retry`, { method: 'POST' });
-                if (response.ok) {
-                    await updateAll();
-                }
-            } catch (error) {
-                console.error('Error retrying job:', error);
-            }
         }
 
         async function deleteJob(jobId) {

@@ -243,15 +243,6 @@ class JobStore(Protocol):
         """Cancel a queued job. Return True if cancelled."""
         ...
 
-    async def retry_job(self, job_id: str) -> bool:
-        """Reset a failed job to queued. Return True if reset.
-
-        Operates on ``soniq_jobs`` only. DLQ rows live in
-        ``soniq_dead_letter_jobs`` under DLQ Option A and are resurrected
-        via ``DeadLetterService.replay``, not this method.
-        """
-        ...
-
     async def delete_job(self, job_id: str) -> bool:
         """Delete a job entirely. Return True if deleted."""
         ...

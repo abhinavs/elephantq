@@ -646,19 +646,6 @@ class PostgresBackend:
             )
             return _rows_affected(result) == 1
 
-    async def retry_job(self, job_id: str) -> bool:
-        uid = uuid.UUID(job_id)
-        async with self.acquire() as conn:
-            result = await conn.execute(
-                """
-                UPDATE soniq_jobs
-                SET status = 'queued', attempts = 0, last_error = NULL, updated_at = NOW()
-                WHERE id = $1 AND status = 'failed'
-                """,
-                uid,
-            )
-            return _rows_affected(result) == 1
-
     async def delete_job(self, job_id: str) -> bool:
         uid = uuid.UUID(job_id)
         async with self.acquire() as conn:

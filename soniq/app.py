@@ -1263,19 +1263,6 @@ class Soniq:
         await self._ensure_initialized()
         return await self._backend.cancel_job(job_id)  # type: ignore[union-attr]
 
-    async def retry_job(self, job_id: str) -> bool:
-        """
-        Retry a failed job.
-
-        Args:
-            job_id: UUID of the job to retry
-
-        Returns:
-            True if job was queued for retry, False if job wasn't found or can't be retried
-        """
-        await self._ensure_initialized()
-        return await self._backend.retry_job(job_id)  # type: ignore[union-attr]
-
     async def delete_job(self, job_id: str) -> bool:
         """
         Delete a job from the queue.
