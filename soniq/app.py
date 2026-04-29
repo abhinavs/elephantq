@@ -131,7 +131,6 @@ class Soniq:
         database_url: Optional[str] = None,
         backend: Optional[Any] = None,
         retry_policy: Optional[Any] = None,
-        log_sink: Optional[Any] = None,
         metrics_sink: Optional[Any] = None,
         plugins: Optional[List[Any]] = None,
         autoload_plugins: bool = False,
@@ -150,11 +149,6 @@ class Soniq:
                 `retry_jitter` set via the `@app.job(...)` decorator.
                 Also settable post-construct via ``app.retry_policy = ...``
                 up until ``await app.setup()`` runs.
-            log_sink: Optional `soniq.features.logging.LogSink` instance.
-                Any object exposing the stdlib ``logging.Handler.emit``
-                shape satisfies the Protocol; pass a stdlib handler or a
-                third-party Sentry / Datadog handler directly.
-                Also settable post-construct via ``app.log_sink = ...``.
             metrics_sink: Optional `soniq.observability.MetricsSink`
                 instance. Defaults to `NoopMetricsSink`. Pass
                 `PrometheusMetricsSink()` to expose per-job metrics
@@ -189,7 +183,6 @@ class Soniq:
         # Pluggable extension points. Defaults are wired so callers that
         # never touch these fields keep the existing behavior verbatim.
         self._retry_policy = retry_policy or DEFAULT_RETRY_POLICY
-        self._log_sink = log_sink  # None means "use the built-in handler"
         self._metrics_sink = metrics_sink or DEFAULT_METRICS_SINK
 
         # Settings with overrides
@@ -243,8 +236,8 @@ class Soniq:
     def _check_setup_frozen(self, attr: str) -> None:
         """Refuse to mutate a pluggable extension point after setup() ran.
 
-        ``retry_policy`` / ``serializer`` / ``metrics_sink`` / ``log_sink``
-        are read by the worker construction path. Letting callers swap them
+        ``retry_policy`` and ``metrics_sink`` are read by the worker
+        construction path. Letting callers swap them
         after the worker has captured a reference would silently fork
         behavior between in-flight and future jobs; per O.4 they are
         settable up until ``_ensure_initialized()`` runs.
@@ -274,15 +267,6 @@ class Soniq:
     def metrics_sink(self, value: Any) -> None:
         self._check_setup_frozen("metrics_sink")
         self._metrics_sink = value
-
-    @property
-    def log_sink(self) -> Any:
-        return self._log_sink
-
-    @log_sink.setter
-    def log_sink(self, value: Any) -> None:
-        self._check_setup_frozen("log_sink")
-        self._log_sink = value
 
     @staticmethod
     def _auto_detect_backend(database_url: str) -> Any:

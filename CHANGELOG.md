@@ -17,7 +17,7 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - CLI: `soniq setup`, `soniq start`, `soniq scheduler`, `soniq dashboard`, `soniq status`, `soniq workers`, dead-letter management.
 - Optional web dashboard (`soniq dashboard`), behind a feature flag.
 - Structured logging, webhook delivery, and metrics behind optional extras.
-- Pluggable extension points: `RetryPolicy`, `Serializer`, `LogSink`, and `MetricsSink`. Each ships a default and a `Soniq(...)` constructor parameter. `PrometheusMetricsSink` (importable from a plain `pip install soniq` - `prometheus_client` is a default dependency) emits `soniq_jobs_started_total`, `soniq_jobs_completed_total`, `soniq_job_duration_seconds`, and `soniq_jobs_in_progress` against a configurable registry / prefix.
+- Pluggable extension points: `RetryPolicy` and `MetricsSink`. Each ships a default and a `Soniq(...)` constructor parameter. `PrometheusMetricsSink` (importable from a plain `pip install soniq` - `prometheus_client` is a default dependency) emits `soniq_jobs_started_total`, `soniq_jobs_completed_total`, `soniq_job_duration_seconds`, and `soniq_jobs_in_progress` against a configurable registry / prefix.
 
 ### Cross-service enqueue
 
@@ -147,8 +147,12 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
   Protocol and `JSONSerializer` helper (`soniq.utils.serialization`)
   are removed alongside it. Job arguments and results continue to be
   JSON-encoded end-to-end against JSONB / JSON-text columns. The
-  `log_sink=` knob and `LogSink` Protocol stay; they are part of the
-  documented plugin extension surface.
+  `log_sink=` constructor parameter and the `LogSink` Protocol in
+  `soniq.features.logging` are removed for the same reason: they were
+  publicly documented, but no runtime path read `_log_sink`. Apps that
+  need custom log routing should configure stdlib `logging` directly
+  (the same handlers worked before; the knob just never plumbed them
+  anywhere).
 - The `soniq.features.metrics` module is removed, along with the
   `soniq metrics` CLI subcommand. The in-memory `MetricsCollector` /
   `MetricsAnalyzer` / `AlertManager` / `MetricsService` stack was an

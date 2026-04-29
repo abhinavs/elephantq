@@ -1,18 +1,10 @@
 """
 Structured logging surface for Soniq.
 
-Two pieces of public API live here:
-
-- ``LogSink`` Protocol - the plugin extension point. Any object exposing
-  ``emit(record)`` (the stdlib ``logging.Handler`` shape) satisfies it,
-  so users can pass ``StreamHandler``, ``RotatingFileHandler``,
-  ``SysLogHandler``, or a third-party Sentry / Datadog handler directly
-  to ``Soniq(log_sink=...)``.
-- ``LogService`` / ``LogAnalyzer`` - operator-facing read paths over the
-  ``soniq_logs`` table populated by structured-logging consumers.
+Operator-facing read paths over the ``soniq_logs`` table populated by
+structured-logging consumers: ``LogService`` and ``LogAnalyzer``.
 """
 
-import logging
 import re
 from contextlib import asynccontextmanager
 from typing import (
@@ -22,24 +14,10 @@ from typing import (
     Dict,
     List,
     Optional,
-    Protocol,
-    runtime_checkable,
 )
 
 if TYPE_CHECKING:
     from soniq.app import Soniq
-
-
-@runtime_checkable
-class LogSink(Protocol):
-    """A ``logging.Handler``-compatible destination for Soniq log records.
-
-    Any object that exposes ``emit(record)`` satisfies the Protocol; that
-    includes the stdlib's ``StreamHandler``, ``RotatingFileHandler``,
-    ``SysLogHandler``, and most third-party handlers.
-    """
-
-    def emit(self, record: logging.LogRecord) -> None: ...
 
 
 _VALID_TABLE_NAME = re.compile(r"^[a-z_][a-z0-9_]*$")
@@ -185,9 +163,9 @@ class LogAnalyzer:
 class LogService:
     """High-level log query service bound to a Soniq instance.
 
-    Wraps a per-app ``LogAnalyzer``. The ``LogSink`` Protocol is the
-    extension point for plugging in non-database log destinations; this
-    service is purely about *reading* the structured log table.
+    Wraps a per-app ``LogAnalyzer``. Purely about *reading* the
+    structured log table; emission is handled by the application's
+    own ``logging`` configuration.
     """
 
     def __init__(self, app: "Soniq"):

@@ -1,15 +1,12 @@
 """
-Soniq exposes three pluggable extension points in 0.0.3:
+Soniq exposes two pluggable extension points in 0.0.3:
 
 - `RetryPolicy` (`soniq.core.retry`)
-- `LogSink` (`soniq.features.logging`)
 - `MetricsSink` (`soniq.observability`)
 
 Each ships a default implementation and a `Soniq(...)` constructor
 parameter. These tests pin the contract.
 """
-
-import logging
 
 import pytest
 
@@ -21,7 +18,6 @@ from soniq.core.retry import (
     ExponentialBackoff,
     RetryPolicy,
 )
-from soniq.features.logging import LogSink
 from soniq.testing.memory_backend import MemoryBackend
 
 
@@ -41,25 +37,11 @@ def test_soniq_accepts_custom_retry_policy():
     assert app._retry_policy.delay_for(attempt=1, job_meta={}, exc=Exception()) == 0.1
 
 
-def test_log_sink_protocol_accepts_stdlib_handler():
-    """`LogSink` is the contract used by the plugin examples; a stdlib
-    `logging.Handler` must satisfy it without subclassing."""
-    handler = logging.StreamHandler()
-    assert isinstance(handler, LogSink)
-
-
-def test_soniq_accepts_custom_log_sink():
-    class _Sink:
-        def __init__(self):
-            self.records: list[logging.LogRecord] = []
-
-        def emit(self, record: logging.LogRecord) -> None:
-            self.records.append(record)
-
-    sink = _Sink()
-    app = Soniq(database_url="postgresql://user:pass@localhost/test", log_sink=sink)
-    assert app.log_sink is sink
-    assert app._log_sink is sink
+def test_soniq_no_log_sink_attr():
+    """``log_sink`` was a half-wired knob and was removed in 0.0.3."""
+    app = Soniq(database_url="postgresql://user:pass@localhost/test")
+    assert not hasattr(app, "log_sink")
+    assert not hasattr(app, "_log_sink")
 
 
 def test_soniq_no_serializer_attr():
