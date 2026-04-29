@@ -78,6 +78,44 @@ The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Default SQLite backend filename is `soniq.db`.
 - Connection pool sizing is validated at worker startup: `SONIQ_POOL_MAX_SIZE` must be at least `SONIQ_CONCURRENCY + SONIQ_POOL_HEADROOM`; the worker refuses to start otherwise.
 
+### Breaking
+
+- `app.enqueue(...)` with `unique=True` or `dedup_key=...` now always
+  returns the canonical row id. The old code path could return a
+  synthetic id when the dedup row transitioned mid-flight; the
+  single-statement `INSERT ... ON CONFLICT DO UPDATE` rewrite removes
+  that fallback. Callers that compared returned ids against
+  `synthetic-*` strings need to drop that branch.
+- DLQ rows are written by the runtime only. There is no public
+  `DeadLetterService.move(job_id)` helper; manual DLQ insertion was
+  never a documented operation and is removed.
+
+### Fixed
+
+- `soniq setup` against a missing Postgres database now creates the
+  database before initializing the connection pool, instead of failing
+  at pool init.
+- Dashboard DLQ semantics: `get_job_stats`, `get_queue_stats`,
+  `get_job_timeline`, `get_system_health`, and `get_task_registry_drift`
+  read DLQ counts from `soniq_dead_letter_jobs` rather than the
+  legacy `status='dead_letter'` filter on `soniq_jobs`. Retry from the
+  dashboard resurrects the DLQ row in a single transaction.
+
+### Changed
+
+- All soniq-owned tables (`soniq_jobs`, `soniq_dead_letter_jobs`,
+  `soniq_scheduled_jobs`, `soniq_webhook_*`, `soniq_logs`) are created
+  unconditionally by the core migration set. The `--features` flag and
+  per-feature setup gating are gone; tables for features the operator
+  doesn't use are empty but present.
+- Every CLI subcommand (`setup`, `start`, `status`, `workers`,
+  `dashboard`, `dead-letter`, `scheduler`, `migrate-status`, `tasks`)
+  routes through a single `--database-url` resolution helper. No
+  subcommand reaches for a process-global Soniq.
+- Two-instance isolation is now a tested contract: per-instance
+  settings, registries, and backends. The `check_no_global_settings.py`
+  pre-commit hook + the cross-instance bleed integration test pin it.
+
 ### Removed
 
 - The process-global Soniq convenience surface is gone. There is no
