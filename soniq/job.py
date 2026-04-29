@@ -27,13 +27,18 @@ class Snooze:
 
 
 class JobStatus(str, Enum):
-    """Job lifecycle statuses."""
+    """Job lifecycle statuses for ``soniq_jobs.status``.
+
+    See ``docs/contracts/job_lifecycle.md``. The four live values are
+    the only ones any backend ever writes to ``soniq_jobs``. Failures
+    either re-queue (``status`` flips back to ``queued``) or move
+    rows into ``soniq_dead_letter_jobs``; there is no ``failed`` or
+    ``dead_letter`` row state.
+    """
 
     QUEUED = "queued"
     PROCESSING = "processing"
     DONE = "done"
-    FAILED = "failed"
-    DEAD_LETTER = "dead_letter"
     CANCELLED = "cancelled"
 
 
@@ -46,7 +51,7 @@ class JobContext:
     parameter with this type annotation.
 
     Example:
-        @soniq.job()
+        @app.job()
         async def process_order(order_id: str, ctx: JobContext):
             print(f"Job {ctx.job_id}, attempt {ctx.attempt}")
 

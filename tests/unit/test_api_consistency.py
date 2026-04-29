@@ -1,29 +1,19 @@
 """
-Tests for API consistency between global and instance APIs.
+Tests for API consistency on the Soniq instance.
 """
 
 import inspect
 
+from soniq.app import Soniq
 
-def test_list_jobs_default_limit_consistent():
+
+def test_list_jobs_has_limit_param():
     """
-    list_jobs default limit must be the same across global and instance APIs.
+    list_jobs on the Soniq instance must have a 'limit' parameter with a default.
     """
-    import soniq
-    from soniq.app import Soniq
-
-    # Get default limit from global function
-    sig_global = inspect.signature(soniq.list_jobs)
-    global_default = sig_global.parameters["limit"].default
-
-    # Get default limit from instance method
     sig_instance = inspect.signature(Soniq.list_jobs)
-    instance_default = sig_instance.parameters["limit"].default
-
-    assert global_default == instance_default, (
-        f"list_jobs default limit inconsistent: "
-        f"global={global_default}, instance={instance_default}"
-    )
+    assert "limit" in sig_instance.parameters
+    assert sig_instance.parameters["limit"].default is not inspect.Parameter.empty
 
 
 def test_no_features_umbrella():

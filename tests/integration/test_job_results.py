@@ -13,6 +13,7 @@ import uuid
 
 import pytest
 
+from soniq import Soniq
 from soniq.backends.postgres import PostgresBackend
 from soniq.core.processor import process_job_via_backend
 from tests.db_utils import TEST_DATABASE_URL
@@ -80,10 +81,8 @@ async def test_result_none_when_handler_returns_nothing(backend):
 
 @pytest.mark.asyncio
 async def test_end_to_end_get_result_via_app():
-    """Enqueue via global API, process, retrieve result."""
-    import soniq
-
-    app = soniq.get_global_app()
+    """Enqueue via instance API, process, retrieve result."""
+    app = Soniq(database_url=TEST_DATABASE_URL)
 
     @app.job(name="compute_total")
     async def compute_total(a: int, b: int):
@@ -101,6 +100,8 @@ async def test_end_to_end_get_result_via_app():
 
     result = await app.get_result(job_id)
     assert result == {"total": 42}
+
+    await app.close()
 
 
 @pytest.mark.asyncio

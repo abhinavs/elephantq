@@ -20,7 +20,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev,dashboard,monitoring]"
+          pip install -e ".[dev]"
           pip install mypy
 
       - name: Check formatting with black
@@ -51,8 +51,7 @@ jobs:
             soniq/schedules.py \
             soniq/core/middleware.py \
             soniq/core/retry.py \
-            soniq/observability/metrics.py \
-            soniq/utils/serialization.py
+            soniq/observability/metrics.py
 
       - name: No global get_settings() in core paths
         run: scripts/check_no_global_settings.py

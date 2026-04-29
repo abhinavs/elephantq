@@ -10,7 +10,6 @@ or the helper types (``WebhookTransport``, ``WebhookEvent``, ...).
 from . import (
     dead_letter,
     logging,
-    metrics,
     scheduler,
     signing,
     webhooks,
@@ -19,7 +18,6 @@ from . import (
 __all__ = [
     "dead_letter",
     "logging",
-    "metrics",
     "scheduler",
     "signing",
     "webhooks",

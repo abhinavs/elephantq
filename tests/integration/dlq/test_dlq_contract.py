@@ -19,7 +19,7 @@ from tests.integration.dlq.conftest import (
     dlq_count,
     dlq_get,
     purge,
-    resurrect,
+    replay,
 )
 
 
@@ -219,7 +219,7 @@ async def test_dlq_replay_creates_new_job(backend):
         job_id, attempts=3, error="boom", reason="max_retries_exceeded"
     )
 
-    new_job_id = await resurrect(backend, job_id)
+    new_job_id = await replay(backend, job_id)
 
     new_job = await backend.get_job(new_job_id)
     assert new_job is not None
@@ -239,8 +239,8 @@ async def test_dlq_replay_twice(backend):
         job_id, attempts=3, error="boom", reason="max_retries_exceeded"
     )
 
-    new_job_id_1 = await resurrect(backend, job_id)
-    new_job_id_2 = await resurrect(backend, job_id)
+    new_job_id_1 = await replay(backend, job_id)
+    new_job_id_2 = await replay(backend, job_id)
 
     assert new_job_id_1 != new_job_id_2
     assert await backend.get_job(new_job_id_1) is not None

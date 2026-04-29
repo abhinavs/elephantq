@@ -4,13 +4,20 @@
 
 Python 3.10 or later.
 
-## Core install
+## Core install (batteries-included)
 
 ```bash
 pip install soniq
 ```
 
-This pulls in `asyncpg` (PostgreSQL driver), `click`, and `pydantic-settings`. Enough to run jobs on PostgreSQL right away.
+This pulls in `asyncpg` (PostgreSQL driver), `pydantic-settings`,
+`croniter` (so `@periodic` and the recurring scheduler work out of the
+box), and `prometheus_client` (so `PrometheusMetricsSink` is importable).
+Enough to run jobs, schedules, and metrics on PostgreSQL right away.
+
+The scheduler and Prometheus sink stay dormant unless you wire them: the
+scheduler only runs if you start it, and the default `MetricsSink` is
+`NoopMetricsSink`.
 
 ## Optional extras
 
@@ -18,15 +25,13 @@ Install only what you need:
 
 ```bash
 pip install soniq[sqlite]       # aiosqlite -- SQLite backend for local dev
-pip install soniq[scheduling]   # croniter -- recurring/cron jobs
 pip install soniq[webhooks]     # aiohttp + cryptography -- HTTP callbacks and payload signing
 pip install soniq[dashboard]    # fastapi + uvicorn -- web dashboard
-pip install soniq[monitoring]   # prometheus-client + psutil -- metrics and health checks
 pip install soniq[logging]      # structlog -- structured JSON logging
 pip install soniq[full]         # everything above
 ```
 
-Combine extras freely: `pip install soniq[sqlite,scheduling,dashboard]`.
+Combine extras freely: `pip install soniq[sqlite,dashboard]`.
 
 ## Backend auto-detection
 
@@ -72,10 +77,10 @@ Here are the available flags:
 
 | Environment variable | What it enables | Extra needed |
 |---|---|---|
-| `SONIQ_SCHEDULING_ENABLED` | Recurring jobs and cron schedules | `scheduling` |
+| `SONIQ_SCHEDULING_ENABLED` | Recurring jobs and cron schedules | -- (default) |
 | `SONIQ_DEAD_LETTER_QUEUE_ENABLED` | Dead-letter queue for permanently failed jobs | -- |
 | `SONIQ_TIMEOUTS_ENABLED` | Per-job timeout enforcement | -- |
-| `SONIQ_METRICS_ENABLED` | Prometheus-style counters and health metrics | `monitoring` |
+| `SONIQ_METRICS_ENABLED` | Prometheus-style counters and health metrics | -- (default) |
 | `SONIQ_LOGGING_ENABLED` | Structured JSON logging | `logging` |
 | `SONIQ_WEBHOOKS_ENABLED` | HTTP webhook notifications on job events | `webhooks` |
 | `SONIQ_SIGNING_ENABLED` | Webhook payload signing and secret helpers | `webhooks` |

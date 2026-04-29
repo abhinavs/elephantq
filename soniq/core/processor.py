@@ -55,11 +55,6 @@ async def _execute_job_safely(
     """
     Execute a job function safely with proper error handling.
 
-    The middleware chain is built lazily on first dispatch for this
-    ``job_meta`` and cached as ``job_meta["_middleware_chain"]`` keyed
-    by the middleware list identity. Hooks live around this call and
-    are unaffected.
-
     Args:
         job_record: Job record from database
         job_meta: Job metadata from registry

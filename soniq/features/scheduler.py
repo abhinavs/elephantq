@@ -31,9 +31,10 @@ from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, AsyncIterator, Optional, Union
 
+from croniter import croniter  # type: ignore[import-untyped]
+
 from soniq.backends.helpers import rows_affected
 from soniq.backends.postgres import PostgresBackend
-from soniq.backends.postgres.migration_runner import MigrationRunner
 from soniq.core.leadership import with_advisory_lock
 from soniq.core.naming import validate_task_name
 
@@ -41,20 +42,6 @@ if TYPE_CHECKING:
     from soniq.app import Soniq
 
 logger = logging.getLogger(__name__)
-
-
-try:
-    from croniter import croniter  # type: ignore[import-untyped]
-except ImportError:
-    croniter = None  # type: ignore[assignment,misc]
-
-
-def _require_croniter() -> None:
-    if croniter is None:
-        raise ImportError(
-            "croniter is required for cron-based recurring jobs. "
-            "Install with: pip install soniq[scheduling]"
-        )
 
 
 # Dataclass-shaped record used in-memory and as the row payload for
@@ -87,7 +74,6 @@ def _calculate_next_run(
             return None
         return current_time + timedelta(seconds=secs)
     if schedule_type == "cron":
-        _require_croniter()
         return croniter(schedule_value, current_time).get_next(datetime)  # type: ignore[no-any-return]
     return None
 
@@ -101,7 +87,6 @@ def _coerce_schedule(*, cron: Any, every: Any) -> tuple[str, str]:
 
     if cron is not None:
         expr = str(cron)  # builders override __str__
-        _require_croniter()
         if not croniter.is_valid(expr):
             raise ValueError(
                 f"Invalid cron expression: {expr!r}. "
@@ -324,20 +309,14 @@ class Scheduler:
         self._check_interval = 30
 
     async def setup(self) -> int:
-        """Apply scheduler migrations (``0010_*``).
+        """No-op in 0.0.3+: the scheduler table is part of the core schema
+        and is applied by ``Soniq.setup()`` (migration ``0004_scheduler.sql``).
 
-        Idempotent. Safe to call repeatedly; the migration runner
-        records applied versions in ``soniq_migrations`` and skips
-        anything already there. Memory and SQLite backends are no-ops -
-        the scheduler keeps state in-process there.
+        Kept on the surface to avoid AttributeError for prior callers.
+        Returns 0 (no migrations applied here).
         """
         await self._app.ensure_initialized()
-        backend = self._app.backend
-        if not isinstance(backend, PostgresBackend):
-            return 0
-        return await MigrationRunner(backend=backend).run_migrations(
-            version_filter="0010"
-        )
+        return 0
 
     # ------------------------------------------------------------------
     # Storage selection and cache maintenance

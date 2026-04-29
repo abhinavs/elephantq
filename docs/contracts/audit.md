@@ -28,7 +28,6 @@ Smoke category:
 | docs/cli/commands.md:151                     | `soniq dead-letter export`      | soniq/cli/dead_letter.py (action=export)                                                     | implemented | manual-only    |
 | docs/cli/commands.md:175                     | `soniq dashboard`               | soniq/cli/dashboard.py (`add_dashboard_cmd`)                                                 | implemented | manual-only    |
 | docs/cli/commands.md:203                     | `soniq scheduler`               | soniq/cli/scheduler.py (`add_scheduler_cmd`)                                                 | implemented | manual-only    |
-| docs/cli/commands.md:229                     | `soniq metrics`                 | soniq/cli/metrics.py:9 (`add_metrics_cmd`)                                                   | implemented | auto-smoke     |
 | docs/cli/commands.md:255                     | `soniq migrate-status`          | soniq/cli/migrate_status.py:11                                                               | implemented | auto-smoke     |
 | docs/concepts/tasks-vs-jobs.md:27            | `soniq tasks list`              | soniq/cli/tasks.py:39                                                                        | implemented | auto-smoke     |
 | docs/concepts/tasks-vs-jobs.md:27            | `soniq tasks check`             | soniq/cli/tasks.py:53                                                                        | implemented | auto-smoke     |
@@ -86,7 +85,6 @@ Each of these maps to a `Field(...)` on `SoniqSettings` (env prefix `SONIQ_`).
 | docs/cli/commands.md:200                | `SONIQ_SCHEDULING_ENABLED`         | (no code reference)                                                                    | removed     | manual-only    |
 | docs/cli/commands.md:113                | `SONIQ_DEAD_LETTER_QUEUE_ENABLED`  | (no code reference)                                                                    | removed     | manual-only    |
 | docs/getting-started/installation.md:77 | `SONIQ_TIMEOUTS_ENABLED`           | (no code reference)                                                                    | removed     | manual-only    |
-| docs/cli/commands.md:226                | `SONIQ_METRICS_ENABLED`            | (no code reference)                                                                    | removed     | manual-only    |
 | docs/getting-started/installation.md:79 | `SONIQ_LOGGING_ENABLED`            | (no code reference)                                                                    | removed     | manual-only    |
 | docs/getting-started/installation.md:80 | `SONIQ_WEBHOOKS_ENABLED`           | (no code reference)                                                                    | removed     | manual-only    |
 | docs/getting-started/installation.md:81 | `SONIQ_SIGNING_ENABLED`            | (no code reference)                                                                    | removed     | manual-only    |

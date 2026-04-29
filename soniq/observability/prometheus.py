@@ -2,9 +2,11 @@
 `PrometheusMetricsSink`: a `MetricsSink` implementation that emits
 Soniq's per-job events as Prometheus metrics.
 
-Requires `prometheus_client`, available via `pip install soniq[monitoring]`.
-The import is lazy so the rest of `soniq.observability` stays usable on
-installs without the optional dependency.
+`prometheus_client` is a default dependency of `soniq` as of 0.0.3, so
+this module is importable from a plain `pip install soniq`. The sink
+itself is dormant unless wired via `Soniq(metrics_sink=...)`; the
+default is `NoopMetricsSink`, so a stock install does not register any
+collectors.
 
 Exported metrics (default prefix `soniq`):
 
@@ -30,15 +32,7 @@ and for processes that expose multiple metric sets.
 
 from typing import Any, Optional
 
-
-def _require_prometheus():
-    try:
-        import prometheus_client  # noqa: F401
-    except ImportError as exc:
-        raise ImportError(
-            "PrometheusMetricsSink requires `prometheus_client`. "
-            "Install with: pip install soniq[monitoring]"
-        ) from exc
+from prometheus_client import REGISTRY, Counter, Gauge, Histogram
 
 
 class PrometheusMetricsSink:
@@ -69,9 +63,6 @@ class PrometheusMetricsSink:
         registry: Optional[Any] = None,
         prefix: str = "soniq",
     ):
-        _require_prometheus()
-        from prometheus_client import REGISTRY, Counter, Gauge, Histogram
-
         reg = registry if registry is not None else REGISTRY
         common_labels = ["queue", "job_name"]
 

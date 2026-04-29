@@ -58,7 +58,7 @@ The code above works, but you'll want to tighten a few things before deploying f
 - **Tune concurrency.** The default is 4 concurrent job slots per worker. Raise it for I/O-heavy workloads, lower it for CPU-bound ones.
 - **Enable feature flags** for the capabilities you need. All features are off by default. The most common production flags:
     - `SONIQ_DEAD_LETTER_QUEUE_ENABLED=true` -- inspect permanently failed jobs instead of losing them.
-    - `SONIQ_METRICS_ENABLED=true` -- expose Prometheus counters (requires `pip install soniq[monitoring]`).
+    - `SONIQ_METRICS_ENABLED=true` -- expose Prometheus counters (`prometheus_client` ships with the default install).
     - `SONIQ_LOGGING_ENABLED=true` -- structured JSON logging for log aggregators.
     - `SONIQ_TIMEOUTS_ENABLED=true` -- enforce per-job execution time limits.
 

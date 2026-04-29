@@ -1,6 +1,8 @@
--- Dead letter queue feature.
+-- Dead letter queue table (always created in 0.0.3+).
 --
--- Applied by DeadLetterService.setup() (or `soniq setup --features=dead_letter`).
+-- Per docs/contracts/dead_letter.md (Option A), DLQ rows live exclusively in
+-- soniq_dead_letter_jobs; this table is part of the base schema rather than
+-- an opt-in feature so dashboard/metrics queries can rely on it existing.
 
 CREATE TABLE IF NOT EXISTS soniq_dead_letter_jobs (
   id UUID PRIMARY KEY,

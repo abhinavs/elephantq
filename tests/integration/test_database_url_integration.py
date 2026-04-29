@@ -190,37 +190,37 @@ class TestDatabaseUrlIntegration:
         assert "Using instance-based configuration" in result2.stdout or result2.stderr
 
 
-class TestBackwardsCompatibility:
-    """Test that Global API usage is unchanged by new Instance API features."""
+class TestEnvFallback:
+    """Without --database-url, the CLI falls back to SONIQ_DATABASE_URL."""
 
-    def test_global_api_cli_commands_unchanged(self):
-        """Test that Global API CLI commands work without --database-url."""
-        # These should work exactly as before (using environment variables)
+    def test_cli_commands_use_env_database_url(self):
+        """Commands without --database-url read SONIQ_DATABASE_URL from the env."""
         original_env = os.environ.copy()
 
         try:
-            # Set global database URL
             os.environ["SONIQ_DATABASE_URL"] = _make_test_db_url("soniq_db_url_test_1")
 
-            # Commands should work without --database-url parameter
             result = run_cli_command(["status"])
             assert result.returncode == 0
-            assert "Using global API configuration" in result.stdout or result.stderr
+            assert (
+                "Using instance-based configuration" in result.stdout or result.stderr
+            )
 
             result = run_cli_command(["workers"])
             assert result.returncode == 0
-            assert "Using global API configuration" in result.stdout or result.stderr
+            assert (
+                "Using instance-based configuration" in result.stdout or result.stderr
+            )
 
         finally:
-            # Restore original environment
             os.environ.clear()
             os.environ.update(original_env)
 
-    def test_global_api_python_imports_unchanged(self):
-        """Test that Global API Python imports work unchanged."""
+    def test_top_level_imports(self):
+        """Public top-level imports stay stable: only Soniq and supporting types."""
         import soniq
         from soniq import Soniq
 
-        assert hasattr(soniq, "job")
-        assert hasattr(soniq, "enqueue")
         assert Soniq is not None
+        assert hasattr(soniq, "TaskRef")
+        assert hasattr(soniq, "JobContext")

@@ -1,10 +1,8 @@
 """
-Soniq exposes three pluggable extension points in 0.0.2:
+Soniq exposes two pluggable extension points in 0.0.3:
 
 - `RetryPolicy` (`soniq.core.retry`)
-- `Serializer` (`soniq.utils.serialization`)
-- `LogSink` is reserved for the dashboard logging path; tests live with
-  `features/logging`.
+- `MetricsSink` (`soniq.observability`)
 
 Each ships a default implementation and a `Soniq(...)` constructor
 parameter. These tests pin the contract.
@@ -21,35 +19,11 @@ from soniq.core.retry import (
     RetryPolicy,
 )
 from soniq.testing.memory_backend import MemoryBackend
-from soniq.utils.serialization import (
-    DEFAULT_SERIALIZER,
-    JSONSerializer,
-    Serializer,
-)
 
 
 def test_default_retry_policy_implements_protocol():
     assert isinstance(DEFAULT_RETRY_POLICY, RetryPolicy)
     assert isinstance(ExponentialBackoff(), RetryPolicy)
-
-
-def test_default_serializer_implements_protocol():
-    assert isinstance(DEFAULT_SERIALIZER, Serializer)
-    assert isinstance(JSONSerializer(), Serializer)
-
-
-def test_json_serializer_round_trip_dict():
-    s = JSONSerializer()
-    raw = s.dumps({"x": 1, "y": "hi"})
-    assert s.loads(raw) == {"x": 1, "y": "hi"}
-
-
-def test_json_serializer_idempotent_on_dict():
-    """Backends often pass already-decoded dicts back into loads(); the
-    default must accept that without trying to re-parse."""
-    s = JSONSerializer()
-    assert s.loads({"already": "decoded"}) == {"already": "decoded"}
-    assert s.loads(None) is None
 
 
 def test_soniq_accepts_custom_retry_policy():
@@ -63,18 +37,21 @@ def test_soniq_accepts_custom_retry_policy():
     assert app._retry_policy.delay_for(attempt=1, job_meta={}, exc=Exception()) == 0.1
 
 
-def test_soniq_accepts_custom_serializer():
-    class _Serializer:
-        def dumps(self, value):
-            return "stub"
+def test_soniq_no_log_sink_attr():
+    """``log_sink`` was a half-wired knob and was removed in 0.0.3."""
+    app = Soniq(database_url="postgresql://user:pass@localhost/test")
+    assert not hasattr(app, "log_sink")
+    assert not hasattr(app, "_log_sink")
 
-        def loads(self, raw):
-            return {"stub": True}
 
-    app = Soniq(
-        database_url="postgresql://user:pass@localhost/test", serializer=_Serializer()
-    )
-    assert app._serializer.dumps({}) == "stub"
+def test_soniq_no_serializer_attr():
+    """The half-wired ``serializer`` knob was removed in 0.0.3. The
+    constructor swallows unknown kwargs through
+    ``SoniqSettings(extra='ignore')``, so pin removal at the
+    attribute / property level instead."""
+    app = Soniq(database_url="postgresql://user:pass@localhost/test")
+    assert not hasattr(app, "serializer")
+    assert not hasattr(app, "_serializer")
 
 
 @pytest.mark.asyncio

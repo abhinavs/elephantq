@@ -36,7 +36,7 @@ class MetricsSink(Protocol):
 
 ## Built-in: Prometheus
 
-`pip install soniq[monitoring]` brings in `prometheus_client`. Then:
+`prometheus_client` ships with the default `pip install soniq` (batteries-included as of 0.0.3). Then:
 
 ```python
 from prometheus_client import start_http_server

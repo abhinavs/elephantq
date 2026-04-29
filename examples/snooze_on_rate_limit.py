@@ -10,18 +10,21 @@ itself.
 """
 
 import asyncio
+import os
 
-import soniq
-from soniq import Snooze
+from soniq import Snooze, Soniq
+
+app = Soniq(
+    database_url=os.environ.get("SONIQ_DATABASE_URL", "postgresql://localhost/myapp")
+)
 
 
-@soniq.job(name="call_rate_limited_api", retries=3)
+@app.job(name="call_rate_limited_api", retries=3)
 async def call_rate_limited_api(order_id: str):
     response = await _simulated_api_call(order_id)
     if response["status"] == 429:
         retry_after = int(response["headers"].get("Retry-After", 30))
         return Snooze(seconds=retry_after, reason=f"rate-limited on {order_id}")
-    # ... normal success path
     return {"order_id": order_id, "ok": True}
 
 
@@ -30,8 +33,10 @@ async def _simulated_api_call(order_id: str) -> dict:
 
 
 async def main():
-    await soniq.enqueue("call_rate_limited_api", args={"order_id": "order-1"})
-    await soniq.run_worker(concurrency=1)
+    await app.setup()
+    await app.enqueue("call_rate_limited_api", args={"order_id": "order-1"})
+    await app.run_worker(concurrency=1)
+    await app.close()
 
 
 if __name__ == "__main__":

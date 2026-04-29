@@ -1,6 +1,7 @@
--- Webhooks feature: endpoints + delivery tracking.
+-- Webhooks: endpoints + delivery tracking (always created in 0.0.3+).
 --
--- Applied by WebhookService.setup() (or `soniq setup --features=webhooks`).
+-- Promoted to the core slice. Empty when the deployment never registers
+-- webhook endpoints.
 
 CREATE TABLE IF NOT EXISTS soniq_webhook_endpoints (
   id TEXT PRIMARY KEY,

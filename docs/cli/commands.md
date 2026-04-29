@@ -219,34 +219,6 @@ soniq scheduler --status
 Stop the scheduler gracefully with `Ctrl+C`.
 
 
-## metrics
-
-Display job performance metrics.
-
-Requires `SONIQ_METRICS_ENABLED=true`.
-
-```bash
-soniq metrics [--hours N] [--format FORMAT] [--export FILE]
-```
-
-| Flag | Type | Default | Description |
-|---|---|---|---|
-| `--hours` | `int` | `24` | Time range to query. |
-| `--format` | `table \| json` | `table` | Output format. |
-| `--export` | `str` | | Export metrics to a file. |
-
-```bash
-# Table output for the last 24 hours
-soniq metrics
-
-# JSON output for the last hour
-soniq metrics --format json --hours 1
-
-# Export to file
-soniq metrics --format json --export metrics.json
-```
-
-
 ## migrate-status
 
 Show which database migrations have been applied and which are pending.

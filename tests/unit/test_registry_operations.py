@@ -298,15 +298,15 @@ class TestNameResolution:
         assert f._soniq_name == "billing.test.foo"
         assert "billing.test.foo" in app._job_registry
 
-    def test_module_level_soniq_job_no_args_derives_name(self):
-        """`@soniq.job` (no parens) on the global decorator works the
-        same way as `@app.job` (no parens)."""
-        import soniq
+    def test_module_level_app_job_no_args_derives_name(self):
+        """`@app.job` (no parens) derives the name from the function module and name."""
+        from soniq import Soniq
 
-        @soniq.job
-        async def my_global_handler():
+        app = Soniq()
+
+        @app.job
+        async def my_handler():
             pass
 
-        expected = f"{my_global_handler.__module__}.my_global_handler"
-        app = soniq.get_global_app()
+        expected = f"{my_handler.__module__}.my_handler"
         assert expected in app._job_registry

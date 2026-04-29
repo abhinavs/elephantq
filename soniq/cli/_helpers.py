@@ -61,13 +61,12 @@ def configure_cli_logging(level: str = "INFO") -> None:
         root.addHandler(handler)
 
 
-async def resolve_soniq_instance(args: Any) -> Optional[Any]:
+async def resolve_soniq_instance(args: Any) -> Optional[Soniq]:
     """Build a ``Soniq`` from ``--database-url``, or return ``None``.
 
-    Returning ``None`` is the signal to the caller to fall back to the
-    global app via ``soniq.get_global_app()``. Exists to keep the
-    error-message wording consistent across every subcommand that takes
-    a database URL.
+    Returning ``None`` is the signal to the caller to construct a Soniq
+    from default settings. Exists to keep the error-message wording
+    consistent across every subcommand that takes a database URL.
     """
     if hasattr(args, "database_url") and args.database_url:
         try:

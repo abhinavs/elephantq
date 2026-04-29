@@ -1,18 +1,27 @@
-from fastapi import FastAPI
+import asyncio
+import os
 
-import soniq
+from soniq import Soniq
 
-await soniq.configure(database_url="postgresql://localhost/myapp")
+app = Soniq(
+    database_url=os.environ.get("SONIQ_DATABASE_URL", "postgresql://localhost/myapp")
+)
 
-app = FastAPI()
 
-
-@soniq.job(name="process_upload")
+@app.job(name="process_upload")
 async def process_upload(file_path: str):
     return f"Processed {file_path}"
 
 
-@app.post("/upload")
-async def upload(file_path: str):
-    job_id = await soniq.enqueue("process_upload", args={"file_path": file_path})
-    return {"job_id": job_id}
+async def main():
+    await app.setup()
+    job_id = await app.enqueue(
+        "process_upload", args={"file_path": "/uploads/photo.jpg"}
+    )
+    print(f"Enqueued job: {job_id}")
+    await app.run_worker(run_once=True)
+    await app.close()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

@@ -127,14 +127,19 @@ soniq dashboard
 ## Install
 
 ```bash
-pip install soniq              # core (Postgres backend)
+pip install soniq              # core + scheduler + Prometheus sink (Postgres backend)
 pip install soniq[full]        # everything below
 pip install soniq[sqlite]      # SQLite backend for local dev
-pip install soniq[scheduling]  # cron-based recurring jobs
-pip install soniq[dashboard]   # web dashboard
-pip install soniq[monitoring]  # Prometheus metrics
+pip install soniq[dashboard]   # web dashboard (FastAPI + uvicorn)
 pip install soniq[webhooks]    # webhook delivery + signing
+pip install soniq[logging]     # structlog integration
 ```
+
+The default install is batteries-included: `croniter` (so `@periodic` and the
+recurring scheduler work out of the box) and `prometheus_client` (so
+`PrometheusMetricsSink` is importable) ship with core. They stay dormant unless
+wired - the scheduler only runs if you start it, and the default
+`MetricsSink` is `NoopMetricsSink`.
 
 ## Known limitations
 

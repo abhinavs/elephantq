@@ -29,37 +29,42 @@ class TestMigrationStructure:
         assert files == [
             "0001_core.sql",
             "0002_dead_letter_option_a.sql",
-            "0010_scheduler.sql",
-            "0020_dead_letter.sql",
-            "0021_webhooks.sql",
-            "0022_logs.sql",
+            "0003_dead_letter.sql",
+            "0004_scheduler.sql",
+            "0005_webhooks.sql",
+            "0006_logs.sql",
+            "0007_drop_failed_status.sql",
         ]
 
     def test_migrations_discovered_in_order(self):
         runner = MigrationRunner()
         migrations = runner.discover_migrations()
         versions = [v for v, _, _ in migrations]
-        assert versions == ["0001", "0002", "0010", "0020", "0021", "0022"]
+        assert versions == [
+            "0001",
+            "0002",
+            "0003",
+            "0004",
+            "0005",
+            "0006",
+            "0007",
+        ]
 
     def test_version_filter_core(self):
         runner = MigrationRunner()
-        # Core slice that Soniq.setup() applies. Core covers 0001 (schema)
-        # and 0002 (DLQ Option A schema-tightening: drops 'dead_letter'
-        # from soniq_jobs.status, see docs/contracts/dead_letter.md).
+        # In 0.0.3+ all soniq-owned tables (DLQ, scheduler, webhooks,
+        # logs) ship in the core slice so dashboard/metrics queries can
+        # reference them unconditionally.
         versions = [v for v, _, _ in runner.discover_migrations(version_filter="000")]
-        assert versions == ["0001", "0002"]
-
-    def test_version_filter_single_feature(self):
-        runner = MigrationRunner()
-        # Each feature setup() targets exactly its slice.
-        for prefix, expected in [
-            ("0010", ["0010"]),
-            ("0020", ["0020"]),
-            ("0021", ["0021"]),
-            ("0022", ["0022"]),
-        ]:
-            got = [v for v, _, _ in runner.discover_migrations(version_filter=prefix)]
-            assert got == expected, f"{prefix} -> {got}"
+        assert versions == [
+            "0001",
+            "0002",
+            "0003",
+            "0004",
+            "0005",
+            "0006",
+            "0007",
+        ]
 
 
 class TestCoreContents:
@@ -96,21 +101,21 @@ class TestCoreContents:
 
 
 class TestFeatureContents:
-    """Feature migrations carry exactly the table(s) the feature owns."""
+    """Per-feature migrations carry exactly the table(s) the feature owns."""
 
     def test_scheduler(self):
-        content = (MIGRATIONS_DIR / "0010_scheduler.sql").read_text()
+        content = (MIGRATIONS_DIR / "0004_scheduler.sql").read_text()
         assert "soniq_recurring_jobs" in content
 
     def test_dead_letter(self):
-        content = (MIGRATIONS_DIR / "0020_dead_letter.sql").read_text()
+        content = (MIGRATIONS_DIR / "0003_dead_letter.sql").read_text()
         assert "soniq_dead_letter_jobs" in content
 
     def test_webhooks(self):
-        content = (MIGRATIONS_DIR / "0021_webhooks.sql").read_text()
+        content = (MIGRATIONS_DIR / "0005_webhooks.sql").read_text()
         assert "soniq_webhook_endpoints" in content
         assert "soniq_webhook_deliveries" in content
 
     def test_logs(self):
-        content = (MIGRATIONS_DIR / "0022_logs.sql").read_text()
+        content = (MIGRATIONS_DIR / "0006_logs.sql").read_text()
         assert "soniq_logs" in content

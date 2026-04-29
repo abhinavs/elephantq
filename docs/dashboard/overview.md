@@ -83,7 +83,6 @@ or reverse proxy.
 | Dead-letter list | `soniq dead-letter list` | DLQ tab |
 | Retry a job | `soniq dead-letter resurrect <id>` | Retry button (write mode) |
 | Delete a job | `soniq dead-letter delete <id>` | Delete button (write mode) |
-| Metrics | `soniq metrics --hours 24` | Metrics charts |
 | Job details | not available | Click any job row |
 
 The CLI is better for scripting and automation. The dashboard is better for

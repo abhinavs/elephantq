@@ -5,14 +5,10 @@ from __future__ import annotations
 import os
 import sys
 
-import soniq
 from soniq.discovery import discover_and_import_modules, parse_jobs_modules
 
-from ._helpers import (
-    configure_cli_logging,
-    database_url_argument,
-    resolve_soniq_instance,
-)
+from ._context import cli_app
+from ._helpers import configure_cli_logging, database_url_argument
 from .colors import print_status
 
 
@@ -74,12 +70,6 @@ async def handle_start(args) -> int:
     for mod in modules:
         print(f"  - Imported '{mod}'")
 
-    try:
-        soniq_instance = await resolve_soniq_instance(args)
-    except Exception as e:
-        print_status(f"Configuration error: {e}", "error")
-        return 1
-
     if args.queues is None:
         queues = None
         queue_msg = "all available queues"
@@ -90,32 +80,16 @@ async def handle_start(args) -> int:
     print_status(f"Starting Soniq worker with {args.concurrency} workers", "info")
     print_status(f"Processing queues: {queue_msg}", "info")
 
-    if soniq_instance:
-        print_status(
-            "Using instance-based configuration "
-            f"(database: {soniq_instance.settings.database_url})",
-            "info",
-        )
-    else:
-        print_status("Using global API configuration", "info")
-
-    try:
-        if soniq_instance:
-            await soniq_instance.run_worker(
+    async with cli_app(args) as app:
+        try:
+            await app.run_worker(
                 concurrency=args.concurrency, queues=queues, run_once=args.run_once
             )
-        else:
-            await soniq.run_worker(
-                concurrency=args.concurrency, queues=queues, run_once=args.run_once
-            )
-    except KeyboardInterrupt:
-        print_status("Worker stopped by user", "info")
-        return 0
-    except Exception as e:
-        print_status(f"Worker error: {e}", "error")
-        return 1
-    finally:
-        if soniq_instance and soniq_instance.is_initialized:
-            await soniq_instance.close()
+        except KeyboardInterrupt:
+            print_status("Worker stopped by user", "info")
+            return 0
+        except Exception as e:
+            print_status(f"Worker error: {e}", "error")
+            return 1
 
     return 0

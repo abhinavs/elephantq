@@ -49,7 +49,6 @@ Inside `install(app)`, plugins call:
 | `app.job(name=..., ...)` | register handlers |
 | `app.scheduler.add(...)` | schedule recurring work |
 | `app.metrics_sink = sink` | replace metrics destination |
-| `app.log_sink = sink` | replace log destination |
 | `app.cli.add_command(spec)` | add a `soniq <name>` subcommand |
 | `app.dashboard.add_panel(spec)` | add a panel to the dashboard |
 | `app.migrations.register_source(path, prefix=...)` | ship plugin-owned tables |

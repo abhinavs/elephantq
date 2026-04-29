@@ -135,10 +135,10 @@ async def test_cancel_queued_job(backend, registry):
 
 
 @pytest.mark.asyncio
-async def test_retry_after_dead_letter_returns_false(backend, registry):
-    """DLQ Option A: dead-lettered jobs are gone from soniq_jobs, so
-    backend.retry_job is a no-op (returns False). Resurrection happens
-    via DeadLetterService.replay (postgres-only) or by re-enqueuing."""
+async def test_dead_lettered_job_removed_from_soniq_jobs(backend, registry):
+    """DLQ Option A: dead-lettered jobs are gone from ``soniq_jobs`` and
+    live exclusively in the dead-letter table. Resurrection happens via
+    ``DeadLetterService.replay`` (postgres-only) or by re-enqueuing."""
 
     async def always_fails():
         raise RuntimeError("boom")
@@ -149,9 +149,6 @@ async def test_retry_after_dead_letter_returns_false(backend, registry):
     )
     assert await backend.get_job(job_id) is None
     assert job_id in backend._dead_letter_jobs
-
-    # retry_job only matches status='failed' rows in soniq_jobs.
-    assert await backend.retry_job(job_id) is False
 
 
 @pytest.mark.asyncio

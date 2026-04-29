@@ -122,11 +122,11 @@ async def test_get_queue_stats(app):
     assert stats["dead_letter"] == 0
 
 
-async def test_retry_job_after_dead_letter_returns_false(app):
-    """Under DLQ Option A, retry_job cannot resurrect a dead-lettered job
-    because the row is moved out of soniq_jobs into soniq_dead_letter_jobs.
-    Resurrection lives on DeadLetterService.replay; retry_job operates on
-    soniq_jobs ('failed' rows) only. See docs/contracts/dead_letter.md."""
+async def test_dead_lettered_job_leaves_soniq_jobs(app):
+    """Under DLQ Option A a dead-lettered job is removed from
+    ``soniq_jobs`` and lives exclusively in ``soniq_dead_letter_jobs``.
+    Resurrection lives on ``DeadLetterService.replay``. See
+    ``docs/contracts/dead_letter.md``."""
 
     @app.job(name="failing_job", retries=1)
     async def failing_job():
@@ -138,5 +138,3 @@ async def test_retry_job_after_dead_letter_returns_false(app):
     await app.run_worker(run_once=True)
 
     assert await app.get_job(job_id) is None
-
-    assert await app.retry_job(job_id) is False

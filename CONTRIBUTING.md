@@ -20,12 +20,10 @@ source venv/bin/activate
 pip install -e ".[dev]"
 ```
 
-Optional extras:
-
-```bash
-pip install -e ".[dev,dashboard]"
-pip install -e ".[dev,monitoring]"
-```
+`.[dev]` is batteries-included for the test harness: it pulls in
+FastAPI, aiohttp, aiosqlite, structlog, and cryptography on top of the
+test runners, so you do not need any additional extras to run the
+suite.
 
 ## Database Setup
 

@@ -1,9 +1,15 @@
-"""Test jobs for discovery mechanism."""
+"""Test jobs for the SONIQ_JOBS_MODULES discovery mechanism.
 
-from soniq import job
+The deploy-time pattern is: define a Soniq instance once at the module
+top, decorate jobs against it, and point ``SONIQ_JOBS_MODULES`` at this
+module. Importing the module registers the jobs on ``app``.
+"""
+
+from soniq import Soniq
+
+app = Soniq()
 
 
-@job(name="discovered_job")
+@app.job(name="discovered_job")
 async def discovered_job(message: str):
-    """A simple job for testing discovery functionality."""
     return f"Processed: {message}"

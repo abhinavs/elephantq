@@ -32,9 +32,11 @@ def test_drift_endpoint_registered_on_server():
     """The /api/tasks/drift route is wired on the FastAPI app."""
     fastapi = pytest.importorskip("fastapi")  # noqa: F841
 
+    from soniq import Soniq
     from soniq.dashboard.server import create_dashboard_app
 
-    app = create_dashboard_app()
+    soniq_app = Soniq(backend="memory")
+    app = create_dashboard_app(soniq_app)
     routes = {getattr(r, "path", None) for r in app.routes}
     assert "/api/tasks/drift" in routes
 

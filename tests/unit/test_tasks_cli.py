@@ -1,18 +1,20 @@
 """
-Tests for ``soniq tasks-list`` and ``soniq tasks-check``.
+Tests for ``soniq tasks-check``.
 
-The two commands deliberately read from different sources: ``list``
-from the in-process registry; ``check`` from the shared registry
-table. After the flat-CLI rewrite (S8) the parser is the contract;
-these tests run handlers directly and introspect the parser produced
-by ``soniq.cli.main.build_parser``.
+The historical ``tasks-list`` subcommand was removed in 0.0.3 along
+with the process-global registry: with per-instance registries there
+is no single "current process registry" to dump, and the dashboard
+already exposes the fleet-wide ``soniq_task_registry`` table for the
+same purpose. The remaining ``tasks-check`` codemod compares stub-
+package TaskRefs to the shared registry table so CI can block deploys
+on drift.
 """
 
 from __future__ import annotations
 
 import io
 import os
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import redirect_stderr
 from types import SimpleNamespace
 
 from tests.db_utils import TEST_DATABASE_URL
@@ -20,38 +22,7 @@ from tests.db_utils import TEST_DATABASE_URL
 os.environ.setdefault("SONIQ_DATABASE_URL", TEST_DATABASE_URL)
 
 from soniq.cli.main import build_parser  # noqa: E402
-from soniq.cli.tasks import handle_tasks_check, handle_tasks_list  # noqa: E402
-
-# ---------------------------------------------------------------------------
-# tasks-list
-# ---------------------------------------------------------------------------
-
-
-def test_tasks_list_prints_valid_json():
-    """The ``tasks-list`` command emits valid JSON on stdout."""
-    import json
-
-    out = io.StringIO()
-    with redirect_stdout(out):
-        rc = handle_tasks_list(SimpleNamespace())
-    assert rc == 0
-    parsed = json.loads(out.getvalue())
-    assert isinstance(parsed, list)
-
-
-def test_tasks_list_help_text_says_in_process():
-    """The CLI help text must explicitly say "in-process" so an operator
-    running ``soniq tasks-list`` on a producer-only deployment does not
-    see an empty list and conclude the registry table is empty."""
-    parser = build_parser()
-    help_text = _subcommand_help(parser, "tasks-list")
-    assert "in-process" in help_text.lower()
-    assert "dashboard" in help_text.lower()
-
-
-# ---------------------------------------------------------------------------
-# tasks-check
-# ---------------------------------------------------------------------------
+from soniq.cli.tasks import handle_tasks_check  # noqa: E402
 
 
 def test_tasks_check_help_text_mentions_shared_registry():
@@ -84,11 +55,6 @@ def test_tasks_check_without_package_arg_errors(monkeypatch):
     assert rc == 2
     msg = err.getvalue().lower()
     assert "package" in msg or "stub" in msg
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 
 def _subcommand_help(parser, name: str) -> str:

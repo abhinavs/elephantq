@@ -150,27 +150,6 @@ async def test_get_queue_stats():
 
 
 @pytest.mark.asyncio
-async def test_retry_job():
-    app = Soniq(backend="memory")
-
-    @app.job(name="failing_task", retries=2)
-    async def failing_task():
-        raise RuntimeError("fail")
-
-    job_id = await app.enqueue("failing_task")
-
-    # Process to make it fail
-    await app.run_worker(run_once=True)
-
-    # The job should be retryable
-    result = await app.retry_job(job_id)
-    # Result depends on backend state — just verify no crash
-    assert isinstance(result, bool)
-
-    await app.close()
-
-
-@pytest.mark.asyncio
 async def test_hook_registration():
     app = Soniq(backend="memory")
     before_calls = []

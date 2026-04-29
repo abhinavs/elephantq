@@ -67,11 +67,9 @@ export SONIQ_LOG_FORMAT=structured    # JSON output, easy to ship
 export SONIQ_METRICS_ENABLED=true
 ```
 
-Install the monitoring extra for Prometheus support:
-
-```bash
-pip install soniq[monitoring]
-```
+`prometheus_client` ships with the default `pip install soniq` - no
+extra needed. Wire it via `Soniq(metrics_sink=PrometheusMetricsSink())`
+or leave the default `NoopMetricsSink` in place if you do not scrape.
 
 ### What gets tracked
 
@@ -80,19 +78,16 @@ pip install soniq[monitoring]
 - Throughput (jobs per minute)
 - Success rate
 - Per-queue stats (depth, processing time, throughput)
-- System resources (CPU, memory, disk via `psutil`)
 
 ### CLI access
 
 ```bash
-soniq metrics --hours 1
-soniq metrics --format json --hours 24
 soniq status --verbose
 ```
 
 ### Prometheus scraping
 
-When metrics are enabled and the monitoring extra is installed, counters are registered with `prometheus-client`. Mount the endpoint in your FastAPI app:
+When metrics are enabled, counters are registered with `prometheus-client` (a default runtime dependency in 0.0.3+, no extra to install). Mount the endpoint in your FastAPI app:
 
 ```python
 from prometheus_client import make_asgi_app

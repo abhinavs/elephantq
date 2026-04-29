@@ -21,9 +21,7 @@ EXPECTED_SUBCOMMANDS = {
     "migrate-status",
     "dashboard",
     "scheduler",
-    "metrics",
     "dead-letter",
-    "tasks-list",
     "tasks-check",
 }
 

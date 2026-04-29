@@ -2,7 +2,7 @@
 In-memory storage backend for Soniq.
 
 Used for unit tests. No persistence, no external dependencies.
-Configure with: soniq.configure(backend="memory")
+Configure with: Soniq(backend="memory")
 """
 
 import asyncio
@@ -306,17 +306,6 @@ class MemoryBackend:
             if not job or job["status"] != "queued":
                 return False
             job["status"] = "cancelled"
-            job["updated_at"] = datetime.now(timezone.utc)
-            return True
-
-    async def retry_job(self, job_id: str) -> bool:
-        async with self._lock:
-            job = self._jobs.get(job_id)
-            if not job or job["status"] != "failed":
-                return False
-            job["status"] = "queued"
-            job["attempts"] = 0
-            job["last_error"] = None
             job["updated_at"] = datetime.now(timezone.utc)
             return True
 

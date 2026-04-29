@@ -1,7 +1,7 @@
 """Instance-based API example.
 
-Shows Soniq used as an application object instead of the global API.
-Run with: python examples/instance_api.py
+Shows Soniq used as an application object. Run with:
+``python examples/instance_api.py``.
 """
 
 import asyncio

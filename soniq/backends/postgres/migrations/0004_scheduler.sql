@@ -1,7 +1,8 @@
--- Scheduler feature: recurring jobs.
+-- Scheduler: recurring jobs table (always created in 0.0.3+).
 --
--- Applied by Scheduler.setup() (or `soniq setup --features=scheduler`).
--- A deployment that doesn't use the scheduler never creates this table.
+-- Promoted to the core slice so dashboard/metrics surfaces can reference
+-- it unconditionally. Empty when the deployment never schedules recurring
+-- jobs, which costs ~16KB.
 
 CREATE TABLE IF NOT EXISTS soniq_recurring_jobs (
   id UUID PRIMARY KEY,

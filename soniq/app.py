@@ -62,7 +62,6 @@ from .testing.memory_backend import MemoryBackend
 from .utils.hashing import compute_args_hash
 from .utils.producer_id import resolve_producer_id
 from .utils.rate_limit import default_warner
-from .utils.serialization import DEFAULT_SERIALIZER
 
 if TYPE_CHECKING:
     from .types import QueueStats
@@ -132,8 +131,6 @@ class Soniq:
         database_url: Optional[str] = None,
         backend: Optional[Any] = None,
         retry_policy: Optional[Any] = None,
-        serializer: Optional[Any] = None,
-        log_sink: Optional[Any] = None,
         metrics_sink: Optional[Any] = None,
         plugins: Optional[List[Any]] = None,
         autoload_plugins: bool = False,
@@ -152,16 +149,6 @@ class Soniq:
                 `retry_jitter` set via the `@app.job(...)` decorator.
                 Also settable post-construct via ``app.retry_policy = ...``
                 up until ``await app.setup()`` runs.
-            serializer: Optional `soniq.utils.serialization.Serializer`
-                instance. Defaults to `JSONSerializer`. Custom serializers
-                are advisory only at present: backends store via JSONB /
-                JSON-text and read via the same path, so non-JSON formats
-                require a serializer-aware backend.
-                Also settable post-construct via ``app.serializer = ...``.
-            log_sink: Optional `soniq.features.logging.LogSink` instance.
-                When provided, log records flow into this sink instead of
-                (or in addition to) the built-in ``DatabaseLogHandler``.
-                Also settable post-construct via ``app.log_sink = ...``.
             metrics_sink: Optional `soniq.observability.MetricsSink`
                 instance. Defaults to `NoopMetricsSink`. Pass
                 `PrometheusMetricsSink()` to expose per-job metrics
@@ -196,8 +183,6 @@ class Soniq:
         # Pluggable extension points. Defaults are wired so callers that
         # never touch these fields keep the existing behavior verbatim.
         self._retry_policy = retry_policy or DEFAULT_RETRY_POLICY
-        self._serializer = serializer or DEFAULT_SERIALIZER
-        self._log_sink = log_sink  # None means "use the built-in handler"
         self._metrics_sink = metrics_sink or DEFAULT_METRICS_SINK
 
         # Settings with overrides
@@ -251,8 +236,8 @@ class Soniq:
     def _check_setup_frozen(self, attr: str) -> None:
         """Refuse to mutate a pluggable extension point after setup() ran.
 
-        ``retry_policy`` / ``serializer`` / ``metrics_sink`` / ``log_sink``
-        are read by the worker construction path. Letting callers swap them
+        ``retry_policy`` and ``metrics_sink`` are read by the worker
+        construction path. Letting callers swap them
         after the worker has captured a reference would silently fork
         behavior between in-flight and future jobs; per O.4 they are
         settable up until ``_ensure_initialized()`` runs.
@@ -275,15 +260,6 @@ class Soniq:
         self._retry_policy = value
 
     @property
-    def serializer(self) -> Any:
-        return self._serializer
-
-    @serializer.setter
-    def serializer(self, value: Any) -> None:
-        self._check_setup_frozen("serializer")
-        self._serializer = value
-
-    @property
     def metrics_sink(self) -> Any:
         return self._metrics_sink
 
@@ -291,15 +267,6 @@ class Soniq:
     def metrics_sink(self, value: Any) -> None:
         self._check_setup_frozen("metrics_sink")
         self._metrics_sink = value
-
-    @property
-    def log_sink(self) -> Any:
-        return self._log_sink
-
-    @log_sink.setter
-    def log_sink(self, value: Any) -> None:
-        self._check_setup_frozen("log_sink")
-        self._log_sink = value
 
     @staticmethod
     def _auto_detect_backend(database_url: str) -> Any:
@@ -1296,19 +1263,6 @@ class Soniq:
         await self._ensure_initialized()
         return await self._backend.cancel_job(job_id)  # type: ignore[union-attr]
 
-    async def retry_job(self, job_id: str) -> bool:
-        """
-        Retry a failed job.
-
-        Args:
-            job_id: UUID of the job to retry
-
-        Returns:
-            True if job was queued for retry, False if job wasn't found or can't be retried
-        """
-        await self._ensure_initialized()
-        return await self._backend.retry_job(job_id)  # type: ignore[union-attr]
-
     async def delete_job(self, job_id: str) -> bool:
         """
         Delete a job from the queue.
@@ -1409,7 +1363,7 @@ class Soniq:
 
     async def setup(self) -> int:
         """
-        Set up Soniq — create database (if needed) and run migrations.
+        Set up Soniq - create database (if needed) and run migrations.
 
         - PostgreSQL: creates the database if it doesn't exist, then runs migrations
         - SQLite: tables created automatically by SQLiteBackend.initialize()
@@ -1422,18 +1376,18 @@ class Soniq:
         Returns:
             Number of migrations applied (0 for SQLite/Memory)
         """
+        will_use_postgres = self._backend is None or isinstance(
+            self._backend, PostgresBackend
+        )
+        if will_use_postgres:
+            await self._ensure_postgres_database_exists()
+
         await self._ensure_initialized()
-        assert self._backend is not None  # narrow type after init
+        assert self._backend is not None
 
         applied = 0
         if isinstance(self._backend, PostgresBackend):
-            # PostgreSQL: attempt to create the database, then run migrations.
-            # Only the core 0001-0009 slice runs here; optional features
-            # (scheduler, dead_letter, webhooks, logs) opt in via their
-            # own setup() call or `soniq setup --features=...`.
-            await self._ensure_postgres_database_exists()
             applied = await self._run_migrations(version_filter="000")
-        # else: SQLite / Memory create tables on initialize() - skip.
 
         await self._run_plugin_startup_hooks()
         return applied
