@@ -63,28 +63,6 @@ authorization is enforced by `SONIQ_DASHBOARD_API_KEY` or by being a
 loopback caller.
 
 
-## Global configure()
-
-If you prefer the module-level API (`import soniq`) over creating an instance,
-configure settings with `await soniq.configure()`:
-
-```python
-import soniq
-
-await soniq.configure(
-    database_url="postgresql://localhost/myapp",
-    concurrency=8,
-    max_retries=5,
-    result_ttl=600,
-    debug=True,
-)
-```
-
-All keyword arguments match the constructor's `**settings_overrides`. Calling
-`configure()` replaces the internal global instance, so registered jobs carry over
-automatically.
-
-
 ## Lifecycle
 
 ### close()
@@ -113,20 +91,22 @@ The connection pool initializes lazily on first use. No explicit init call is ne
     it causes race conditions when multiple replicas start simultaneously.
 
 
-## get_pool()
+## Acquiring a connection
 
-Returns the underlying `asyncpg` connection pool. Useful when you need direct
-database access, for example to run a job enqueue inside an application transaction.
+For workflows that need raw SQL alongside an enqueue (for example,
+[transactional enqueue](../guides/transactional-enqueue.md)), borrow a
+connection from the backend:
 
 ```python
-pool = await app.get_pool()
-async with pool.acquire() as conn:
+await app.ensure_initialized()
+async with app.backend.acquire() as conn:
     async with conn.transaction():
         await conn.execute("INSERT INTO orders ...")
         await app.enqueue(send_receipt, connection=conn, order_id=42)
 ```
 
-Returns `None` for SQLite and in-memory backends (they do not use asyncpg).
+`backend.acquire()` is an async context manager that lends a pooled
+connection and releases it on exit. Available on the PostgreSQL backend.
 
 
 ## get_queue_stats()
@@ -161,12 +141,14 @@ These are thin wrappers over the storage backend. Each accepts a `job_id` string
 
 | Method | Returns | Description |
 |---|---|---|
-| `get_job_status(job_id)` | `dict \| None` | Full job record or `None` if not found. |
+| `get_job(job_id)` | `dict \| None` | Full job record or `None` if not found. |
 | `get_result(job_id)` | `Any \| None` | Return value of a completed job, or `None`. |
 | `cancel_job(job_id)` | `bool` | `True` if the job was cancelled. |
-| `retry_job(job_id)` | `bool` | `True` if the job was re-queued. |
 | `delete_job(job_id)` | `bool` | `True` if the job was deleted. |
 | `list_jobs(queue?, status?, limit=100, offset=0)` | `list[dict]` | Filtered list of job records. |
+
+To re-run a job that exhausted its retries, use `app.dead_letter.replay(job_id)`
+(see the [dead-letter docs](../concepts/dead-letter.md)).
 
 
 ## Environment variable configuration

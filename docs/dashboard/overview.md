@@ -24,13 +24,7 @@ pip install soniq[dashboard]
 
 This pulls in FastAPI and Uvicorn.
 
-### 2. Enable the feature flag
-
-```bash
-export SONIQ_DASHBOARD_ENABLED=true
-```
-
-### 3. Start the dashboard
+### 2. Start the dashboard
 
 ```bash
 soniq dashboard --host 0.0.0.0 --port 6161
@@ -41,7 +35,7 @@ Open `http://localhost:6161`.
 
 ## Read-only vs write mode
 
-By default the dashboard is read-only. All mutating actions (retry, cancel, delete)
+By default the dashboard is read-only. All mutating actions (replay, cancel, delete)
 are disabled in the UI.
 
 To enable write actions:
@@ -60,12 +54,13 @@ sub-application inside your existing FastAPI app:
 
 ```python
 from fastapi import FastAPI
+from soniq import Soniq
 from soniq.dashboard import create_dashboard_app
 
-app = FastAPI()
+soniq_app = Soniq(database_url="postgresql://localhost/myapp")
 
-dashboard_app = create_dashboard_app()
-app.mount("/admin/queue", dashboard_app)
+app = FastAPI()
+app.mount("/admin/queue", create_dashboard_app(soniq_app))
 ```
 
 The dashboard is then accessible at `http://localhost:8000/admin/queue`. This is
@@ -81,7 +76,7 @@ or reverse proxy.
 | Worker list | `soniq workers` | Workers panel |
 | Recent jobs | `soniq status --jobs` | Jobs page with search |
 | Dead-letter list | `soniq dead-letter list` | DLQ tab |
-| Retry a job | `soniq dead-letter resurrect <id>` | Retry button (write mode) |
+| Replay a job | `soniq dead-letter replay <id>` | Replay button (write mode) |
 | Delete a job | `soniq dead-letter delete <id>` | Delete button (write mode) |
 | Job details | not available | Click any job row |
 
@@ -109,6 +104,9 @@ relative to the dashboard mount path.
 | `GET` | `/api/jobs/types` | Per-job-type statistics. Returns `list[dict]`. |
 | `GET` | `/api/jobs/search?q=...&status=...&queue=...` | Search jobs by name, status, or queue. Returns `list[dict]`. |
 | `GET` | `/api/system/health` | System health check. Returns `dict`. |
+| `GET` | `/api/tasks/drift` | Tasks registered on the running app vs. tasks observed in the DB. |
+| `GET` | `/api/panels` | Available dashboard panels. |
+| `GET` | `/api/panels/{panel_id}` | Single panel descriptor. |
 
 ### Write endpoints
 
@@ -116,16 +114,17 @@ These return `403 Forbidden` unless `SONIQ_DASHBOARD_WRITE_ENABLED=true`.
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/jobs/{job_id}/retry` | Retry a failed or dead-letter job. |
+| `POST` | `/api/dead-letter/{dead_letter_id}/replay` | Replay a dead-letter job (mints a new `soniq_jobs` row). |
 | `POST` | `/api/jobs/{job_id}/cancel` | Cancel a queued job. |
+| `DELETE` | `/api/jobs/{job_id}` | Delete a job entirely. |
 
 
 ## Configuration reference
 
 | Env var | Default | Description |
 |---|---|---|
-| `SONIQ_DASHBOARD_ENABLED` | `false` | Must be `true` for the dashboard to start. |
-| `SONIQ_DASHBOARD_WRITE_ENABLED` | `false` | Enable retry/cancel/delete buttons. |
+| `SONIQ_DASHBOARD_WRITE_ENABLED` | `false` | Enable replay/cancel/delete actions. |
+| `SONIQ_DASHBOARD_API_KEY` | (unset) | Required for non-loopback callers when write mode is on. |
 | `SONIQ_DATABASE_URL` | `postgresql://postgres@localhost/soniq` | Database the dashboard reads from. |
 
 CLI flags for `soniq dashboard`:

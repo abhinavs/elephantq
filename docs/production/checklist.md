@@ -34,8 +34,8 @@ Key settings:
 |----------|---------|----------|
 | `SONIQ_CONCURRENCY` | `4` | Number of concurrent jobs per worker process. Tune per workload and CPU -- IO-bound work tolerates higher values, CPU-bound work needs lower. |
 | `SONIQ_QUEUES` | `default` | Comma-separated list of queues this worker processes. |
-| `SONIQ_WORKER_HEARTBEAT_INTERVAL` | `5` | How often workers send heartbeats (seconds). Lower values detect crashes faster but add minor DB load. |
-| `SONIQ_STALE_WORKER_THRESHOLD` | `300` | Seconds before a silent worker is considered dead. Its in-flight jobs get reset to `queued`. |
+| `SONIQ_HEARTBEAT_INTERVAL` | `5` | How often workers send heartbeats (seconds). Lower values detect crashes faster but add minor DB load. |
+| `SONIQ_HEARTBEAT_TIMEOUT` | `300` | Seconds before a silent worker is considered dead. Its in-flight jobs get reset to `queued`. |
 | `SONIQ_CLEANUP_INTERVAL` | `300` | How often workers scan for stale peers (seconds). |
 
 ## Database
@@ -49,7 +49,7 @@ Key settings:
 
 - Set retries per job, especially for external API calls. Use backoff for flaky integrations.
 - Enable timeouts: `SONIQ_TIMEOUTS_ENABLED=true`.
-- **Design all jobs to be idempotent.** Soniq provides at-least-once delivery — a job may execute more than once if a worker crashes after execution but before the status update. Use database upserts, dedup checks, or idempotency keys for side effects like emails or payments.
+- **Design all jobs to be idempotent.** Soniq provides at-least-once delivery - a job may execute more than once if a worker crashes after execution but before the status update. Use database upserts, dedup checks, or idempotency keys for side effects like emails or payments.
 
 ## Queue design
 
@@ -73,7 +73,7 @@ or leave the default `NoopMetricsSink` in place if you do not scrape.
 
 ### What gets tracked
 
-- Job counts by status (queued, processing, done, failed, dead_letter)
+- Job counts by status (queued, processing, done, cancelled) plus dead-letter rows from `soniq_dead_letter_jobs`
 - Processing time (average, p95, p99)
 - Throughput (jobs per minute)
 - Success rate
@@ -124,7 +124,7 @@ Soniq raises health warnings when metrics cross these thresholds:
 | Flag | Why |
 |------|-----|
 | `SONIQ_TIMEOUTS_ENABLED=true` | Prevents runaway jobs. Default timeout is 300s per job. |
-| `SONIQ_DEAD_LETTER_QUEUE_ENABLED=true` | Jobs that exhaust retries land here instead of disappearing. Inspect and retry with `soniq dead-letter list` and `soniq dead-letter resurrect <id>`. |
+| `SONIQ_DEAD_LETTER_QUEUE_ENABLED=true` | Jobs that exhaust retries land here instead of disappearing. Inspect and replay with `soniq dead-letter list` and `soniq dead-letter replay <id>`. |
 | `SONIQ_METRICS_ENABLED=true` | Exposes job counts, throughput, processing times. Required for dashboards and alerts. |
 | `SONIQ_LOGGING_ENABLED=true` | Structured logging for your log aggregation pipeline. |
 | `SONIQ_SCHEDULING_ENABLED=true` | Required if you use recurring jobs or delayed scheduling. |
@@ -138,11 +138,11 @@ Conservative values that work well for most deployments:
 |----------|-------|-------|
 | `SONIQ_CONCURRENCY` | `4` | Safe starting point. Increase for IO-bound workloads. |
 | `SONIQ_QUEUES` | `default` | Override per worker group. |
-| `SONIQ_MAX_RETRIES` | `3` | Per-job override with `@soniq.job(max_retries=5)`. |
-| `SONIQ_JOB_TIMEOUT` | `300` | 5 minutes. Override per-job with `@soniq.job(timeout=600)`. Set to `0` to disable. |
-| `SONIQ_WORKER_HEARTBEAT_INTERVAL` | `5` | Seconds between heartbeats. |
+| `SONIQ_MAX_RETRIES` | `3` | Per-job override with `@app.job(max_retries=5)`. |
+| `SONIQ_JOB_TIMEOUT` | `300` | 5 minutes. Override per-job with `@app.job(timeout=600)`. Set to `0` to disable. |
+| `SONIQ_HEARTBEAT_INTERVAL` | `5` | Seconds between heartbeats. |
 | `SONIQ_CLEANUP_INTERVAL` | `300` | 5 minutes between stale worker scans. |
-| `SONIQ_STALE_WORKER_THRESHOLD` | `300` | 5 minutes of silence before a worker is marked dead. |
+| `SONIQ_HEARTBEAT_TIMEOUT` | `300` | 5 minutes of silence before a worker is marked dead. |
 | `SONIQ_POOL_MIN_SIZE` | `5` | Minimum DB connections in the pool. |
 | `SONIQ_POOL_MAX_SIZE` | `20` | Maximum DB connections. Must be >= concurrency + headroom. |
 | `SONIQ_POOL_HEADROOM` | `2` | Extra connections for listener/heartbeat. |

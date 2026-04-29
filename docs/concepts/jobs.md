@@ -60,36 +60,6 @@ async def charge_subscription(account_id: str, amount: int):
     ...
 ```
 
-## Global API vs Instance API
-
-Soniq provides two ways to register jobs.
-
-**Global API** -- works without creating an instance:
-
-```python
-import soniq
-
-@soniq.job
-async def send_welcome_email(user_id: int):
-    ...
-
-await soniq.enqueue(send_welcome_email, user_id=42)
-```
-
-**Instance API** -- explicit app object, recommended for FastAPI and multi-instance setups:
-
-```python
-app = Soniq(database_url="postgresql://localhost/myapp")
-
-@app.job
-async def send_welcome_email(user_id: int):
-    ...
-
-await app.enqueue(send_welcome_email, user_id=42)
-```
-
-> **Tip:** Use the instance API for production applications. It gives you explicit control over database connections, configuration, and lifecycle. The global API is convenient for scripts and prototypes.
-
 ## Enqueuing jobs
 
 `enqueue` accepts three input shapes:
@@ -122,8 +92,8 @@ job_id = await app.enqueue(
 Enqueue a job inside the same database transaction as your application write. If the transaction rolls back, the job is never created.
 
 ```python
-pool = await app.get_pool()
-async with pool.acquire() as conn:
+await app.ensure_initialized()
+async with app.backend.acquire() as conn:
     async with conn.transaction():
         await conn.execute("INSERT INTO orders ...")
         await app.enqueue(send_welcome_email, connection=conn, user_id=42)
@@ -176,24 +146,25 @@ await app.enqueue(send_welcome_email, user_id="not_an_int")
 
 ## Job status lifecycle
 
-Every job moves through a defined set of states:
+`soniq_jobs` rows live in one of four states. Failures either re-queue the
+row for another attempt, or move it into `soniq_dead_letter_jobs` once
+retries are exhausted.
 
 ```mermaid
 stateDiagram-v2
     [*] --> queued : enqueue()
     queued --> processing : worker picks up
     processing --> done : success
-    processing --> failed : exception raised
-    failed --> queued : retry (attempts remaining)
-    failed --> dead_letter : max retries exhausted (DLQ enabled)
+    processing --> queued : retry (attempts remaining)
+    processing --> [*] : exhausted -> dead-letter table
     queued --> cancelled : cancel_job()
 ```
 
 You can check a job's status at any time:
 
 ```python
-status = await app.get_job_status(job_id)
-print(status["status"])  # "queued", "processing", "done", "failed", etc.
+job = await app.get_job(job_id)
+print(job["status"])   # "queued", "processing", "done", "cancelled"
 
 result = await app.get_result(job_id)  # return value of a completed job
 ```
@@ -202,7 +173,13 @@ result = await app.get_result(job_id)  # return value of a completed job
 
 ```python
 await app.cancel_job(job_id)    # cancel a queued job
-await app.retry_job(job_id)     # re-queue a failed job
 await app.delete_job(job_id)    # remove a job entirely
-await app.list_jobs(queue="billing", status="failed", limit=20)
+await app.list_jobs(queue="billing", status="queued", limit=20)
+```
+
+To re-run a job whose retries have been exhausted, replay it from the
+dead-letter table:
+
+```python
+new_job_id = await app.dead_letter.replay(job_id)
 ```

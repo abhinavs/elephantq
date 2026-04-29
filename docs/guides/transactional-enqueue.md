@@ -11,8 +11,8 @@ Either both your business data and the job are committed, or neither is.
 ## Basic pattern
 
 ```python
-pool = await eq.get_pool()
-async with pool.acquire() as conn:
+await eq.ensure_initialized()
+async with eq.backend.acquire() as conn:
     async with conn.transaction():
         await conn.execute("INSERT INTO orders (id, total) VALUES ($1, $2)", order_id, total)
         await eq.enqueue(send_invoice, connection=conn, order_id=order_id)
@@ -47,8 +47,8 @@ async def send_invoice(order_id: int):
 
 @app.post("/orders")
 async def create_order(product_id: int, quantity: int):
-    pool = await eq.get_pool()
-    async with pool.acquire() as conn:
+    await eq.ensure_initialized()
+    async with eq.backend.acquire() as conn:
         async with conn.transaction():
             order_id = await conn.fetchval(
                 "INSERT INTO orders (product_id, quantity) VALUES ($1, $2) RETURNING id",
@@ -81,19 +81,5 @@ Soniq provides **at-least-once delivery**. If a worker crashes after executing t
 
 - **Single execution.** The guarantee applies to enqueue only. Re-execution after worker crashes is still possible.
 - **Rollback after commit.** Once committed, the job is in the queue. You can cancel it with `eq.cancel_job(job_id)`, but a fast worker might pick it up first.
-
-## Global API
-
-The same pattern works with the global API:
-
-```python
-import soniq
-
-pool = await soniq.get_pool()
-async with pool.acquire() as conn:
-    async with conn.transaction():
-        await conn.execute("INSERT INTO orders ...")
-        await soniq.enqueue(send_invoice, connection=conn, order_id=order_id)
-```
 
 > **Note:** Transactional enqueue requires PostgreSQL. It is not available with the SQLite or Memory backends. Calling `enqueue(..., connection=conn)` on a non-PostgreSQL backend raises a `ValueError`.

@@ -118,8 +118,8 @@ async def test_job_status(eq):
         pass
 
     job_id = await eq.enqueue(noop)
-    status = await eq.get_job_status(job_id)
-    assert status["status"] == "queued"
+    job = await eq.get_job(job_id)
+    assert job["status"] == "queued"
 ```
 
 ## Testing retries
@@ -146,7 +146,8 @@ async def test_retry_behavior(eq):
 
 ## Testing failed jobs
 
-Use `list_jobs(status="failed")` to assert on failure counts:
+Jobs that exhaust retries land in the dead-letter table, not in
+`soniq_jobs`. Inspect them through `app.dead_letter`:
 
 ```python
 async def test_failure_tracking(eq):
@@ -157,8 +158,8 @@ async def test_failure_tracking(eq):
     await eq.enqueue(always_fails)
     await eq.run_worker(run_once=True)
 
-    failed = await eq.list_jobs(status="dead_letter")
-    assert len(failed) == 1
+    dead = await eq.dead_letter.list_dead_letter_jobs()
+    assert len(dead) == 1
 ```
 
 ## Resetting state between tests

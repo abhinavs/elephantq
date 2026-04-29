@@ -5,10 +5,9 @@ Everything about defining, enqueueing, scheduling, and inspecting jobs.
 
 ## @app.job decorator
 
-Registers a function as a job. Works on both instance and global APIs. Both `@app.job` (no parens) and `@app.job(...)` (with kwargs) are accepted.
+Registers a function as a job. Both `@app.job` (no parens) and `@app.job(...)` (with kwargs) are accepted.
 
 ```python
-# Instance API - `@app.job` and `@app.job()` are both accepted
 app = Soniq(database_url="postgresql://localhost/myapp")
 
 @app.job
@@ -17,13 +16,6 @@ async def send_email(to: str, subject: str, body: str):
 
 @app.job()  # equivalent; useful if you might add kwargs later
 async def send_password_reset(to: str, token: str):
-    ...
-
-# Global API
-import soniq
-
-@soniq.job
-async def send_welcome_email(user_id: int):
     ...
 ```
 
@@ -106,8 +98,8 @@ Pass a `connection` to enqueue a job inside an existing database transaction.
 If the transaction rolls back, the job is never created.
 
 ```python
-pool = await app.get_pool()
-async with pool.acquire() as conn:
+await app.ensure_initialized()
+async with app.backend.acquire() as conn:
     async with conn.transaction():
         await conn.execute("INSERT INTO orders (id) VALUES ($1)", order_id)
         await app.enqueue(fulfill_order, connection=conn, order_id=order_id)
@@ -118,49 +110,33 @@ Transactional enqueue requires the PostgreSQL backend.
 
 ## schedule()
 
-Schedule a job for future execution. Two calling conventions exist:
-
-### Instance API
+Schedule a job for future execution.
 
 ```python
-job_id = await app.schedule(send_report, run_at=tomorrow_9am, user_id=42)
-```
+from datetime import datetime, timezone
 
-`app.schedule()` is a thin wrapper around `app.enqueue()` that sets `scheduled_at`.
-
-### Global API
-
-The global `soniq.schedule()` supports both absolute and relative times:
-
-```python
-import soniq
-from datetime import datetime, timedelta, timezone
-
-# Absolute time
-await soniq.schedule(send_report, run_at=datetime(2025, 1, 1, 9, 0, tzinfo=timezone.utc))
-
-# Relative delay in seconds
-await soniq.schedule(send_reminder, run_in=3600)
-
-# Relative delay as timedelta
-await soniq.schedule(send_reminder, run_in=timedelta(hours=1))
+# Absolute UTC datetime
+await app.schedule(
+    send_report,
+    run_at=datetime(2025, 1, 1, 9, 0, tzinfo=timezone.utc),
+    user_id=42,
+)
 ```
 
 ```python
 async def schedule(
-    job_func,
+    target,
+    run_at,            # UTC datetime, or seconds-from-now (int/float)
     *,
-    run_at: datetime | None = None,    # Absolute UTC datetime
-    run_in: int | float | timedelta | None = None,  # Relative delay
-    connection=None,
+    args: dict | None = None,
     **kwargs,
 ) -> str  # Returns job UUID
 ```
 
-Exactly one of `run_at` or `run_in` is required.
+`app.schedule()` is a thin wrapper around `app.enqueue()` that sets `scheduled_at=run_at`.
 
 
-## @app.periodic() / @soniq.periodic()
+## @app.periodic()
 
 Declares a job that runs on a recurring schedule. Single decorator: registers the
 function as a regular `@app.job` and stamps the schedule on it. The scheduler
@@ -170,15 +146,15 @@ process (`soniq scheduler`) picks up all `@periodic` functions automatically.
 from datetime import timedelta
 from soniq import cron, daily, every
 
-@soniq.periodic(cron=daily().at("09:00"), name="reports.daily")
+@app.periodic(cron=daily().at("09:00"), name="reports.daily")
 async def daily_report():
     ...
 
-@soniq.periodic(cron=every(10).minutes(), queue="maintenance", name="cleanup")
+@app.periodic(cron=every(10).minutes(), queue="maintenance", name="cleanup")
 async def cleanup_old_sessions():
     ...
 
-@soniq.periodic(every=timedelta(seconds=30), name="metrics.flush")
+@app.periodic(every=timedelta(seconds=30), name="metrics.flush")
 async def flush_metrics():
     ...
 ```
@@ -229,7 +205,7 @@ async def process_order(order_id: int, ctx: JobContext):
 
 ## JobStatus
 
-Enum of all job lifecycle states.
+Enum of the lifecycle states a `soniq_jobs` row can hold.
 
 ```python
 from soniq import JobStatus
@@ -237,12 +213,14 @@ from soniq import JobStatus
 
 | Value | Meaning |
 |---|---|
-| `JobStatus.QUEUED` | Waiting to be picked up by a worker. |
+| `JobStatus.QUEUED` | Waiting to be picked up by a worker. Retries also re-enter this state. |
 | `JobStatus.PROCESSING` | Currently being executed. |
 | `JobStatus.DONE` | Completed successfully. |
-| `JobStatus.FAILED` | Failed but may be retried. |
-| `JobStatus.DEAD_LETTER` | Exhausted all retries. Moved to the dead-letter queue. |
 | `JobStatus.CANCELLED` | Cancelled before execution. |
+
+Jobs that exhaust all retries are moved into the `soniq_dead_letter_jobs`
+table; they do not remain in `soniq_jobs`. See
+[Dead Letter Queue](../concepts/dead-letter.md).
 
 
 ## Imperative scheduling: `app.scheduler`

@@ -21,7 +21,7 @@ Common patterns:
 **Sent flags.** Before sending an email or webhook, check a flag in your database. Set the flag inside the same transaction as the action.
 
 ```python
-@soniq.job()
+@app.job()
 async def send_welcome_email(user_id: int):
     user = await db.get(user_id)
     if user.welcome_email_sent:
@@ -39,16 +39,15 @@ async def send_welcome_email(user_id: int):
 When a job raises an exception, Soniq retries it automatically up to `max_retries` (default 3). Each retry respects the configured delay.
 
 ```python
-@soniq.job(max_retries=5, timeout=120)
+@app.job(max_retries=5, timeout=120)
 async def call_external_api(payload: dict):
     response = await httpx.post("https://api.example.com", json=payload)
     response.raise_for_status()
 ```
 
-After exhausting retries:
-
-- If `SONIQ_DEAD_LETTER_QUEUE_ENABLED=true`, the job moves to the dead-letter queue. Inspect and retry with `soniq dead-letter list` and `soniq dead-letter resurrect <id>`.
-- If DLQ is disabled, the job is marked as `failed`.
+After exhausting retries the job is moved into the dead-letter table.
+Inspect and replay with `soniq dead-letter list` and `soniq dead-letter
+replay <id>`.
 
 ## Stuck job recovery
 
@@ -64,16 +63,16 @@ A job gets stuck in `processing` status when the worker running it dies without 
 
 ### Automatic recovery
 
-Running workers periodically scan for stale peers. When a worker's heartbeat exceeds the stale threshold (default 300 seconds), its in-flight jobs are reset to `queued` and picked up by healthy workers.
+Running workers periodically scan for stale peers. When a worker's heartbeat exceeds the heartbeat timeout (default 300 seconds), its in-flight jobs are reset to `queued` and picked up by healthy workers.
 
-Worst-case recovery time = `stale_worker_threshold` + `cleanup_interval`. With defaults, that's 10 minutes. Tune for your needs:
+Worst-case recovery time = `heartbeat_timeout` + `cleanup_interval`. With defaults, that's 10 minutes. Tune for your needs:
 
 ```bash
-SONIQ_STALE_WORKER_THRESHOLD=120   # 2 minutes
-SONIQ_CLEANUP_INTERVAL=60          # check every minute
+SONIQ_HEARTBEAT_TIMEOUT=120   # 2 minutes
+SONIQ_CLEANUP_INTERVAL=60     # check every minute
 ```
 
-The default 300-second job timeout also prevents most stuck-job scenarios caused by hung code (infinite loops, dead network calls). Override per-job with `@soniq.job(timeout=600)`.
+The default 300-second job timeout also prevents most stuck-job scenarios caused by hung code (infinite loops, dead network calls). Override per-job with `@app.job(timeout=600)`.
 
 ### Manual recovery
 
@@ -121,7 +120,7 @@ soniq workers --stale
 
 ## Worker crash behavior
 
-Workers send heartbeats every `SONIQ_WORKER_HEARTBEAT_INTERVAL` seconds (default 5). If a worker stops heartbeating, it's considered stale after `SONIQ_STALE_WORKER_THRESHOLD` seconds (default 300).
+Workers send heartbeats every `SONIQ_HEARTBEAT_INTERVAL` seconds (default 5). If a worker stops heartbeating, it's considered stale after `SONIQ_HEARTBEAT_TIMEOUT` seconds (default 300).
 
 When a worker is detected as stale:
 
@@ -181,10 +180,6 @@ Soniq is comfortable processing thousands of jobs per second on a single Postgre
 ### Stuck jobs after SIGKILL or OOM
 
 When a worker is killed without a chance to clean up, its in-flight jobs stay in `processing` until another worker detects the stale heartbeat. With defaults, that's up to 10 minutes. This is expected behavior, not data loss -- the jobs will be retried.
-
-### Feature flags are opt-in
-
-All features (timeouts, DLQ, metrics, scheduling, logging, webhooks, signing) are disabled by default. This keeps the default behavior simple and predictable. Enable what you need. See the [checklist](checklist.md) for recommended production flags.
 
 ### Connection pool sizing matters
 

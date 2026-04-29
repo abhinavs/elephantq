@@ -139,4 +139,4 @@ async def long_running_migration():
     ...
 ```
 
-Change the global default with `SONIQ_JOB_TIMEOUT` or `await soniq.configure(job_timeout=600)`. Set to `0` to disable timeouts globally.
+Change the global default with `SONIQ_JOB_TIMEOUT`. Set to `0` to disable timeouts globally.

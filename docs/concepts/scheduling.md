@@ -25,12 +25,11 @@ await app.schedule(
 ```python
 from datetime import timedelta
 
-# Using the global API
-await soniq.schedule(send_report, run_in=timedelta(minutes=30), report_id="q4")
-await soniq.schedule(send_report, run_in=600, report_id="q4")  # 600 seconds
+await app.schedule(send_report, run_at=timedelta(minutes=30), report_id="q4")
+await app.schedule(send_report, run_at=600, report_id="q4")  # 600 seconds from now
 ```
 
-Under the hood, `schedule()` calls `enqueue()` with a `scheduled_at` timestamp. The worker ignores scheduled jobs until their time arrives.
+`run_at` accepts a UTC `datetime`, a `timedelta`, or a number of seconds from now. Under the hood, `schedule()` calls `enqueue()` with a `scheduled_at` timestamp. The worker ignores scheduled jobs until their time arrives.
 
 ## Recurring jobs
 
@@ -39,22 +38,21 @@ Under the hood, `schedule()` calls `enqueue()` with a `scheduled_at` timestamp. 
 The single decorator that registers a job and its schedule together. The scheduler process picks up all `@periodic` functions automatically.
 
 ```python
-import soniq
 from datetime import timedelta
 from soniq import cron, daily, every, monthly, weekly
 
 # Cron expression (string or builder).
-@soniq.periodic(cron=daily().at("09:00"), name="reports.daily")
+@app.periodic(cron=daily().at("09:00"), name="reports.daily")
 async def daily_sales_report():
     ...
 
 # Plain cron strings work too.
-@soniq.periodic(cron="0 9 * * 1-5", name="weekday.morning")
+@app.periodic(cron="0 9 * * 1-5", name="weekday.morning")
 async def weekday_summary():
     ...
 
 # Interval (cron has no sub-minute resolution; pass a timedelta).
-@soniq.periodic(every=timedelta(seconds=30), name="metrics.flush")
+@app.periodic(every=timedelta(seconds=30), name="metrics.flush")
 async def flush_metrics():
     ...
 ```
