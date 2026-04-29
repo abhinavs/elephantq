@@ -61,7 +61,7 @@ async def test_transactional_schedule_rolls_back():
         try:
             async with conn.transaction():
                 job_id = await app.schedule(
-                    "txn_scheduled_job", run_in=60, connection=conn
+                    "txn_scheduled_job", run_at=60, connection=conn
                 )
                 raise RuntimeError("rollback")
         except RuntimeError:

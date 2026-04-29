@@ -161,6 +161,9 @@ async def cli_test_job(message: str):
 
         from soniq import Soniq
 
+        # Producer-only enqueue from a fresh Soniq with no local registry
+        # (the worker side imports test_cli_jobs and registers the task).
+        os.environ["SONIQ_ENQUEUE_VALIDATION"] = "warn"
         app = Soniq(database_url=TEST_DATABASE_URL)
         await app.enqueue("cli_test_job", args={"message": "Hello CLI"})
         await app.close()

@@ -2,8 +2,8 @@ import asyncio
 
 import pytest
 
-aiohttp = pytest.importorskip("aiohttp")
-web = aiohttp.web
+pytest.importorskip("aiohttp")
+from aiohttp import web  # noqa: E402
 
 from soniq import Soniq  # noqa: E402
 from soniq.features.webhooks import WebhookEvent  # noqa: E402

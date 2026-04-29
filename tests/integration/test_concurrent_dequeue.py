@@ -25,7 +25,8 @@ async def test_concurrent_dequeue_no_duplicates():
     async def race_job(n: int):
         pass
 
-    backend = app._backend
+    await app.ensure_initialized()
+    backend = app.backend
 
     await app.enqueue("race_job", args={"n": 1})
 
@@ -54,7 +55,8 @@ async def test_concurrent_dequeue_distributes_jobs():
     async def race_job(n: int):
         pass
 
-    backend = app._backend
+    await app.ensure_initialized()
+    backend = app.backend
 
     for i in range(10):
         await app.enqueue("race_job", args={"n": i})
