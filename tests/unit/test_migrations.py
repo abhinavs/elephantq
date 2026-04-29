@@ -33,13 +33,22 @@ class TestMigrationStructure:
             "0004_scheduler.sql",
             "0005_webhooks.sql",
             "0006_logs.sql",
+            "0007_drop_failed_status.sql",
         ]
 
     def test_migrations_discovered_in_order(self):
         runner = MigrationRunner()
         migrations = runner.discover_migrations()
         versions = [v for v, _, _ in migrations]
-        assert versions == ["0001", "0002", "0003", "0004", "0005", "0006"]
+        assert versions == [
+            "0001",
+            "0002",
+            "0003",
+            "0004",
+            "0005",
+            "0006",
+            "0007",
+        ]
 
     def test_version_filter_core(self):
         runner = MigrationRunner()
@@ -47,7 +56,15 @@ class TestMigrationStructure:
         # logs) ship in the core slice so dashboard/metrics queries can
         # reference them unconditionally.
         versions = [v for v, _, _ in runner.discover_migrations(version_filter="000")]
-        assert versions == ["0001", "0002", "0003", "0004", "0005", "0006"]
+        assert versions == [
+            "0001",
+            "0002",
+            "0003",
+            "0004",
+            "0005",
+            "0006",
+            "0007",
+        ]
 
 
 class TestCoreContents:
