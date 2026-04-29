@@ -1,9 +1,4 @@
-"""
-In-memory storage backend for Soniq.
-
-Used for unit tests. No persistence, no external dependencies.
-Configure with: Soniq(backend="memory")
-"""
+"""In-memory storage backend for unit tests. No persistence, no external dependencies."""
 
 import asyncio
 from datetime import datetime, timezone
@@ -25,22 +20,12 @@ def _reject_dead_letter_status(status: Any) -> None:
 
 
 class MemoryBackend:
-    """
-    In-memory storage backend.
-
-    Stores jobs and workers in Python dicts.
-    No persistence - all state is lost when the process exits.
-    """
-
     def __init__(self) -> None:
         self._jobs: dict[str, dict[str, Any]] = {}
         self._workers: dict[str, dict[str, Any]] = {}
         self._dead_letter_jobs: dict[str, dict[str, Any]] = {}
-        # Observability metadata only - mirrors soniq_task_registry.
         self._task_registry: dict[tuple[str, str], dict[str, Any]] = {}
         self._lock = asyncio.Lock()
-
-    # --- Capabilities ---
 
     @property
     def supports_push_notify(self) -> bool:
@@ -54,15 +39,11 @@ class MemoryBackend:
     def supports_advisory_locks(self) -> bool:
         return False
 
-    # --- Lifecycle ---
-
     async def initialize(self) -> None:
         pass
 
     async def close(self) -> None:
         pass
-
-    # --- Job CRUD ---
 
     async def create_job(
         self,
@@ -80,7 +61,6 @@ class MemoryBackend:
         producer_id: Optional[str] = None,
     ) -> Optional[str]:
         async with self._lock:
-            # Unique dedup
             if unique and args_hash:
                 for existing in self._jobs.values():
                     if (
@@ -91,7 +71,6 @@ class MemoryBackend:
                     ):
                         return str(existing["id"])
 
-            # Queueing lock dedup
             if dedup_key:
                 for existing in self._jobs.values():
                     if (
@@ -124,8 +103,6 @@ class MemoryBackend:
             }
             return job_id
 
-    # --- Worker dequeue ---
-
     async def fetch_and_lock_job(
         self,
         *,
@@ -148,7 +125,6 @@ class MemoryBackend:
             if not candidates:
                 return None
 
-            # Sort by priority (lower = higher priority), then created_at
             candidates.sort(
                 key=lambda j: (
                     j["priority"],
@@ -165,16 +141,14 @@ class MemoryBackend:
             return dict(job)
 
     async def notify_new_job(self, queue: str) -> None:
-        pass  # No push notification in memory backend
+        pass
 
     async def listen_for_jobs(
         self,
         callback: Any,
         channel: str = "soniq_new_job",
     ) -> None:
-        pass  # No push notification
-
-    # --- Job status transitions ---
+        pass
 
     async def mark_job_done(
         self,
@@ -191,7 +165,6 @@ class MemoryBackend:
                 del self._jobs[job_id]
             else:
                 job["status"] = "done"
-                # Mirror Postgres/SQLite: only write `result` when non-None.
                 if result is not None:
                     job["result"] = result
                 job["updated_at"] = datetime.now(timezone.utc)
@@ -236,11 +209,7 @@ class MemoryBackend:
         reason: str,
         tags: Optional[dict] = None,
     ) -> None:
-        # DLQ Option A: copy the source job into self._dead_letter_jobs and
-        # remove it from self._jobs under the same lock. There are no
-        # transactions to worry about - the lock makes the move atomic from
-        # the perspective of any other coroutine on this backend. See
-        # docs/contracts/dead_letter.md and docs/design/dlq_option_a.md.
+        # DLQ Option A: the lock makes the copy-and-delete atomic for all other coroutines.
         async with self._lock:
             job = self._jobs.get(job_id)
             if not job:
@@ -316,8 +285,6 @@ class MemoryBackend:
                 return True
             return False
 
-    # --- Queries ---
-
     async def get_job(self, job_id: str) -> Optional[dict]:
         job = self._jobs.get(job_id)
         if not job:
@@ -340,15 +307,10 @@ class MemoryBackend:
                 continue
             results.append(self._format_job(job))
 
-        # Sort by created_at descending
         results.sort(key=lambda j: j.get("created_at", ""), reverse=True)
         return results[offset : offset + limit]
 
     async def get_queue_stats(self) -> "QueueStats":
-        # Whole-instance counts. dead_letter is sourced from
-        # self._dead_letter_jobs - the in-memory mirror of
-        # soniq_dead_letter_jobs (DLQ Option A). See
-        # docs/contracts/queue_stats.md.
         from soniq.types import QueueStats
 
         queued = processing = done = cancelled = 0
@@ -372,8 +334,6 @@ class MemoryBackend:
             cancelled=cancelled,
         )
 
-    # --- Task registry (observability metadata only) ---
-
     async def register_task_name(
         self,
         *,
@@ -381,7 +341,6 @@ class MemoryBackend:
         worker_id: str,
         args_model_repr: Optional[str] = None,
     ) -> None:
-        """Upsert this worker's registration for ``task_name``."""
         async with self._lock:
             self._task_registry[(task_name, worker_id)] = {
                 "task_name": task_name,
@@ -396,8 +355,6 @@ class MemoryBackend:
                 (dict(v) for v in self._task_registry.values()),
                 key=lambda r: (r["task_name"], r["worker_id"]),
             )
-
-    # --- Worker tracking ---
 
     async def register_worker(
         self,
@@ -454,15 +411,12 @@ class MemoryBackend:
         for wid in stale_ids:
             self._workers[wid]["status"] = "stopped"
 
-        # Reset processing jobs from stale workers
         for job in self._jobs.values():
             if job["status"] == "processing" and job.get("worker_id") in stale_ids:
                 job["status"] = "queued"
                 job["worker_id"] = None
 
         return len(stale_ids)
-
-    # --- Maintenance ---
 
     async def delete_expired_jobs(self) -> int:
         now = datetime.now(timezone.utc)
@@ -481,16 +435,9 @@ class MemoryBackend:
         self._jobs.clear()
         self._workers.clear()
 
-    # --- Helpers ---
-
     @staticmethod
     def _format_job(job: dict) -> dict:
-        """Format a job dict for external consumption.
-
-        `args` is stored as a dict internally and returned as a dict (the
-        uniform backend contract). Datetimes are converted to ISO strings to
-        match what the Postgres backend returns for list/get paths.
-        """
+        """Convert datetime fields to ISO strings to match the Postgres backend contract."""
         result = dict(job)
         for key in ("scheduled_at", "created_at", "updated_at", "expires_at"):
             val = result.get(key)

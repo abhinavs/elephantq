@@ -1,11 +1,4 @@
-"""
-PostgreSQL storage backend for Soniq.
-
-Uses asyncpg for all database operations. Supports:
-- FOR UPDATE SKIP LOCKED for concurrent dequeue
-- pg_notify / LISTEN for push notifications
-- Transactional enqueue via caller-provided connection
-"""
+"""PostgreSQL storage backend. Uses asyncpg with FOR UPDATE SKIP LOCKED, pg_notify, and transactional enqueue."""
 
 import json
 import logging
@@ -27,12 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 async def _init_connection(conn: asyncpg.Connection) -> None:
-    """Initialize a pooled asyncpg connection: UTC timezone and a JSONB
-    codec so layers above this one can treat ``args``, ``result``, ``tags``,
-    etc. as native Python values without manual ``json.dumps`` /
-    ``json.loads`` dances. The encoder uses ``default=str`` so non-JSON-native
-    types (datetimes, Decimal, UUID) round-trip via ``str(...)``.
-    """
+    """Set UTC timezone and register a JSONB codec so args/result are native Python dicts, not raw strings."""
     await conn.execute("SET timezone = 'UTC'")
     await conn.set_type_codec(
         "jsonb",
@@ -57,12 +45,7 @@ def _row_to_dict(row: asyncpg.Record) -> dict:
 
 
 def _job_row_to_dict(row: asyncpg.Record) -> dict:
-    """Convert a job row to the standard dict format.
-
-    The JSONB codec registered in `_init_connection` already decodes
-    `args` and `result` into Python dicts/values, so no manual json.loads
-    is needed here.
-    """
+    """Convert a job row to the standard dict format. JSONB codec already decoded args/result."""
     return {
         "id": str(row["id"]),
         "job_name": row["job_name"],
@@ -83,13 +66,6 @@ def _job_row_to_dict(row: asyncpg.Record) -> dict:
 
 
 class PostgresBackend:
-    """
-    PostgreSQL storage backend.
-
-    Production-grade backend with full concurrency support via
-    FOR UPDATE SKIP LOCKED, push notifications via pg_notify,
-    and transactional enqueue via caller connection.
-    """
 
     def __init__(
         self,
@@ -104,15 +80,12 @@ class PostgresBackend:
 
     @staticmethod
     def _should_skip_lock() -> bool:
-        """Check if row-level locking should be skipped (debug/testing only)."""
         env_val = os.environ.get("SONIQ_SKIP_UPDATE_LOCK", "").lower()
         if env_val not in {"1", "true", "yes", "on"}:
             return False
 
         settings = get_settings()
         return settings.debug or settings.environment == "testing"
-
-    # --- Capabilities ---
 
     @property
     def supports_push_notify(self) -> bool:
@@ -125,8 +98,6 @@ class PostgresBackend:
     @property
     def supports_advisory_locks(self) -> bool:
         return True
-
-    # --- Lifecycle ---
 
     async def initialize(self) -> None:
         if self._pool is None:
@@ -157,8 +128,6 @@ class PostgresBackend:
             )
         async with self._pool.acquire() as conn:
             yield conn
-
-    # --- Job CRUD ---
 
     async def create_job(
         self,
@@ -239,14 +208,10 @@ class PostgresBackend:
         scheduled_at: Optional[datetime],
         producer_id: Optional[str] = None,
     ) -> Optional[str]:
-        """Shared implementation for both regular and transactional enqueue."""
         uid = uuid.UUID(job_id)
 
-        # Queueing lock dedup - more flexible than unique, uses custom key.
-        # Single-statement contract: INSERT ... ON CONFLICT DO UPDATE SET (no-op)
-        # RETURNING id. The no-op SET fires RETURNING for the existing row too,
-        # so the returned id is always a real soniq_jobs row - no synthetic
-        # caller-id fallback can leak through a between-statement race window.
+        # ON CONFLICT DO UPDATE SET (no-op) RETURNING id fires for the existing row too,
+        # so the returned id is always a real row - no caller-id can leak through a race window.
         if dedup_key:
             row = await conn.fetchrow(
                 """
@@ -358,8 +323,6 @@ class PostgresBackend:
         await conn.add_listener(channel, callback)
         return _PostgresListenerHandle(self._pool, conn, channel, callback)
 
-    # --- Worker dequeue ---
-
     async def fetch_and_lock_job(
         self,
         *,
@@ -438,8 +401,6 @@ class PostgresBackend:
             result["attempts"] = result["attempts"] + 1
             return result
 
-    # --- Job status transitions ---
-
     async def mark_job_done(
         self,
         job_id: str,
@@ -448,10 +409,7 @@ class PostgresBackend:
         result: Any = None,
     ) -> None:
         uid = uuid.UUID(job_id)
-        # JSONB codec auto-serializes; pass the raw value. Skip the
-        # `result` column write entirely when the job returned None: the
-        # vast majority of jobs are `-> None`, and storing JSON null on
-        # every row is wasted bytes plus a wasted write.
+        # Skip the result column write when the job returned None - most jobs are -> None.
         async with self.acquire() as conn:
             async with conn.transaction():
                 if result_ttl is not None and result_ttl == 0:
@@ -540,13 +498,8 @@ class PostgresBackend:
         reason: str,
         tags: Optional[dict] = None,
     ) -> None:
-        # DLQ Option A: the source row in soniq_jobs is moved into
-        # soniq_dead_letter_jobs in a single transaction. Both statements
-        # share the same conn.transaction() block so a crash between them
-        # rolls back to the pre-move state. SELECT ... FOR UPDATE locks the
-        # source row to keep concurrent writers (stale-worker recovery,
-        # cancel) from racing with the move. See docs/contracts/dead_letter.md
-        # and docs/design/dlq_option_a.md.
+        # DLQ Option A: move source row to soniq_dead_letter_jobs in one transaction.
+        # SELECT FOR UPDATE prevents concurrent cancel/recovery from racing with the move.
         uid = uuid.UUID(job_id)
         tags_json = json.dumps(tags) if tags is not None else None
         async with self.acquire() as conn:
@@ -611,9 +564,7 @@ class PostgresBackend:
         reason: Optional[str] = None,
     ) -> None:
         uid = uuid.UUID(job_id)
-        # Reason is stored in last_error with a SNOOZE: prefix so downstream
-        # tooling can distinguish snoozes from real failures without a schema
-        # change. scheduled_at is computed server-side to avoid client clock skew.
+        # SNOOZE: prefix in last_error lets tooling distinguish snoozes from real failures without a schema change.
         reason_text = f"SNOOZE: {reason}" if reason else "SNOOZE"
         async with self.acquire() as conn:
             async with conn.transaction():
@@ -654,8 +605,6 @@ class PostgresBackend:
                 uid,
             )
             return _rows_affected(result) == 1
-
-    # --- Queries ---
 
     async def get_job(self, job_id: str) -> Optional[dict]:
         uid = uuid.UUID(job_id)
@@ -721,12 +670,7 @@ class PostgresBackend:
             return [_job_row_to_dict(row) for row in rows]
 
     async def get_queue_stats(self) -> QueueStats:
-        # Cross-table aggregation: dead_letter is sourced from
-        # soniq_dead_letter_jobs (Option A; soniq_jobs.status='dead_letter'
-        # no longer exists). Two queries in one connection acquire to keep
-        # the count snapshot tight; the result is the canonical 6-key
-        # QueueStats dict from soniq.types. See
-        # docs/contracts/queue_stats.md.
+        # Two queries in one acquire to keep the count snapshot tight.
         async with self.acquire() as conn:
             jobs_row = await conn.fetchrow(
                 """
@@ -754,8 +698,6 @@ class PostgresBackend:
             dead_letter=dead_letter,
             cancelled=cancelled,
         )
-
-    # --- Worker tracking ---
 
     async def register_task_name(
         self,
@@ -963,8 +905,6 @@ class PostgresBackend:
 
                 return len(stale_ids)
 
-    # --- Maintenance ---
-
     async def delete_expired_jobs(self) -> int:
         async with self.acquire() as conn:
             result = await conn.execute(
@@ -977,18 +917,9 @@ class PostgresBackend:
             await conn.execute("TRUNCATE soniq_jobs CASCADE")
             await conn.execute("TRUNCATE soniq_workers CASCADE")
 
-    # --- Leader election ---
-
     @asynccontextmanager
     async def with_advisory_lock(self, name: str) -> AsyncIterator[bool]:
-        """
-        Try to acquire a Postgres session-scoped advisory lock keyed by `name`.
-
-        Yields True inside the block if this caller is the leader for `name`,
-        False if another session already holds the lock. The lock is held on
-        a dedicated connection for the full duration of the block and
-        released on exit (or automatically if the connection is lost).
-        """
+        """Try a session-scoped advisory lock. Yields True if acquired, False if already held by another session."""
         key = advisory_key(name)
         async with self.acquire() as conn:
             acquired = await conn.fetchval("SELECT pg_try_advisory_lock($1)", key)
@@ -1005,14 +936,7 @@ class PostgresBackend:
 
 
 class _PostgresListenerHandle:
-    """ListenerHandle backed by a dedicated pooled asyncpg connection.
-
-    LISTEN ties the subscription to a single connection, so the connection
-    must outlive the listening period and be released back to the pool
-    when the listener is torn down. ``close()`` does both halves -
-    ``remove_listener`` then ``pool.release`` - in one call so the worker
-    shutdown path stays a single line.
-    """
+    """LISTEN handle backed by a dedicated connection. close() removes the listener and releases the connection."""
 
     def __init__(
         self,
