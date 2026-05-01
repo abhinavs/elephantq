@@ -4,6 +4,21 @@ The 80/20 of running Soniq in production. If you do the four things in
 **Required** below and the four things in **Strongly recommended**,
 you have a healthy deploy. Everything else on this section is detail.
 
+## At a glance
+
+A copy-into-the-ticket checklist:
+
+- [ ] `SONIQ_DATABASE_URL` and `SONIQ_JOBS_MODULES` set in the worker environment
+- [ ] `soniq setup` runs once per deploy (CI step, init container, or migration job - never from app startup on every replica)
+- [ ] Process manager sends `SIGTERM` for shutdown, with `terminationGracePeriodSeconds` / `TimeoutStopSec` >= longest job timeout
+- [ ] Handlers are idempotent (safe to run more than once - upserts, dedup keys, idempotency tokens)
+- [ ] Structured logs configured (`SONIQ_LOG_FORMAT=structured`) and a metrics sink wired up
+- [ ] If you use `@app.periodic`, a separate `soniq scheduler` process is running
+- [ ] `SONIQ_POOL_MAX_SIZE >= concurrency + SONIQ_POOL_HEADROOM`, and `max_connections` on the database has headroom for `num_workers * pool_size`
+- [ ] Per-job timeouts set for slow jobs; the global default is 300s
+
+The rest of this page explains each item. The [common production mistakes](#common-production-mistakes) section at the bottom is the most useful page on the site if something is misbehaving in production - read it first if you are debugging.
+
 ## Required
 
 ### Set `SONIQ_DATABASE_URL` and `SONIQ_JOBS_MODULES`
@@ -27,7 +42,7 @@ Soniq handles `SIGTERM` by finishing in-flight jobs before exiting. `SIGKILL` (o
 
 ### Design jobs to be idempotent
 
-Soniq guarantees at-least-once delivery. If a worker crashes after running your handler but before marking the row `done`, the heartbeat sweep will requeue the job and another worker will run it. Use upserts, dedup checks, or idempotency keys for any side effect you do not want to repeat.
+Soniq guarantees *at-least-once* delivery: a job will run at least once, and may run more than once. If a worker crashes after running your handler but before marking the row `done`, the heartbeat sweep will requeue the job and another worker will run it. *Idempotent* means "safe to run more than once with the same end result" - use upserts (`INSERT ... ON CONFLICT DO UPDATE`), dedup checks against current state, or idempotency keys for any side effect you do not want to repeat. The fix is "make the second run a no-op", not "guarantee the second run never happens" - on Postgres alone the latter is not possible.
 
 ## Strongly recommended
 

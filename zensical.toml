@@ -7,8 +7,14 @@ docs_dir = "docs"
 site_dir = "site"
 nav = [
   { "Home" = "index.md" },
+  { "Why Soniq?" = "why-soniq.md" },
+  { "Coming from Celery / RQ" = [
+    { "Overview" = "migration/index.md" },
+    { "From Celery" = "migration/from-celery.md" },
+    { "From RQ" = "migration/from-rq.md" },
+  ] },
   { "Quickstart" = "quickstart.md" },
-  { "Tutorial" = [
+  { "Tutorial (6 chapters, ~30 min)" = [
     { "1. Defining jobs" = "tutorial/01-defining-jobs.md" },
     { "2. Running workers" = "tutorial/02-running-workers.md" },
     { "3. Retries" = "tutorial/03-retries.md" },
@@ -58,11 +64,6 @@ nav = [
     { "Reliability" = "production/reliability.md" },
   ] },
   { "Troubleshooting" = "troubleshooting.md" },
-  { "Migrating" = [
-    { "Overview" = "migration/index.md" },
-    { "From Celery" = "migration/from-celery.md" },
-    { "From RQ" = "migration/from-rq.md" },
-  ] },
 ]
 
 [project.theme]

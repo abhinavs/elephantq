@@ -1,5 +1,7 @@
 # 4. Scheduling
 
+> **Intermediate** - 8 minutes. Delayed jobs and recurring schedules.
+
 Soniq supports one-off delayed jobs and recurring schedules. The
 recurring scheduler ships in the default install (`croniter` is a
 default dependency as of 0.0.3) - no extra needed.

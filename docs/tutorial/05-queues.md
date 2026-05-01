@@ -1,5 +1,7 @@
 # 5. Queues
 
+> **Intermediate** - 6 minutes. Routing jobs to dedicated worker pools.
+
 Queues let you separate jobs by workload type and control which workers process them.
 
 ## Named queues
