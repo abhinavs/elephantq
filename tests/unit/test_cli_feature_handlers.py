@@ -81,6 +81,22 @@ class TestAddDeadLetterCmd:
         assert args.action == "replay"
         assert args.job_ids == ["id-1", "id-2"]
 
+    def test_yes_and_dry_run_flags_parse(self):
+        parser, sub = _bare_subparser()
+        add_dead_letter_cmd(sub)
+        args = parser.parse_args(
+            ["dead-letter", "replay", "--all", "--yes", "--dry-run"]
+        )
+        assert args.all is True
+        assert args.yes is True
+        assert args.dry_run is True
+
+    def test_short_yes_flag(self):
+        parser, sub = _bare_subparser()
+        add_dead_letter_cmd(sub)
+        args = parser.parse_args(["dead-letter", "delete", "--all", "-y"])
+        assert args.yes is True
+
 
 class TestTopLevelParserWiresAllFeatures:
     """The full parser produced by ``build_parser`` must list every

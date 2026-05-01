@@ -30,6 +30,15 @@ def add_start_cmd(subparsers) -> None:
         help="Comma-separated list of queues to process (default: all queues)",
     )
     parser.add_argument(
+        "--jobs-modules",
+        default=None,
+        help=(
+            "Comma-separated list of modules to import on startup. Merged with "
+            "SONIQ_JOBS_MODULES (the env var sets the base; this flag adds more) "
+            "for per-worker overrides. See docs/getting-started/installation.md."
+        ),
+    )
+    parser.add_argument(
         "--run-once",
         action="store_true",
         help="Process jobs once and exit (useful for testing)",
@@ -50,15 +59,26 @@ async def handle_start(args) -> int:
     configure_cli_logging(log_level)
 
     jobs_modules_env = os.getenv("SONIQ_JOBS_MODULES", "")
-    if not jobs_modules_env:
+    cli_jobs_modules = getattr(args, "jobs_modules", None) or ""
+
+    if not jobs_modules_env and not cli_jobs_modules:
         print(
-            "Error: SONIQ_JOBS_MODULES is not set. "
+            "Error: SONIQ_JOBS_MODULES is not set and --jobs-modules was not passed. "
             "Please configure the path to your job modules.",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    modules = parse_jobs_modules(jobs_modules_env)
+    # Merge env-var (base) with CLI flag (per-worker addition). Order is
+    # preserved and duplicates dropped so we don't import the same module twice.
+    env_modules = parse_jobs_modules(jobs_modules_env) if jobs_modules_env else []
+    cli_modules = parse_jobs_modules(cli_jobs_modules) if cli_jobs_modules else []
+    seen: set[str] = set()
+    modules: list[str] = []
+    for mod in (*env_modules, *cli_modules):
+        if mod not in seen:
+            seen.add(mod)
+            modules.append(mod)
     if len(modules) == 1:
         print(f"Discovering jobs in: {modules[0]}")
     else:

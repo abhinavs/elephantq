@@ -1,4 +1,4 @@
-# Workers
+# 2. Running workers
 
 A worker is a long-running process that fetches jobs from the database and executes them. Soniq workers are async -- they use asyncio tasks, not threads.
 
@@ -17,7 +17,7 @@ soniq start --concurrency 8 --queues emails,billing
 soniq start --run-once
 ```
 
-Each invocation supervises one worker process. Run it from your process manager (systemd, Kubernetes Deployment, supervisord) and let the manager handle restarts and scaling. The programmatic `app.run_worker(...)` entry point exists for tests and embedded scenarios but is not the recommended deploy path.
+Each invocation supervises one worker process. Run it from your process manager (systemd, Kubernetes Deployment, supervisord) and let the manager handle restarts and scaling. The programmatic `app.run_worker(...)` entry point exists for tests and embedded scenarios; do not use it for production deployments -- you lose the process-manager safety net (restart-on-crash, log capture, graceful-shutdown timeouts).
 
 ## Concurrency model
 

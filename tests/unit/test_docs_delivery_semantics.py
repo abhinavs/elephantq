@@ -37,27 +37,29 @@ class TestDeliverySemantics:
 
     def test_at_least_once_mentioned_in_getting_started(self):
         """Getting started guide should mention at-least-once delivery."""
-        content = (DOCS_DIR / "getting-started" / "quickstart.md").read_text().lower()
+        content = (DOCS_DIR / "quickstart.md").read_text().lower()
         assert "at-least-once" in content or "at least once" in content
 
     def test_at_least_once_mentioned_in_retries(self):
         """Retries doc should mention at-least-once delivery."""
-        content = (DOCS_DIR / "concepts" / "retries.md").read_text().lower()
+        content = (DOCS_DIR / "tutorial" / "03-retries.md").read_text().lower()
         assert "at-least-once" in content or "at least once" in content
 
     def test_at_least_once_mentioned_in_production(self):
         """Production guide should mention at-least-once delivery."""
-        content = (DOCS_DIR / "production" / "checklist.md").read_text().lower()
+        content = (
+            (DOCS_DIR / "production" / "going-to-production.md").read_text().lower()
+        )
         assert "at-least-once" in content or "at least once" in content
 
     def test_idempotency_in_getting_started(self):
         """Getting started should mention idempotency."""
-        content = (DOCS_DIR / "getting-started" / "quickstart.md").read_text().lower()
+        content = (DOCS_DIR / "quickstart.md").read_text().lower()
         assert "idempoten" in content
 
     def test_idempotency_in_retries(self):
         """Retries doc should mention idempotency."""
-        content = (DOCS_DIR / "concepts" / "retries.md").read_text().lower()
+        content = (DOCS_DIR / "tutorial" / "03-retries.md").read_text().lower()
         assert "idempoten" in content
 
     def test_cross_service_guide_covers_at_least_once_and_idempotent(self):

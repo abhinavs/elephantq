@@ -1,10 +1,23 @@
 # Deployment
 
-This guide covers the major deployment paths for Soniq. Ready-to-use configuration files live in the [`deployment/`](../../deployment/) directory.
+Pick a process supervisor, drop in the config for your shape, run `soniq setup` once. That is the whole story.
+
+Ready-to-use configuration files live in the [`deployment/`](../../deployment/) directory of the repo.
+
+## Pick a shape
+
+| Shape | Use when | Config |
+|---|---|---|
+| [Systemd](deployment-systemd.md) | Modern Linux servers, direct process control | `deployment/soniq-*.service` |
+| [Docker Compose](deployment-docker-compose.md) | Staging or small single-host production | `deployment/docker-compose.yml` |
+| [Kubernetes](deployment-kubernetes.md) | Container platforms, autoscaling | `deployment/kubernetes.yaml` |
+| [Supervisor](deployment-supervisor.md) | Older setups, shared environments | `deployment/supervisor.conf` |
+
+The four shapes are interchangeable. Soniq itself does not care which one supervises it - all it asks for is `SIGTERM` for graceful stop and a long enough grace window.
 
 ## Prerequisites
 
-**Minimum requirements:**
+**Minimum:**
 
 - Python 3.10+
 - PostgreSQL 12+
@@ -28,6 +41,8 @@ export SONIQ_DATABASE_URL="postgresql://soniq:your_secure_password@localhost/son
 soniq setup
 ```
 
+Run `soniq setup` once per deploy, not from every replica's startup. See [going to production](going-to-production.md).
+
 ### Application user (Linux)
 
 ```bash
@@ -36,11 +51,9 @@ sudo mkdir -p /opt/soniq /var/log/soniq
 sudo chown soniq:soniq /opt/soniq /var/log/soniq
 ```
 
----
-
 ## Recurring jobs require a scheduler sidecar
 
-If your application uses `@app.periodic(...)` jobs, deploy a separate `soniq scheduler` process alongside `soniq start`. The worker process **does not** evaluate due recurring jobs; that responsibility lives with the scheduler so worker scaling does not duplicate scheduler work.
+If your application uses `@app.periodic(...)` jobs, deploy a separate `soniq scheduler` process alongside `soniq start`. The worker process **does not** evaluate due recurring jobs - that responsibility lives with the scheduler so worker scaling does not duplicate scheduler work.
 
 If `soniq start` finds `@periodic` decorators registered and no scheduler-sidecar process holds the leadership lock, it prints a one-time WARN at startup. To silence the WARN once you have configured the sidecar (or if you intentionally do not run recurring jobs), set `SONIQ_SCHEDULER_SUPPRESS_WARNING=1` in the worker environment.
 
@@ -53,393 +66,19 @@ The shipped deployment templates include the sidecar:
 - Kubernetes: the `soniq-scheduler` Deployment in `deployment/kubernetes.yaml`
 - Supervisor: the `[program:soniq_scheduler]` block in `deployment/supervisor.conf`
 
----
-
-## Systemd
-
-Best for modern Linux servers with direct process control. Files: `deployment/soniq-worker.service`, `deployment/soniq-scheduler.service`, and `deployment/soniq-dashboard.service`.
-
-### Worker service
-
-```ini
-[Unit]
-Description=Soniq Worker
-After=network.target
-
-[Service]
-Type=exec
-User=soniq
-Group=soniq
-WorkingDirectory=/opt/soniq
-Environment=SONIQ_DATABASE_URL=postgresql://soniq:password@localhost/soniq_prod
-Environment=SONIQ_LOG_LEVEL=INFO
-Environment=SONIQ_JOBS_MODULES=myapp.jobs
-ExecStart=/opt/soniq/venv/bin/soniq start --concurrency=4
-ExecReload=/bin/kill -HUP $MAINPID
-KillMode=mixed
-Restart=always
-RestartSec=5
-StartLimitIntervalSec=0
-
-# Security hardening
-NoNewPrivileges=yes
-PrivateTmp=yes
-ProtectSystem=strict
-ProtectHome=yes
-ReadWritePaths=/opt/soniq /var/log/soniq
-
-# Resource limits
-MemoryMax=512M
-CPUQuota=200%
-
-# Graceful shutdown -- match your longest job timeout
-TimeoutStopSec=310
-
-# Logging
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=soniq-worker
-
-[Install]
-WantedBy=multi-user.target
-```
-
-### Dashboard service
-
-```ini
-[Unit]
-Description=Soniq Dashboard
-After=network.target soniq-worker.service
-Wants=soniq-worker.service
-
-[Service]
-Type=exec
-User=soniq
-Group=soniq
-WorkingDirectory=/opt/soniq
-Environment=SONIQ_DATABASE_URL=postgresql://soniq:password@localhost/soniq_prod
-ExecStart=/opt/soniq/venv/bin/soniq dashboard --host=0.0.0.0 --port=8000
-Restart=always
-RestartSec=5
-
-NoNewPrivileges=yes
-PrivateTmp=yes
-ProtectSystem=strict
-ProtectHome=yes
-ReadWritePaths=/opt/soniq /var/log/soniq
-MemoryMax=256M
-
-StandardOutput=journal
-StandardError=journal
-SyslogIdentifier=soniq-dashboard
-
-[Install]
-WantedBy=multi-user.target
-```
-
-### Managing the services
-
-```bash
-sudo cp deployment/soniq-worker.service /etc/systemd/system/
-sudo cp deployment/soniq-dashboard.service /etc/systemd/system/
-sudo systemctl daemon-reload
-
-sudo systemctl enable soniq-worker soniq-dashboard
-sudo systemctl start soniq-worker soniq-dashboard
-
-# Check status
-sudo systemctl status soniq-worker
-
-# View logs
-sudo journalctl -u soniq-worker -f
-
-# Restart
-sudo systemctl restart soniq-worker
-```
-
----
-
-## Docker Compose
-
-Good for staging or small production environments. File: `deployment/docker-compose.yml`.
-
-```yaml
-version: "3.8"
-
-services:
-  postgres:
-    image: postgres:15-alpine
-    restart: always
-    environment:
-      POSTGRES_DB: soniq_prod
-      POSTGRES_USER: soniq
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U soniq -d soniq_prod"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  soniq_worker:
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
-    restart: always
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      SONIQ_DATABASE_URL: postgresql://soniq:${POSTGRES_PASSWORD:-changeme}@postgres:5432/soniq_prod
-      SONIQ_JOBS_MODULES: myapp.jobs
-    command: ["soniq", "start", "--concurrency=4"]
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: "1.0"
-
-  soniq_dashboard:
-    build:
-      context: .
-      dockerfile: Dockerfile.dashboard
-    restart: always
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      SONIQ_DATABASE_URL: postgresql://soniq:${POSTGRES_PASSWORD:-changeme}@postgres:5432/soniq_prod
-    ports:
-      - "8000:8000"
-    command: ["soniq", "dashboard", "--host=0.0.0.0", "--port=8000"]
-
-volumes:
-  postgres_data:
-```
-
-### Scaling workers
-
-```bash
-docker-compose up -d --scale soniq_worker=3
-```
-
----
-
-## Kubernetes
-
-Best for containerized environments with autoscaling. File: `deployment/kubernetes.yaml`.
-
-### Secret and ConfigMap
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: soniq-secrets
-  namespace: soniq
-type: Opaque
-data:
-  # echo -n "postgresql://user:pass@host/db" | base64
-  SONIQ_DATABASE_URL: <base64-encoded-url>
-
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: soniq-config
-  namespace: soniq
-data:
-  SONIQ_LOG_LEVEL: "INFO"
-  SONIQ_LOG_FORMAT: "structured"
-  SONIQ_JOBS_MODULES: "myapp.jobs"
-```
-
-### Worker Deployment
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: soniq-worker
-  namespace: soniq
-spec:
-  replicas: 3
-  selector:
-    matchLabels:
-      app: soniq-worker
-  template:
-    metadata:
-      labels:
-        app: soniq-worker
-    spec:
-      terminationGracePeriodSeconds: 310  # match your longest job timeout
-      containers:
-      - name: worker
-        image: soniq/worker:latest
-        args: ["soniq", "start", "--concurrency=4"]
-        env:
-        - name: SONIQ_DATABASE_URL
-          valueFrom:
-            secretKeyRef:
-              name: soniq-secrets
-              key: SONIQ_DATABASE_URL
-        envFrom:
-        - configMapRef:
-            name: soniq-config
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "250m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-        livenessProbe:
-          exec:
-            command: ["soniq", "health"]
-          initialDelaySeconds: 30
-          periodSeconds: 30
-        readinessProbe:
-          exec:
-            command: ["soniq", "ready"]
-          initialDelaySeconds: 5
-          periodSeconds: 10
-```
-
-### Dashboard Deployment + Service
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: soniq-dashboard
-  namespace: soniq
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: soniq-dashboard
-  template:
-    metadata:
-      labels:
-        app: soniq-dashboard
-    spec:
-      containers:
-      - name: dashboard
-        image: soniq/dashboard:latest
-        args: ["soniq", "dashboard", "--host=0.0.0.0", "--port=8000"]
-        env:
-        - name: SONIQ_DATABASE_URL
-          valueFrom:
-            secretKeyRef:
-              name: soniq-secrets
-              key: SONIQ_DATABASE_URL
-        envFrom:
-        - configMapRef:
-            name: soniq-config
-        ports:
-        - containerPort: 8000
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8000
-          periodSeconds: 30
-        readinessProbe:
-          httpGet:
-            path: /ready
-            port: 8000
-          periodSeconds: 10
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: soniq-dashboard
-  namespace: soniq
-spec:
-  selector:
-    app: soniq-dashboard
-  ports:
-  - port: 80
-    targetPort: 8000
-  type: ClusterIP
-```
-
-### Autoscaling
-
-```bash
-kubectl autoscale deployment soniq-worker \
-  --namespace=soniq \
-  --cpu-percent=70 \
-  --min=2 --max=10
-```
-
-The `deployment/kubernetes.yaml` file also includes an HPA manifest and a ServiceMonitor for Prometheus.
-
----
-
-## Supervisor
-
-Good for older setups or shared environments. File: `deployment/supervisor.conf`.
-
-```ini
-[group:soniq]
-programs=soniq_worker,soniq_dashboard
-
-[program:soniq_worker]
-command=/opt/soniq/venv/bin/soniq start --concurrency=4
-directory=/opt/soniq
-user=soniq
-autostart=true
-autorestart=true
-startretries=3
-redirect_stderr=true
-stdout_logfile=/var/log/soniq/worker.log
-stdout_logfile_maxbytes=10MB
-stdout_logfile_backups=5
-environment=SONIQ_DATABASE_URL="postgresql://soniq:password@localhost/soniq_prod",SONIQ_LOG_LEVEL="INFO",SONIQ_JOBS_MODULES="myapp.jobs"
-
-[program:soniq_dashboard]
-command=/opt/soniq/venv/bin/soniq dashboard --host=0.0.0.0 --port=8000
-directory=/opt/soniq
-user=soniq
-autostart=true
-autorestart=true
-startretries=3
-redirect_stderr=true
-stdout_logfile=/var/log/soniq/dashboard.log
-stdout_logfile_maxbytes=10MB
-stdout_logfile_backups=5
-environment=SONIQ_DATABASE_URL="postgresql://soniq:password@localhost/soniq_prod"
-```
-
-### Managing with Supervisor
-
-```bash
-sudo cp deployment/supervisor.conf /etc/supervisor/conf.d/soniq.conf
-sudo supervisorctl reread
-sudo supervisorctl update
-sudo supervisorctl start soniq_worker
-sudo supervisorctl status
-```
-
----
-
 ## Queue routing
 
 When different queues have different throughput or latency needs, run separate worker processes per queue group. Each scales independently.
 
 ```bash
-# Email workers -- high concurrency, IO-bound
+# Email workers - high concurrency, IO-bound
 soniq start --concurrency=8 --queues=emails,notifications
 
-# Media workers -- low concurrency, CPU-bound
+# Media workers - low concurrency, CPU-bound
 soniq start --concurrency=2 --queues=media,transcode
 ```
 
 In Kubernetes, use separate Deployments. In Docker Compose, use separate services. In Supervisor, use separate `[program:]` blocks. See the `deployment/` directory for examples with queue routing already configured.
-
----
 
 ## Performance tuning
 

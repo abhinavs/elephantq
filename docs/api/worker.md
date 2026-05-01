@@ -34,7 +34,7 @@ await app.run_worker(
 |---|---|---|---|
 | `concurrency` | `int` | `4` | Number of concurrent asyncio tasks fetching and executing jobs. |
 | `run_once` | `bool` | `False` | Process all available jobs and exit. Useful for testing and cron-driven setups. |
-| `queues` | `list[str] \| None` | `None` | Restrict to these queue names. `None` means process all queues. |
+| `queues` | `list[str] \| None` | `None` | Restrict to these queue names. `None` means process all queues. This is the in-process default; the `soniq start` CLI also defaults to all queues when `--queues` is omitted. |
 
 ### What happens during run_worker
 
@@ -52,14 +52,18 @@ settings:
 | Env var | Default | Description |
 |---|---|---|
 | `SONIQ_CONCURRENCY` | `4` | Default concurrency (overridden by `--concurrency` flag). |
-| `SONIQ_QUEUES` | `default` | Comma-separated queue list (overridden by `--queues` flag). |
 | `SONIQ_POLL_INTERVAL` | `5.0` | Seconds to wait when no jobs are available before polling again. Also the `LISTEN/NOTIFY` timeout. |
 | `SONIQ_HEARTBEAT_INTERVAL` | `5.0` | Seconds between heartbeat updates. |
 | `SONIQ_HEARTBEAT_TIMEOUT` | `300.0` | Seconds after which a worker with no heartbeat is considered stale. |
 | `SONIQ_CLEANUP_INTERVAL` | `300.0` | Seconds between expired-job and stale-worker cleanup runs. |
 | `SONIQ_ERROR_RETRY_DELAY` | `5.0` | Seconds to sleep after an unexpected worker-level error before resuming. |
-| `SONIQ_JOBS_MODULE` | `jobs` | Module name for automatic job discovery. |
-| `SONIQ_JOBS_MODULES` | (empty) | Comma-separated list of modules to import on worker startup. Required by the CLI. |
+| `SONIQ_JOBS_MODULES` | (empty) | Comma-separated list of modules to import on worker startup. Required by the CLI. See [Job module discovery](../getting-started/installation.md#job-module-discovery). |
+
+!!! note "Queue selection"
+    The `soniq start` CLI worker processes **all queues** when `--queues` is not passed.
+    There is no env-var equivalent on the CLI entrypoint; pass `--queues=name1,name2`
+    to scope a worker. `SONIQ_QUEUES` only affects the programmatic
+    `Soniq(queues=...)` setting, not the CLI worker default.
 
 
 ## Worker class (advanced)

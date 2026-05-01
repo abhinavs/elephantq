@@ -76,6 +76,49 @@ Optional capabilities are activated by running the matching process or by instal
 | HTTP webhooks | `pip install soniq[webhooks]` and configure `app.webhooks`. |
 | Prometheus metrics | Wire a `PrometheusMetricsSink` on the `Soniq(...)` constructor. The default sink is a no-op. |
 
+## Job module discovery
+
+Soniq workers run in a separate process from the code that defines your jobs. When a worker starts, it has no idea what jobs exist -- it has to be told which Python modules to import so the `@app.job()` decorators run and the job registry gets populated.
+
+`SONIQ_JOBS_MODULES` is that instruction.
+
+### Setting it
+
+```bash
+# Single module (most apps)
+export SONIQ_JOBS_MODULES="app.jobs"
+
+# Multiple modules
+export SONIQ_JOBS_MODULES="app.jobs,billing.tasks,notifications.handlers"
+```
+
+The current working directory is added to `sys.path` automatically, so running `soniq start` from your project root is enough. No `PYTHONPATH` gymnastics required.
+
+### Single repo vs cross-service
+
+**Same repo as the worker.** Just list the dotted module path: `SONIQ_JOBS_MODULES="app.jobs"`. Standard Python import resolution applies.
+
+**Cross-service / shared package.** If `payments.handlers` lives in a separate repo, the env var alone is not enough -- the package has to be installed in the worker's Python environment. Either `pip install` it as a wheel, mount it as a path dependency, or vendor the code. **The env var only controls *which* modules to import, not *whether* they exist.**
+
+### Failure modes
+
+- **Variable unset on the CLI worker.** `soniq start` exits with a clear error: `Error: SONIQ_JOBS_MODULES is not set.`
+- **Module not importable.** The worker raises an `ImportError` at startup -- check spelling, package install, and that the directory you're running from contains the module.
+- **Module imports but a specific job is missing.** The job was renamed or removed but the enqueue side still references the old name. Workers will reject those rows as unknown task names; check `enqueue_validation` settings.
+
+### Per-worker overrides
+
+Most teams set `SONIQ_JOBS_MODULES` once globally. If you run heterogeneous workers (e.g. one fleet for media processing, another for billing), pass `--jobs-modules` on the CLI to add modules for that specific worker process. The flag *merges* with the env var:
+
+```bash
+# Fleet 1 - billing-focused, sees both shared and billing-specific jobs
+export SONIQ_JOBS_MODULES="app.jobs"
+soniq start --queues billing --jobs-modules billing.critical,billing.fraud
+
+# Fleet 2 - media-focused, same shared modules + media-specific
+soniq start --queues media --jobs-modules media.processing,media.thumbnails
+```
+
 ## Verifying the install
 
 ```bash
@@ -91,4 +134,4 @@ SONIQ_JOBS_MODULES="myapp.jobs" \
 soniq start
 ```
 
-See [quickstart.md](quickstart.md) to run your first job end-to-end.
+See [quickstart.md](../quickstart.md) to run your first job end-to-end.

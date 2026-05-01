@@ -7,17 +7,14 @@ docs_dir = "docs"
 site_dir = "site"
 nav = [
   { "Home" = "index.md" },
-  { "Getting Started" = [
-    { "Quickstart" = "getting-started/quickstart.md" },
-    { "Installation" = "getting-started/installation.md" },
-  ] },
-  { "Concepts" = [
-    { "Jobs" = "concepts/jobs.md" },
-    { "Queues" = "concepts/queues.md" },
-    { "Workers" = "concepts/workers.md" },
-    { "Retries" = "concepts/retries.md" },
-    { "Scheduling" = "concepts/scheduling.md" },
-    { "Dead-letter queue" = "concepts/dead-letter.md" },
+  { "Quickstart" = "quickstart.md" },
+  { "Tutorial" = [
+    { "1. Defining jobs" = "tutorial/01-defining-jobs.md" },
+    { "2. Running workers" = "tutorial/02-running-workers.md" },
+    { "3. Retries" = "tutorial/03-retries.md" },
+    { "4. Scheduling" = "tutorial/04-scheduling.md" },
+    { "5. Queues" = "tutorial/05-queues.md" },
+    { "6. Transactional enqueue" = "tutorial/06-transactional-enqueue.md" },
   ] },
   { "Guides" = [
     { "FastAPI" = "guides/fastapi.md" },
@@ -25,28 +22,46 @@ nav = [
     { "Common patterns" = "guides/common-patterns.md" },
     { "Testing" = "guides/testing.md" },
   ] },
-  { "API Reference" = [
-    { "Soniq" = "api/soniq.md" },
-    { "Jobs" = "api/jobs.md" },
-    { "Worker" = "api/worker.md" },
-    { "Hooks" = "api/hooks.md" },
-  ] },
-  { "CLI" = "cli/commands.md" },
-  { "Dashboard" = "dashboard/overview.md" },
-  { "Production" = [
-    { "Checklist" = "production/checklist.md" },
-    { "PostgreSQL tuning" = "production/postgres.md" },
-    { "Deployment" = "production/deployment.md" },
-    { "Reliability" = "production/reliability.md" },
-  ] },
   { "Recipes" = [
+    { "Overview" = "recipes/index.md" },
     { "Email jobs" = "recipes/email-jobs.md" },
     { "File processing" = "recipes/file-processing.md" },
     { "Scheduled reports" = "recipes/scheduled-reports.md" },
     { "Webhook delivery" = "recipes/webhook-delivery.md" },
+    { "Cross-service task stubs" = "recipes/cross-service-task-stubs.md" },
     { "Custom retry policy" = "recipes/custom-retry-policy.md" },
-    { "Custom serializer" = "recipes/custom-serializer.md" },
     { "Custom metrics sink" = "recipes/custom-metrics-sink.md" },
+  ] },
+  { "Reference" = [
+    { "Overview" = "reference/index.md" },
+    { "Python API" = [
+      { "Soniq" = "api/soniq.md" },
+      { "Jobs" = "api/jobs.md" },
+      { "Worker" = "api/worker.md" },
+      { "Hooks" = "api/hooks.md" },
+    ] },
+    { "CLI" = "cli/commands.md" },
+    { "Dashboard" = "dashboard/overview.md" },
+    { "Dead-letter queue" = "reference/dead-letter.md" },
+    { "Glossary" = "reference/glossary.md" },
+  ] },
+  { "Production" = [
+    { "Going to production" = "production/going-to-production.md" },
+    { "Deployment" = [
+      { "Overview" = "production/deployment.md" },
+      { "Systemd" = "production/deployment-systemd.md" },
+      { "Docker Compose" = "production/deployment-docker-compose.md" },
+      { "Kubernetes" = "production/deployment-kubernetes.md" },
+      { "Supervisor" = "production/deployment-supervisor.md" },
+    ] },
+    { "PostgreSQL tuning" = "production/postgres.md" },
+    { "Reliability" = "production/reliability.md" },
+  ] },
+  { "Troubleshooting" = "troubleshooting.md" },
+  { "Migrating" = [
+    { "Overview" = "migration/index.md" },
+    { "From Celery" = "migration/from-celery.md" },
+    { "From RQ" = "migration/from-rq.md" },
   ] },
 ]
 

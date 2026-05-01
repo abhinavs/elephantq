@@ -59,7 +59,7 @@ SONIQ_JOBS_MODULES="app.jobs" \
 soniq start --concurrency 4
 ```
 
-`SONIQ_JOBS_MODULES` is a comma-separated list of Python modules. The worker imports them on startup so it discovers all `@eq.job()` decorators.
+`SONIQ_JOBS_MODULES` is a comma-separated list of Python modules the worker imports on startup so it discovers all `@eq.job()` decorators. See [Job module discovery](../getting-started/installation.md#job-module-discovery) for cross-service setups and per-worker overrides.
 
 You can also limit a worker to specific queues:
 

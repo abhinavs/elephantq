@@ -37,17 +37,19 @@ soniq start [--concurrency N] [--queues QUEUES] [--run-once]
 
 | Flag | Type | Default | Description |
 |---|---|---|---|
-| `--concurrency` | `int` | `4` | Number of concurrent job processing tasks. |
+| `--concurrency` | `int` | `4` | Number of jobs the worker will run in parallel. |
 | `--queues` | `str` | all queues | Comma-separated list of queue names to process. |
 | `--run-once` | flag | off | Process all available jobs and exit. |
 
 Requires `SONIQ_JOBS_MODULES` to be set so the worker can discover and import
-your job functions.
+your job functions. See [Job module discovery](../getting-started/installation.md#job-module-discovery) for the full reference (single-repo, cross-service, and per-worker overrides).
 
 ```bash
 export SONIQ_JOBS_MODULES=myapp.tasks,myapp.other_tasks
 soniq start --concurrency 8 --queues urgent,default
 ```
+
+When `--queues` is omitted, the worker processes **all queues** in the database. Pass `--queues=name1,name2` to restrict.
 
 The worker handles `SIGINT` and `SIGTERM` for graceful shutdown. Send the signal
 once to finish current jobs, twice to force exit.
@@ -128,14 +130,23 @@ and `resurrection_count` is incremented.
 
 ```bash
 soniq dead-letter replay <job-id> [<job-id> ...]
-soniq dead-letter replay --all
+soniq dead-letter replay --all                       # interactive prompt for >= 5 jobs
+soniq dead-letter replay --all --dry-run             # report count + sample, no changes
+soniq dead-letter replay --all --yes                 # skip the confirmation prompt
 ```
+
+`replay --all` is a footgun: if the DLQ filled up because of a bug that
+has not been fixed, replaying everything just runs the same jobs back
+into the same bug. The CLI prompts before re-queuing five or more jobs
+and refuses to run non-interactively without `--yes`.
 
 **delete** -- permanently remove a dead-letter job.
 
 ```bash
 soniq dead-letter delete <job-id> [<job-id> ...]
-soniq dead-letter delete --all
+soniq dead-letter delete --all                       # interactive prompt for >= 5 jobs
+soniq dead-letter delete --all --dry-run             # report count + sample, no changes
+soniq dead-letter delete --all --yes                 # skip the confirmation prompt
 ```
 
 **cleanup** -- remove dead-letter jobs older than N days. The `--dry-run`
@@ -161,7 +172,8 @@ soniq dead-letter export --format csv --output dead_letter.csv
 | `--filter` | `str` | | Filter by job name pattern. |
 | `--all` | flag | off | Apply action to all matching jobs. |
 | `--days` | `int` | `30` | Age threshold for `cleanup`. |
-| `--dry-run` | flag | off | Accepted on `cleanup` for symmetry; not honoured -- cleanup always deletes. |
+| `--dry-run` | flag | off | Honoured on `replay --all` and `delete --all` (reports count + sample). Accepted on `cleanup` for symmetry but ignored -- cleanup always deletes. |
+| `--yes`, `-y` | flag | off | Skip the interactive confirmation for bulk `replay --all` / `delete --all`. Required in non-interactive shells. |
 | `--format` | `csv \| json` | `csv` | Export format. |
 | `--output` | `str` | | Output file path (required for `export`). |
 

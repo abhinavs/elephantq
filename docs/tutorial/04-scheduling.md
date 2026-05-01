@@ -1,4 +1,4 @@
-# Scheduling
+# 4. Scheduling
 
 Soniq supports one-off delayed jobs and recurring schedules. The
 recurring scheduler ships in the default install (`croniter` is a
