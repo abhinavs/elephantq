@@ -1,4 +1,4 @@
-# Queues
+# 5. Queues
 
 Queues let you separate jobs by workload type and control which workers process them.
 
@@ -48,7 +48,9 @@ await app.enqueue(charge_subscription, account_id="acct_123", amount=999, priori
 
 ## Running workers on specific queues
 
-By default, a worker processes all queues. To limit a worker to specific queues, use the `--queues` flag:
+**Default behaviour: a worker processes all queues.** Run `soniq start` with no flags and the worker pulls jobs from every queue in your database. There is no "process everything" shorthand because that's already the default.
+
+To restrict a worker to a named subset, pass `--queues`:
 
 ```bash
 # Process only email and billing jobs

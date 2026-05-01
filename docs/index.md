@@ -2,6 +2,12 @@
 
 Background jobs for Python. Powered by the Postgres you already have.
 
+## How it works
+
+Soniq stores background jobs as rows in your existing PostgreSQL database. There is no broker, no Redis, no extra service to run. When you enqueue a job, Soniq inserts a row. When a worker is ready, it claims the row using `SELECT ... FOR UPDATE SKIP LOCKED` -- a Postgres-native locking primitive that lets multiple workers compete safely without polling. Pickup is push-based via `LISTEN/NOTIFY`, so latency is typically under 10 ms.
+
+Your job data lives in the same database as the rest of your application. Backed up together. Monitored together. Transacted together.
+
 ## Quickstart
 
 ```bash
@@ -10,109 +16,75 @@ pip install soniq
 
 ```python
 # jobs.py
+import asyncio
 from soniq import Soniq
 
 app = Soniq(database_url="postgresql://localhost/myapp")
 
-@app.job(max_retries=3)
+@app.job
 async def send_welcome(to: str):
     print(f"Sending welcome email to {to}")
-```
 
-```python
-# enqueue from anywhere in your app
-await app.enqueue(send_welcome, to="dev@example.com")
+if __name__ == "__main__":
+    asyncio.run(app.enqueue(send_welcome, to="dev@example.com"))
 ```
 
 ```bash
-# set up tables and start processing
-soniq setup
-soniq start --concurrency 4
+soniq setup                          # one-time: create tables
+SONIQ_JOBS_MODULES=jobs soniq start  # run a worker
+python jobs.py                       # enqueue
 ```
 
-Four steps. Define a job, enqueue it, set up the database, start a worker.
+Four steps. Define a job, set up the database, run a worker, enqueue.
 
-!!! tip "Local dev without PostgreSQL?"
-    Use SQLite: `Soniq(database_url="local.db")` (requires `pip install soniq[sqlite]`).
-    For production, always use PostgreSQL.
-
-[Full quickstart guide](getting-started/quickstart.md){ .md-button }
+[Full quickstart guide](quickstart.md){ .md-button }
 
 ## Transactional enqueue
 
-Enqueue a job inside your database transaction. If the transaction rolls back, the job never existed.
+The reason most teams choose a Postgres-backed queue. Enqueue a job inside the same transaction as your business writes - if the transaction rolls back, the job never existed:
 
 ```python
-async with pool.acquire() as conn:
+# Borrow a connection from Soniq's asyncpg pool. Any active asyncpg
+# connection works here; it does not have to be Soniq's pool. If your
+# app already has its own pool (or a SQLAlchemy session), pass that
+# connection instead - see guides/transactional-enqueue.md.
+async with app.backend.acquire() as conn:
     async with conn.transaction():
-        await conn.execute("INSERT INTO orders ...")
-        await app.enqueue(send_invoice, connection=conn, order_id=order_id)
-        # Both commit together, or neither does
+        # Your business write. The order row only becomes visible once
+        # this transaction commits.
+        await conn.execute(
+            "INSERT INTO orders (id, total) VALUES ($1, $2)",
+            order_id, total,
+        )
+
+        # Same connection -> same transaction. The job row goes into
+        # soniq_jobs as part of *this* COMMIT, not a separate one.
+        # connection=conn is the only thing that differs from a normal
+        # enqueue() call.
+        await app.enqueue(
+            send_invoice,
+            connection=conn,
+            order_id=order_id,
+        )
+
+        # If anything inside this `with` block raises, both writes
+        # roll back together. The order is never created without the
+        # follow-up job, and the job is never created for an order
+        # that does not exist.
 ```
 
-No Redis queue can do this. Your job and your data land in the same commit. If something fails halfway through, both roll back. No stale jobs, no ghost tasks, no cleanup scripts.
-
-## Why Soniq
-
-Most Python job queues force you to run Redis or RabbitMQ alongside your database. That's another service to deploy, monitor, back up, and debug when things go wrong at 3am.
-
-Soniq uses your existing PostgreSQL. One dependency. One place your data lives. One thing to back up.
-
-| Feature             | Soniq | Celery         | RQ     |
-| ------------------- | --------- | -------------- | ------ |
-| No Redis dependency | Yes       | No             | No     |
-| Async native        | Yes       | Partial        | No     |
-| Transactional enq.  | Yes       | No             | No     |
-| Setup complexity    | Low       | High           | Medium |
-| Built-in dashboard  | Yes       | No (Flower)    | No     |
-| Dead-letter queue   | Yes       | No             | No     |
-
-## Features
-
-- **Retries with backoff** -- configurable delays, exponential backoff, per-attempt delay lists
-- **Dead-letter queue** -- failed jobs preserved for inspection and manual retry
-- **Job priorities** -- lower number = higher priority, processed first
-- **Scheduled jobs** -- run at a specific time or after a delay
-- **Recurring jobs** -- cron-based periodic tasks with `@app.periodic(cron="0 * * * *")`
-- **Transactional enqueue** -- atomic with your database writes
-- **Multiple queues** -- route jobs by type, run dedicated workers per queue
-- **Middleware hooks** -- `before_job`, `after_job`, `on_error` for logging, metrics, tracing
-- **Worker heartbeat** -- auto-detect crashed workers, requeue their jobs
-- **Job results** -- store and retrieve return values from completed jobs
-- **Deduplication** -- prevent duplicate jobs with `dedup_key` or `unique=True`
-- **CLI** -- `setup`, `start`, `status`, `workers`, dead-letter management
-- **Dashboard** -- web UI for monitoring queues, workers, and job state
-
-## Dashboard
-
-Monitor queues, workers, retries, and system health from a built-in web UI.
-
-```bash
-pip install soniq[dashboard]
-soniq dashboard
-```
-
-![Soniq Dashboard](assets/soniq_dashboard.png)
-
-## Install
-
-```bash
-pip install soniq              # core + scheduler + Prometheus sink (PostgreSQL backend)
-pip install soniq[full]        # everything below
-pip install soniq[sqlite]      # SQLite backend for local dev
-pip install soniq[dashboard]   # web dashboard (FastAPI + uvicorn)
-pip install soniq[webhooks]    # webhook delivery + signing
-pip install soniq[logging]     # structlog integration
-```
-
-The default install is batteries-included: `croniter` (so `@periodic` and
-the recurring scheduler work out of the box) and `prometheus_client` (so
-`PrometheusMetricsSink` is importable) ship with core. They stay dormant
-unless wired.
+No Redis-backed queue can do this. Your job and your data land in the same commit. No stale jobs, no ghost jobs, no outbox table to drain.
 
 ## When NOT to use Soniq
 
 - **You need 10k+ jobs/sec sustained throughput.** PostgreSQL row locking has limits. Redis-backed queues like Celery or Arq are built for this.
-- **You need cross-language consumers.** Soniq is Python-only. If your workers are in Go or Node, use RabbitMQ or a similar broker.
-- **You're not using PostgreSQL.** The production backend requires PostgreSQL. If your stack is MySQL or MongoDB, this isn't for you.
-- **You need DAG-based workflow orchestration.** Soniq handles individual jobs, not pipelines. Look at Prefect or Airflow.
+- **You need cross-language workers.** Soniq is Python-only. If your workers are in Go or Node, use RabbitMQ or similar.
+- **You are not using PostgreSQL.** The production backend requires PostgreSQL.
+- **You need DAG-based workflow orchestration.** Soniq runs individual jobs, not pipelines. Look at Prefect or Airflow.
+
+## Where to next
+
+- [Quickstart](quickstart.md) - five minutes from `pip install` to first job
+- [Tutorial](tutorial/01-defining-jobs.md) - the six chapters that cover every Soniq concept
+- [Going to production](production/going-to-production.md) - the eight things that matter
+- [Reference](reference/index.md) - Python API, CLI, configuration

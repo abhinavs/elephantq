@@ -29,7 +29,7 @@ Common settings you can pass as keyword arguments:
 | `concurrency` | `int` | `4` | `SONIQ_CONCURRENCY` |
 | `max_retries` | `int` | `3` | `SONIQ_MAX_RETRIES` |
 | `priority` | `int` | `100` | `SONIQ_PRIORITY` |
-| `queues` | `list[str]` | `["default"]` | `SONIQ_QUEUES` (comma-separated) |
+| `queues` | `list[str]` | `["default"]` | `SONIQ_QUEUES` (comma-separated). Stored as a setting on the instance for your code to read; **not** auto-applied as the worker's queue filter. The `soniq start` CLI worker processes all queues unless `--queues` is passed. |
 | `result_ttl` | `int` | `300` | `SONIQ_RESULT_TTL` |
 | `job_timeout` | `float \| None` | `300.0` | `SONIQ_JOB_TIMEOUT` (0 to disable) |
 | `pool_min_size` | `int` | `5` | `SONIQ_POOL_MIN_SIZE` |
@@ -148,7 +148,7 @@ These are thin wrappers over the storage backend. Each accepts a `job_id` string
 | `list_jobs(queue?, status?, limit=100, offset=0)` | `list[dict]` | Filtered list of job records. |
 
 To re-run a job that exhausted its retries, use `app.dead_letter.replay(job_id)`
-(see the [dead-letter docs](../concepts/dead-letter.md)).
+(see the [dead-letter docs](../reference/dead-letter.md)).
 
 
 ## Environment variable configuration

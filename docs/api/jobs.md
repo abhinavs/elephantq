@@ -220,7 +220,7 @@ from soniq import JobStatus
 
 Jobs that exhaust all retries are moved into the `soniq_dead_letter_jobs`
 table; they do not remain in `soniq_jobs`. See
-[Dead Letter Queue](../concepts/dead-letter.md).
+[Dead-letter queue](../reference/dead-letter.md).
 
 
 ## Imperative scheduling: `app.scheduler`

@@ -1,4 +1,4 @@
-# Jobs
+# 1. Defining jobs
 
 A job is an async Python function that Soniq runs in the background. You define it with a decorator, enqueue it with arguments, and a worker picks it up.
 
