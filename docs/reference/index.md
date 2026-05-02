@@ -1,6 +1,6 @@
 # Reference
 
-Look-up material. Not designed to be read end-to-end.
+*Complete API, CLI, and configuration docs.* Look-up material - not designed to be read end-to-end. If you are learning Soniq for the first time, the [tutorial](../tutorial/01-defining-jobs.md) is a better starting point.
 
 ## Python API
 

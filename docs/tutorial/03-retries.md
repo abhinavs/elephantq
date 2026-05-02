@@ -1,6 +1,10 @@
 # 3. Retries
 
+> **Beginner** - 7 minutes. Retry counts, delays, backoff, and the dead-letter queue.
+
 Soniq retries failed jobs automatically. Every job gets 3 retries by default (4 total attempts). You control the retry count, delay strategy, and backoff at the decorator level.
+
+> **A note on terms.** Soniq guarantees *at-least-once* delivery: a job will run at least once, and may run more than once if a worker crashes mid-handler. *Idempotent* means "safe to run more than once with the same end result." The two ideas come together in this chapter - retries are the most common reason a job runs twice, so handlers need to be idempotent. The [Idempotency](#idempotency) section at the bottom shows how.
 
 ## Configuration
 
@@ -72,9 +76,11 @@ async def fetch_external_report(report_id: str):
 
 Retries at: 5s, 10s, 20s, 40s, 80s, 160s, 300s, 300s. The delay never exceeds `retry_max_delay`.
 
-## After max retries
+## After max retries: the dead-letter queue
 
-When a job exhausts all retries, the row is moved out of `soniq_jobs` and into the dead-letter table `soniq_dead_letter_jobs`. The original `soniq_jobs` row is deleted in the same transaction. See [Dead-letter queue](../reference/dead-letter.md) to inspect or replay these jobs.
+When a job exhausts all retries, the row is moved out of `soniq_jobs` and into the *dead-letter queue* - the `soniq_dead_letter_jobs` table, which is a holding area for jobs that failed every retry. The original `soniq_jobs` row is deleted in the same transaction.
+
+Dead-letter jobs do not run on their own. You inspect them, fix the underlying problem, and replay the ones you want re-run. See [Dead-letter queue](../reference/dead-letter.md) for the full inspect / replay workflow.
 
 ## Examples
 
@@ -116,11 +122,15 @@ async def import_csv(file_path: str):
 
 ## Idempotency
 
-Soniq provides at-least-once delivery. Retries (and crash recovery) can cause a job to run more than once. Write your jobs to be idempotent:
+Soniq provides *at-least-once* delivery: a job will run at least once, and may run more than once. Retries are the obvious source of repeats, but a worker that crashes mid-handler will also cause the job to be picked up by another worker and re-run. Every job queue has this property - it is not a Soniq bug, it is a consequence of "do not lose work when machines fail".
 
-- Use `INSERT ... ON CONFLICT DO UPDATE` instead of plain inserts.
-- Store an idempotency key and check it before performing side effects.
-- Check current state before acting (e.g., verify the email hasn't already been sent).
+The fix is to make your handler *idempotent* - safe to run more than once with the same end result:
+
+- Use `INSERT ... ON CONFLICT DO UPDATE` instead of plain inserts. The second run updates a row that already exists, instead of creating a duplicate.
+- Store an idempotency key (often the job arguments hashed, or a unique field on the request) and check it before performing the side effect. If the key already shows the work as done, return.
+- Check current state before acting. Before sending an email, look at whether you have already recorded sending it. Before charging a card, look at whether the charge already exists in your payments table.
+
+The pattern is "make the second run a no-op", not "guarantee the second run never happens".
 
 ## Job timeouts
 

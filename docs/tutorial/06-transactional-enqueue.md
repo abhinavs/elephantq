@@ -1,5 +1,7 @@
 # 6. Transactional enqueue
 
+> **Intermediate** - 10 minutes. Atomic enqueue inside your business writes.
+
 The reason most teams pick a Postgres-backed queue.
 
 ## The problem

@@ -1,6 +1,6 @@
 # Recipes
 
-Copy-paste patterns for common background job use cases.
+*Copy-paste starting points for real use cases.* Each recipe is a complete, working example for a specific job type - lift it into your codebase and adapt.
 
 ## Job patterns
 

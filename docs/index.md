@@ -2,9 +2,27 @@
 
 Background jobs for Python. Powered by the Postgres you already have.
 
+## Why Soniq?
+
+**No Redis. No extra services.**
+Soniq uses the PostgreSQL database you already have. There is no separate broker to provision, monitor, or pay for. One less thing to break at 2 AM.
+
+**Your jobs and your data live in the same place.**
+If your database is backed up, your job history is backed up. If your database is in a transaction, your job can be too. The order row and the "send invoice" job land in the same commit, or neither of them does.
+
+**Batteries included.**
+Retries, scheduling, deduplication, a built-in dashboard, Prometheus metrics, dead-letter queue, webhook delivery - all in the package. No plugins required.
+
+**Simple to learn, simple to run.**
+One `pip install`, one `soniq setup`, one `soniq start`. That is the whole setup.
+
+[Read the full case for Soniq](why-soniq.md){ .md-button } [Quickstart in 5 minutes](quickstart.md){ .md-button .md-button--primary }
+
 ## How it works
 
-Soniq stores background jobs as rows in your existing PostgreSQL database. There is no broker, no Redis, no extra service to run. When you enqueue a job, Soniq inserts a row. When a worker is ready, it claims the row using `SELECT ... FOR UPDATE SKIP LOCKED` -- a Postgres-native locking primitive that lets multiple workers compete safely without polling. Pickup is push-based via `LISTEN/NOTIFY`, so latency is typically under 10 ms.
+When you call `enqueue()`, Soniq saves the job as a row in your Postgres database. A worker process watches that database for new rows. When it finds one, it runs your function. No broker, no message bus - just Postgres doing what it does best.
+
+Under the hood, Soniq uses Postgres's native `LISTEN/NOTIFY` for instant pickup (latency is typically under 10ms) and `SELECT ... FOR UPDATE SKIP LOCKED` so multiple workers can compete for jobs safely. You do not need to think about any of that to use it - but if you want the deeper picture, see [how it works under the hood](_internals/architecture.md).
 
 Your job data lives in the same database as the rest of your application. Backed up together. Monitored together. Transacted together.
 
@@ -39,41 +57,24 @@ Four steps. Define a job, set up the database, run a worker, enqueue.
 
 [Full quickstart guide](quickstart.md){ .md-button }
 
-## Transactional enqueue
+## Transactional enqueue, in one paragraph
 
-The reason most teams choose a Postgres-backed queue. Enqueue a job inside the same transaction as your business writes - if the transaction rolls back, the job never existed:
+The reason most teams pick a Postgres-backed queue. You can enqueue a job inside the same database transaction as your business write. If the order insert rolls back, the "send invoice" job never existed. No outbox table, no two-phase commit, no "row exists but the job never fired" bugs. No Redis-backed queue can do this - the broker is a separate service.
 
-```python
-# Borrow a connection from Soniq's asyncpg pool. Any active asyncpg
-# connection works here; it does not have to be Soniq's pool. If your
-# app already has its own pool (or a SQLAlchemy session), pass that
-# connection instead - see guides/transactional-enqueue.md.
-async with app.backend.acquire() as conn:
-    async with conn.transaction():
-        # Your business write. The order row only becomes visible once
-        # this transaction commits.
-        await conn.execute(
-            "INSERT INTO orders (id, total) VALUES ($1, $2)",
-            order_id, total,
-        )
+[See the transactional enqueue guide](guides/transactional-enqueue.md){ .md-button }
 
-        # Same connection -> same transaction. The job row goes into
-        # soniq_jobs as part of *this* COMMIT, not a separate one.
-        # connection=conn is the only thing that differs from a normal
-        # enqueue() call.
-        await app.enqueue(
-            send_invoice,
-            connection=conn,
-            order_id=order_id,
-        )
+## Who is this for?
 
-        # If anything inside this `with` block raises, both writes
-        # roll back together. The order is never created without the
-        # follow-up job, and the job is never created for an order
-        # that does not exist.
-```
+Soniq is a good fit if you are building a FastAPI, Django, or Flask app on PostgreSQL and need background jobs without adding infrastructure.
 
-No Redis-backed queue can do this. Your job and your data land in the same commit. No stale jobs, no ghost jobs, no outbox table to drain.
+If you are processing 10,000+ jobs per second, need cross-language workers, or need DAG-based workflow orchestration, a different tool is probably the right call - see [when NOT to use Soniq](#when-not-to-use-soniq) below.
+
+## Coming from Celery or RQ?
+
+If you already run Celery or RQ, you know what is painful: a separate broker to operate, the `.delay()` vs `.apply_async()` surface, configuring result backends, deploying Flower for a UI. Soniq has direct answers to each of those.
+
+- [Migrating from Celery](migration/from-celery.md) - concept map, gradual cut-over pattern, step-by-step sequence
+- [Migrating from RQ](migration/from-rq.md) - shorter; the API mapping is more direct
 
 ## When NOT to use Soniq
 
@@ -84,7 +85,8 @@ No Redis-backed queue can do this. Your job and your data land in the same commi
 
 ## Where to next
 
+- [Why Soniq?](why-soniq.md) - the longer case, with a comparison table
 - [Quickstart](quickstart.md) - five minutes from `pip install` to first job
-- [Tutorial](tutorial/01-defining-jobs.md) - the six chapters that cover every Soniq concept
+- [Tutorial](tutorial/01-defining-jobs.md) - six chapters, ~30 minutes, covers every Soniq concept
 - [Going to production](production/going-to-production.md) - the eight things that matter
 - [Reference](reference/index.md) - Python API, CLI, configuration

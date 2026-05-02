@@ -1,6 +1,10 @@
 # 2. Running workers
 
-A worker is a long-running process that fetches jobs from the database and executes them. Soniq workers are async -- they use asyncio tasks, not threads.
+> **Beginner** - 8 minutes. Starting workers, concurrency, graceful shutdown.
+
+A *worker* is a long-running Python process that fetches jobs from the database and runs them. You typically run one or more workers per host, and your process manager (systemd, Kubernetes, supervisord) keeps them alive.
+
+Soniq workers are async - they use `asyncio` tasks, not threads. One worker process can handle many concurrent jobs at once on a single event loop.
 
 ## Starting a worker
 
