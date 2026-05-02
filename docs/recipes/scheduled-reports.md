@@ -32,7 +32,7 @@ The scheduler is a separate process that creates job instances on schedule. Run 
 SONIQ_JOBS_MODULES="app.reports" soniq scheduler
 
 # Terminal 2: Worker (processes created jobs)
-SONIQ_JOBS_MODULES="app.reports" soniq start
+SONIQ_JOBS_MODULES="app.reports" soniq worker
 ```
 
 The scheduler checks registered periodic jobs and enqueues them when their schedule fires. The worker processes them like any other job.
@@ -124,5 +124,5 @@ export SONIQ_JOBS_MODULES="app.reports"
 
 # In separate terminals:
 soniq scheduler
-soniq start --queues reports --concurrency 2
+soniq worker --queues reports --concurrency 2
 ```

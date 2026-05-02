@@ -20,7 +20,7 @@ A typed stub that lets a producer enqueue a job by name without importing the co
 
 ## Worker
 
-A long-running process that polls (or receives `NOTIFY` for) jobs, claims them via `SELECT ... FOR UPDATE SKIP LOCKED`, and runs the handler. Started with `soniq start`. Multiple workers can compete for the same queue safely.
+A long-running process that polls (or receives `NOTIFY` for) jobs, claims them via `SELECT ... FOR UPDATE SKIP LOCKED`, and runs the handler. Started with `soniq worker`. Multiple workers can compete for the same queue safely.
 
 ## Scheduler
 

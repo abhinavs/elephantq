@@ -1,7 +1,7 @@
 """
 Dashboard DLQ data layer reads from the right table.
 
-Per ``docs/contracts/dead_letter.md`` (Option A), dead-letter rows live
+Per ``docs/_internals/contracts/dead_letter.md`` (Option A), dead-letter rows live
 exclusively in ``soniq_dead_letter_jobs``. ``soniq_jobs.status`` does
 not contain ``'dead_letter'`` (the column-level CHECK rejects it).
 

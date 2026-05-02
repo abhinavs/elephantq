@@ -22,11 +22,6 @@ def add_scheduler_cmd(subparsers) -> None:
         help="How often to check for due jobs in seconds (default: 60)",
     )
     parser.add_argument(
-        "--status",
-        action="store_true",
-        help="Show scheduler status and exit",
-    )
-    parser.add_argument(
         "--log-level",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help="Root logger level (default: INFO, or $SONIQ_LOG_LEVEL)",
@@ -43,18 +38,6 @@ async def handle_scheduler(args) -> int:
 
     async with cli_app(args) as app:
         scheduler = app.scheduler
-
-        if args.status:
-            schedules = await scheduler.list()
-            active = [s for s in schedules if s["status"] == "active"]
-            paused = [s for s in schedules if s["status"] == "paused"]
-            print("Soniq Scheduler Status:")
-            print(f"  Running: {scheduler.running}")
-            print(
-                f"  Scheduled jobs: {len(schedules)} "
-                f"({len(active)} active, {len(paused)} paused)"
-            )
-            return 0
 
         print(
             f"Starting Soniq recurring scheduler (checking every {args.check_interval}s)"

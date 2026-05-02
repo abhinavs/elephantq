@@ -330,8 +330,8 @@ class Soniq:
         await self._ensure_initialized()
         await self._backend.reset()  # type: ignore[union-attr]
 
-    def job(self, _func: Optional[Callable[..., Any]] = None, /, **kwargs: Any) -> Any:
-        """Register a job. Supports both @app.job and @app.job(...) forms."""
+    def job(self, **kwargs: Any) -> Any:
+        """Register a job. Use as ``@app.job(...)``; the bare ``@app.job`` form is not supported."""
         _JP = ParamSpec("_JP")
         _JR = TypeVar("_JR")
 
@@ -350,8 +350,6 @@ class Soniq:
                 **kwargs,
             )
 
-        if _func is not None:
-            return decorator(_func)
         return decorator
 
     @property
@@ -708,6 +706,168 @@ class Soniq:
 
         return result_id or job_id
 
+    async def enqueue_many(
+        self,
+        target: Any,
+        args_list: list[dict[str, Any]],
+        *,
+        queue: Optional[str] = None,
+        priority: Optional[int] = None,
+        scheduled_at: Any = None,
+    ) -> list[str]:
+        """Enqueue many jobs with the same target. Returns the list of job IDs in input order.
+
+        On Postgres this issues a single multi-row INSERT; on SQLite/Memory it loops over
+        ``create_job``. Does not support unique/dedup_key - if the registered job declares
+        ``unique=True`` or you need per-job dedup, use ``enqueue()`` in a loop instead.
+        """
+        await self._ensure_initialized()
+        assert self._backend is not None
+
+        if not isinstance(args_list, list):
+            raise TypeError(
+                f"enqueue_many() args_list must be a list, got {type(args_list).__name__}"
+            )
+        if not args_list:
+            return []
+
+        ref: Optional[TaskRef] = None
+        if isinstance(target, TaskRef):
+            ref = target
+            job_name = ref.name
+        elif isinstance(target, str):
+            job_name = validate_task_name(target, self._settings.task_name_pattern)
+        elif callable(target):
+            job_name = (
+                getattr(target, "_soniq_name", None)
+                or f"{target.__module__}.{target.__name__}"
+            )
+        else:
+            raise TypeError(
+                f"enqueue_many() target must be a callable, string, or TaskRef; "
+                f"got {type(target).__name__}"
+            )
+
+        for i, args in enumerate(args_list):
+            if not isinstance(args, dict):
+                raise TypeError(
+                    f"enqueue_many() args_list[{i}] must be a dict, "
+                    f"got {type(args).__name__}"
+                )
+
+        if ref is not None and ref.args_model is not None:
+            for i, args in enumerate(args_list):
+                try:
+                    ref.args_model(**args)
+                except ValidationError as e:
+                    raise SoniqError(
+                        f"Invalid arguments for task {job_name!r} at index {i}: {e}",
+                        SONIQ_TASK_ARGS_INVALID,
+                        context={"task_name": job_name, "index": i},
+                    ) from e
+
+        job_meta = self._job_registry.get_job(job_name)
+
+        if job_meta is None and ref is None:
+            mode = self._settings.enqueue_validation
+            if mode == "strict":
+                raise SoniqError(
+                    f"Task '{job_name}' is not registered locally and "
+                    f"SONIQ_ENQUEUE_VALIDATION is 'strict'.",
+                    SONIQ_UNKNOWN_TASK_NAME,
+                    context={"task_name": job_name, "mode": mode},
+                    suggestions=[
+                        "Register the task with @app.job(name=...) before enqueueing.",
+                        "Or set SONIQ_ENQUEUE_VALIDATION=warn / =none if this "
+                        "service is a pure producer with no local registry.",
+                    ],
+                )
+            if mode == "warn":
+                if default_warner().should_warn(job_name):
+                    logger.warning(
+                        "enqueue_many: task %r is not registered locally "
+                        "(SONIQ_ENQUEUE_VALIDATION=warn); enqueueing anyway.",
+                        job_name,
+                    )
+
+        if job_meta is not None:
+            args_model = job_meta.get("args_model")
+            if args_model is not None and ref is None:
+                for i, args in enumerate(args_list):
+                    try:
+                        args_model(**args)
+                    except ValidationError as e:
+                        raise SoniqError(
+                            f"Invalid arguments for task {job_name!r} at index {i}: {e}",
+                            SONIQ_TASK_ARGS_INVALID,
+                            context={"task_name": job_name, "index": i},
+                        ) from e
+            if job_meta.get("unique"):
+                raise TypeError(
+                    f"enqueue_many() does not support unique jobs "
+                    f"(task {job_name!r} declares unique=True). Use enqueue() in a loop."
+                )
+            final_priority = priority if priority is not None else job_meta["priority"]
+            if queue is not None:
+                final_queue = queue
+            elif ref is not None and ref.default_queue is not None:
+                final_queue = ref.default_queue
+            else:
+                final_queue = job_meta["queue"]
+            max_attempts = job_meta["max_retries"] + 1
+        else:
+            final_priority = priority if priority is not None else 100
+            if queue is not None:
+                final_queue = queue
+            elif ref is not None and ref.default_queue is not None:
+                final_queue = ref.default_queue
+            else:
+                final_queue = "default"
+            max_attempts = self._settings.max_retries + 1
+
+        scheduled_at = _normalize_scheduled_time(scheduled_at)
+        producer_id = resolve_producer_id(self._settings.producer_id)
+        job_ids = [str(uuid.uuid4()) for _ in args_list]
+
+        if isinstance(self._backend, PostgresBackend):
+            await self._backend.create_jobs_bulk(
+                job_ids=job_ids,
+                job_name=job_name,
+                args_list=args_list,
+                max_attempts=max_attempts,
+                priority=final_priority,
+                queue=final_queue,
+                scheduled_at=scheduled_at,
+                producer_id=producer_id,
+            )
+        else:
+            for jid, args in zip(job_ids, args_list):
+                await self._backend.create_job(
+                    job_id=jid,
+                    job_name=job_name,
+                    args=args,
+                    args_hash=None,
+                    max_attempts=max_attempts,
+                    priority=final_priority,
+                    queue=final_queue,
+                    unique=False,
+                    dedup_key=None,
+                    scheduled_at=scheduled_at,
+                    producer_id=producer_id,
+                )
+
+        if self._backend.supports_push_notify:
+            try:
+                await self._backend.notify_new_job(final_queue)
+            except Exception:
+                logger.debug(
+                    "notify_new_job failed for queue %s; workers will pick up via poll",
+                    final_queue,
+                    exc_info=True,
+                )
+
+        return job_ids
+
     async def schedule(
         self,
         target: Any,
@@ -795,7 +955,7 @@ class Soniq:
             return
 
         logger.warning(
-            "Detected %d @periodic job(s) (%s) but `soniq start` no longer "
+            "Detected %d @periodic job(s) (%s) but `soniq worker` no longer "
             "runs the recurring scheduler. Start `soniq scheduler` as a "
             "separate process or those jobs will never fire. Suppress "
             "this warning with SONIQ_SCHEDULER_SUPPRESS_WARNING=1.",

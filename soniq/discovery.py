@@ -62,7 +62,7 @@ def _print_import_error(module_path: str, exc: Exception) -> None:
             file=sys.stderr,
         )
         print(
-            "  Example: PYTHONPATH=/path/to/project soniq start ...",
+            "  Example: PYTHONPATH=/path/to/project soniq worker ...",
             file=sys.stderr,
         )
 

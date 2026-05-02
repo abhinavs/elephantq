@@ -1,4 +1,4 @@
-"""``soniq workers`` - inspect worker registrations and heartbeats."""
+"""``soniq inspect`` - inspect worker registrations and heartbeats."""
 
 from __future__ import annotations
 
@@ -7,21 +7,29 @@ from ._helpers import database_url_argument
 from .colors import StatusIcon, print_status
 
 
-def add_workers_cmd(subparsers) -> None:
+def add_inspect_cmd(subparsers) -> None:
     parser = subparsers.add_parser(
-        "workers",
-        help="Show worker status",
-        description="Display active workers, heartbeats, and monitoring information",
+        "inspect",
+        help="Inspect workers and recurring schedules",
+        description=(
+            "Display active workers, heartbeats, recurring-schedule summary, "
+            "and monitoring information."
+        ),
     )
     parser.add_argument("--stale", action="store_true", help="Show stale/dead workers")
     parser.add_argument(
         "--cleanup", action="store_true", help="Clean up stale worker records"
     )
+    parser.add_argument(
+        "--schedules",
+        action="store_true",
+        help="List each recurring schedule (name, status, next run)",
+    )
     database_url_argument(parser)
-    parser.set_defaults(func=handle_workers)
+    parser.set_defaults(func=handle_inspect)
 
 
-async def handle_workers(args) -> int:
+async def handle_inspect(args) -> int:
     async with cli_app(args) as app:
         try:
             await app._ensure_initialized()
@@ -92,9 +100,47 @@ async def handle_workers(args) -> int:
                     print("Use --cleanup to remove stale worker records")
 
             if not active_workers and not stale_workers:
-                print("\nNo workers found. Start workers with: soniq start")
+                print("\nNo workers found. Start workers with: soniq worker")
+
+            await _print_scheduler_section(app, show_each=args.schedules)
 
             return 0
         except Exception as e:
             print_status(f"Failed to get worker status: {e}", "error")
             return 1
+
+
+async def _print_scheduler_section(app, show_each: bool) -> None:
+    """Print recurring-schedule summary.
+
+    Scheduler liveness is leader-elected per tick (no persistent process
+    record), so we report registered schedules rather than "is a scheduler
+    running" - the latter is unanswerable from the database alone.
+    """
+    try:
+        schedules = await app.scheduler.list()
+    except Exception as e:
+        print(f"\nScheduler: failed to query ({e})")
+        return
+
+    active = [s for s in schedules if s["status"] == "active"]
+    paused = [s for s in schedules if s["status"] == "paused"]
+
+    print("\nRecurring Schedules:")
+    if not schedules:
+        print("  (none registered)")
+        print(
+            "  Register with @app.periodic(...) or app.scheduler.add(...); "
+            "run 'soniq scheduler' to dispatch."
+        )
+        return
+
+    print(f"  Total: {len(schedules)} ({len(active)} active, {len(paused)} paused)")
+
+    if show_each:
+        for s in schedules:
+            marker = "🟢" if s["status"] == "active" else "⏸️ "
+            next_run = s.get("next_run") or "-"
+            schedule_value = s.get("schedule_value") or ""
+            print(f"  {marker} {s['name']}  [{schedule_value}]")
+            print(f"     Status: {s['status']}  Next run: {next_run}")

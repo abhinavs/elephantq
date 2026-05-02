@@ -19,7 +19,7 @@ def validate_task_name(name: object, pattern: str) -> str:
     with no instance handy, constructs a fresh `SoniqSettings()`). No
     runtime `get_settings()` lookup happens here - that would couple
     every validation to a process-global cache and violate the
-    instance-boundary contract (`docs/contracts/instance_boundary.md`).
+    instance-boundary contract (`docs/_internals/contracts/instance_boundary.md`).
 
     Raises `SoniqError(SONIQ_INVALID_TASK_NAME)` on a non-string `name` or
     on a pattern mismatch. The error includes the offending name and the

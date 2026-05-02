@@ -46,7 +46,7 @@ async def upload_file(file: UploadFile):
 ## Running the worker
 
 ```bash
-soniq start --queues media --concurrency 1
+soniq worker --queues media --concurrency 1
 ```
 
 Keep concurrency low for media workers. Each job may consume significant memory and CPU. Scale by adding more worker processes rather than increasing concurrency per process.

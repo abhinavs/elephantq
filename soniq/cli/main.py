@@ -29,13 +29,13 @@ from soniq.plugin import discover_plugins
 from .colors import print_status
 from .dashboard import add_dashboard_cmd
 from .dead_letter import add_dead_letter_cmd
+from .inspect import add_inspect_cmd
 from .migrate_status import add_migrate_status_cmd
 from .scheduler import add_scheduler_cmd
 from .setup import add_setup_cmd
-from .start import add_start_cmd
 from .status import add_status_cmd
 from .tasks import add_tasks_cmd
-from .workers import add_workers_cmd
+from .worker import add_worker_cmd
 
 
 def build_parser(plugin_app: Optional[object] = None) -> argparse.ArgumentParser:
@@ -52,7 +52,7 @@ def build_parser(plugin_app: Optional[object] = None) -> argparse.ArgumentParser
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  soniq start --concurrency 4 --queues default,urgent
+  soniq worker --concurrency 4 --queues default,urgent
   soniq setup
   soniq status --verbose --jobs
 
@@ -74,10 +74,10 @@ For more information, visit: https://github.com/abhinavs/soniq
 
     sub = parser.add_subparsers(dest="command", title="Commands")
 
-    add_start_cmd(sub)
+    add_worker_cmd(sub)
     add_setup_cmd(sub)
     add_status_cmd(sub)
-    add_workers_cmd(sub)
+    add_inspect_cmd(sub)
     add_migrate_status_cmd(sub)
     add_dashboard_cmd(sub)
     add_scheduler_cmd(sub)

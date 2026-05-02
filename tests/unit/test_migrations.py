@@ -28,12 +28,10 @@ class TestMigrationStructure:
         files = sorted(f.name for f in MIGRATIONS_DIR.glob("*.sql"))
         assert files == [
             "0001_core.sql",
-            "0002_dead_letter_option_a.sql",
-            "0003_dead_letter.sql",
-            "0004_scheduler.sql",
-            "0005_webhooks.sql",
-            "0006_logs.sql",
-            "0007_drop_failed_status.sql",
+            "0002_dead_letter.sql",
+            "0003_scheduler.sql",
+            "0004_webhooks.sql",
+            "0005_logs.sql",
         ]
 
     def test_migrations_discovered_in_order(self):
@@ -46,13 +44,11 @@ class TestMigrationStructure:
             "0003",
             "0004",
             "0005",
-            "0006",
-            "0007",
         ]
 
     def test_version_filter_core(self):
         runner = MigrationRunner()
-        # In 0.0.3+ all soniq-owned tables (DLQ, scheduler, webhooks,
+        # In 0.0.2+ all soniq-owned tables (DLQ, scheduler, webhooks,
         # logs) ship in the core slice so dashboard/metrics queries can
         # reference them unconditionally.
         versions = [v for v, _, _ in runner.discover_migrations(version_filter="000")]
@@ -62,8 +58,6 @@ class TestMigrationStructure:
             "0003",
             "0004",
             "0005",
-            "0006",
-            "0007",
         ]
 
 
@@ -103,19 +97,19 @@ class TestCoreContents:
 class TestFeatureContents:
     """Per-feature migrations carry exactly the table(s) the feature owns."""
 
-    def test_scheduler(self):
-        content = (MIGRATIONS_DIR / "0004_scheduler.sql").read_text()
-        assert "soniq_recurring_jobs" in content
-
     def test_dead_letter(self):
-        content = (MIGRATIONS_DIR / "0003_dead_letter.sql").read_text()
+        content = (MIGRATIONS_DIR / "0002_dead_letter.sql").read_text()
         assert "soniq_dead_letter_jobs" in content
 
+    def test_scheduler(self):
+        content = (MIGRATIONS_DIR / "0003_scheduler.sql").read_text()
+        assert "soniq_recurring_jobs" in content
+
     def test_webhooks(self):
-        content = (MIGRATIONS_DIR / "0005_webhooks.sql").read_text()
+        content = (MIGRATIONS_DIR / "0004_webhooks.sql").read_text()
         assert "soniq_webhook_endpoints" in content
         assert "soniq_webhook_deliveries" in content
 
     def test_logs(self):
-        content = (MIGRATIONS_DIR / "0006_logs.sql").read_text()
+        content = (MIGRATIONS_DIR / "0005_logs.sql").read_text()
         assert "soniq_logs" in content

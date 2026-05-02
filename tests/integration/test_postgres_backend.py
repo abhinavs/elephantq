@@ -248,3 +248,64 @@ async def test_reset_clears_everything(backend):
 
     jobs = await backend.list_jobs()
     assert len(jobs) == 0
+
+
+@pytest.mark.asyncio
+async def test_create_jobs_bulk_writes_all_rows(backend):
+    """The Postgres bulk path lands every row with shared queue/priority/scheduled_at,
+    JSONB-encoded args, and the supplied producer_id - in a single round trip."""
+    from datetime import datetime, timedelta, timezone
+
+    run_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+    job_ids = [str(uuid.uuid4()) for _ in range(5)]
+    args_list = [{"index": i, "label": f"row-{i}"} for i in range(5)]
+
+    await backend.create_jobs_bulk(
+        job_ids=job_ids,
+        job_name="test.bulk_insert",
+        args_list=args_list,
+        max_attempts=3,
+        priority=42,
+        queue="bulk",
+        scheduled_at=run_at,
+        producer_id="bulk-producer",
+    )
+
+    rows = await backend.list_jobs(queue="bulk")
+    bulk_rows = [r for r in rows if r["job_name"] == "test.bulk_insert"]
+    assert len(bulk_rows) == 5
+    assert {r["id"] for r in bulk_rows} == set(job_ids)
+
+    # JSONB roundtrip preserves dict structure.
+    by_id = {r["id"]: r for r in bulk_rows}
+    for jid, args in zip(job_ids, args_list):
+        assert by_id[jid]["args"] == args
+        assert by_id[jid]["queue"] == "bulk"
+        assert by_id[jid]["priority"] == 42
+        assert by_id[jid]["status"] == "queued"
+        assert by_id[jid]["max_attempts"] == 3
+
+    # Verify producer_id and scheduled_at via raw fetch (list_jobs strips some fields).
+    async with backend.acquire() as conn:
+        for jid in job_ids:
+            row = await conn.fetchrow(
+                "SELECT producer_id, scheduled_at FROM soniq_jobs WHERE id = $1",
+                uuid.UUID(jid),
+            )
+            assert row["producer_id"] == "bulk-producer"
+            assert abs((row["scheduled_at"] - run_at).total_seconds()) < 1
+
+
+@pytest.mark.asyncio
+async def test_create_jobs_bulk_empty_list_is_a_noop(backend):
+    """An empty bulk call must not error and must not write any rows."""
+    await backend.create_jobs_bulk(
+        job_ids=[],
+        job_name="test.bulk_empty",
+        args_list=[],
+        max_attempts=3,
+        priority=100,
+        queue="default",
+    )
+    rows = await backend.list_jobs()
+    assert not any(r["job_name"] == "test.bulk_empty" for r in rows)

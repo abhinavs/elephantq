@@ -2,11 +2,11 @@
 Lint-style guard that CLI subcommands route through ``cli_app`` and do
 not reintroduce process-global wrappers on top of ``soniq``.
 
-The instance-boundary contract (`docs/contracts/instance_boundary.md`)
+The instance-boundary contract (`docs/_internals/contracts/instance_boundary.md`)
 requires every CLI subcommand to resolve an explicit Soniq via
 ``cli_app(args)`` and then call methods on that instance. The legacy
 module-level wrappers (``soniq.enqueue``, ``soniq.run_worker``, ...)
-were removed in 0.0.3; this test fails fast if any CLI file tries to
+were removed in 0.0.2; this test fails fast if any CLI file tries to
 reach for one again.
 """
 

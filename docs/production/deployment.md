@@ -53,9 +53,9 @@ sudo chown soniq:soniq /opt/soniq /var/log/soniq
 
 ## Recurring jobs require a scheduler sidecar
 
-If your application uses `@app.periodic(...)` jobs, deploy a separate `soniq scheduler` process alongside `soniq start`. The worker process **does not** evaluate due recurring jobs - that responsibility lives with the scheduler so worker scaling does not duplicate scheduler work.
+If your application uses `@app.periodic(...)` jobs, deploy a separate `soniq scheduler` process alongside `soniq worker`. The worker process **does not** evaluate due recurring jobs - that responsibility lives with the scheduler so worker scaling does not duplicate scheduler work.
 
-If `soniq start` finds `@periodic` decorators registered and no scheduler-sidecar process holds the leadership lock, it prints a one-time WARN at startup. To silence the WARN once you have configured the sidecar (or if you intentionally do not run recurring jobs), set `SONIQ_SCHEDULER_SUPPRESS_WARNING=1` in the worker environment.
+If `soniq worker` finds `@periodic` decorators registered and no scheduler-sidecar process holds the leadership lock, it prints a one-time WARN at startup. To silence the WARN once you have configured the sidecar (or if you intentionally do not run recurring jobs), set `SONIQ_SCHEDULER_SUPPRESS_WARNING=1` in the worker environment.
 
 The scheduler is a standard subcommand (`soniq scheduler`); it is not a separate package and shares the same `soniq` CLI entry point. Multiple instances coordinate via the `soniq.maintenance` Postgres advisory lock - duplicates are safe but only one is needed.
 
@@ -72,10 +72,10 @@ When different queues have different throughput or latency needs, run separate w
 
 ```bash
 # Email workers - high concurrency, IO-bound
-soniq start --concurrency=8 --queues=emails,notifications
+soniq worker --concurrency=8 --queues=emails,notifications
 
 # Media workers - low concurrency, CPU-bound
-soniq start --concurrency=2 --queues=media,transcode
+soniq worker --concurrency=2 --queues=media,transcode
 ```
 
 In Kubernetes, use separate Deployments. In Docker Compose, use separate services. In Supervisor, use separate `[program:]` blocks. See the `deployment/` directory for examples with queue routing already configured.

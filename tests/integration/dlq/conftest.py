@@ -58,22 +58,17 @@ async def backend(request, tmp_path):
 
     if request.param == "postgres":
         from soniq.backends.postgres import PostgresBackend
-        from soniq.features.dead_letter import DeadLetterService
+        from soniq.backends.postgres.migration_runner import run_migrations
         from tests.db_utils import TEST_DATABASE_URL
 
         b = PostgresBackend(database_url=TEST_DATABASE_URL)
         await b.initialize()
 
-        # Ensure soniq_dead_letter_jobs exists. The 0020 migration is
-        # gated behind DeadLetterService.setup() in production; for these
-        # tests we always want the DLQ table available.
-        class _AppShim:
-            backend = b
-
-            async def ensure_initialized(self):
-                pass
-
-        await DeadLetterService(_AppShim()).setup()  # type: ignore[arg-type]
+        # All soniq tables (including soniq_dead_letter_jobs) ship in the
+        # core migration set. Apply migrations against the shared test DB
+        # so the table exists regardless of test ordering.
+        async with b.acquire() as conn:
+            await run_migrations(conn)
 
         async with b.acquire() as conn:
             await conn.execute("TRUNCATE soniq_jobs CASCADE")

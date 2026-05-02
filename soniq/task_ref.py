@@ -74,7 +74,7 @@ def task_ref(
     ``pattern`` lets callers thread an explicit pattern (e.g. from a Soniq
     instance's settings). When omitted, a fresh ``SoniqSettings()`` is
     constructed to read the env-configured pattern - we never consult the
-    cached global (`docs/contracts/instance_boundary.md`).
+    cached global (`docs/_internals/contracts/instance_boundary.md`).
     """
     if pattern is None:
         pattern = SoniqSettings().task_name_pattern

@@ -1,14 +1,14 @@
 # Worker
 
-Workers fetch jobs from the database, execute them, and update their status. **The primary way to run a worker is the `soniq start` CLI** -- run it from your process manager (systemd, Kubernetes, supervisord) and let the manager handle restarts and scaling. The `Worker` class and `app.run_worker()` are documented here for advanced use cases (tests, embedding, custom orchestration).
+Workers fetch jobs from the database, execute them, and update their status. **The primary way to run a worker is the `soniq worker` CLI** -- run it from your process manager (systemd, Kubernetes, supervisord) and let the manager handle restarts and scaling. The `Worker` class and `app.run_worker()` are documented here for advanced use cases (tests, embedding, custom orchestration).
 
 
-## soniq start
+## soniq worker
 
 ```bash
-soniq start
-soniq start --concurrency 8 --queues emails,billing
-soniq start --run-once  # process available jobs once and exit
+soniq worker
+soniq worker --concurrency 8 --queues emails,billing
+soniq worker --run-once  # process available jobs once and exit
 ```
 
 Reads `SONIQ_DATABASE_URL` (and other `SONIQ_*` settings) from the environment. See the CLI reference for the full flag list.
@@ -34,7 +34,7 @@ await app.run_worker(
 |---|---|---|---|
 | `concurrency` | `int` | `4` | Number of concurrent asyncio tasks fetching and executing jobs. |
 | `run_once` | `bool` | `False` | Process all available jobs and exit. Useful for testing and cron-driven setups. |
-| `queues` | `list[str] \| None` | `None` | Restrict to these queue names. `None` means process all queues. This is the in-process default; the `soniq start` CLI also defaults to all queues when `--queues` is omitted. |
+| `queues` | `list[str] \| None` | `None` | Restrict to these queue names. `None` means process all queues. This is the in-process default; the `soniq worker` CLI also defaults to all queues when `--queues` is omitted. |
 
 ### What happens during run_worker
 
@@ -60,7 +60,7 @@ settings:
 | `SONIQ_JOBS_MODULES` | (empty) | Comma-separated list of modules to import on worker startup. Required by the CLI. See [Job module discovery](../getting-started/installation.md#job-module-discovery). |
 
 !!! note "Queue selection"
-    The `soniq start` CLI worker processes **all queues** when `--queues` is not passed.
+    The `soniq worker` CLI worker processes **all queues** when `--queues` is not passed.
     There is no env-var equivalent on the CLI entrypoint; pass `--queues=name1,name2`
     to scope a worker. `SONIQ_QUEUES` only affects the programmatic
     `Soniq(queues=...)` setting, not the CLI worker default.

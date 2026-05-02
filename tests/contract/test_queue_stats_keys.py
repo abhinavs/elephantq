@@ -1,6 +1,6 @@
 """Closed-form key contract for ``Backend.get_queue_stats``.
 
-Named directly from ``docs/contracts/queue_stats.md``: every backend must
+Named directly from ``docs/_internals/contracts/queue_stats.md``: every backend must
 return exactly the six canonical keys, no more and no fewer. An extra key
 (e.g. a leaking column name) or a missing key fails the contract test
 and blocks release gate 1.
@@ -52,19 +52,14 @@ async def backend(request, tmp_path):
 
     if request.param == "postgres":
         from soniq.backends.postgres import PostgresBackend
-        from soniq.features.dead_letter import DeadLetterService
+        from soniq.backends.postgres.migration_runner import run_migrations
         from tests.db_utils import TEST_DATABASE_URL
 
         b = PostgresBackend(database_url=TEST_DATABASE_URL)
         await b.initialize()
 
-        class _AppShim:
-            backend = b
-
-            async def ensure_initialized(self):
-                pass
-
-        await DeadLetterService(_AppShim()).setup()  # type: ignore[arg-type]
+        async with b.acquire() as conn:
+            await run_migrations(conn)
 
         async with b.acquire() as conn:
             await conn.execute("TRUNCATE soniq_jobs CASCADE")

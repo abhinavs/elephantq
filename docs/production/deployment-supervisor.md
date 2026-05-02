@@ -7,7 +7,7 @@ Good for older setups or shared environments. File: `deployment/supervisor.conf`
 programs=soniq_worker,soniq_scheduler,soniq_dashboard
 
 [program:soniq_worker]
-command=/opt/soniq/venv/bin/soniq start --concurrency=4
+command=/opt/soniq/venv/bin/soniq worker --concurrency=4
 directory=/opt/soniq
 user=soniq
 autostart=true

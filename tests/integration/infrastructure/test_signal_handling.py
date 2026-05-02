@@ -302,10 +302,10 @@ class TestCLISignalHandling:
 
     @pytest.mark.asyncio
     async def test_cli_worker_sigterm_shutdown(self):
-        """Test that `soniq start` handles SIGTERM gracefully"""
+        """Test that `soniq worker` handles SIGTERM gracefully"""
 
         process = subprocess.Popen(
-            [sys.executable, "-m", "soniq.cli.main", "start", "--concurrency", "1"],
+            [sys.executable, "-m", "soniq.cli.main", "worker", "--concurrency", "1"],
             cwd=str(PROJECT_ROOT),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -357,10 +357,10 @@ class TestCLISignalHandling:
 
     @pytest.mark.asyncio
     async def test_cli_worker_sigint_shutdown(self):
-        """Test that `soniq start` handles SIGINT (Ctrl+C) gracefully"""
+        """Test that `soniq worker` handles SIGINT (Ctrl+C) gracefully"""
 
         process = subprocess.Popen(
-            [sys.executable, "-m", "soniq.cli.main", "start", "--concurrency", "1"],
+            [sys.executable, "-m", "soniq.cli.main", "worker", "--concurrency", "1"],
             cwd=str(PROJECT_ROOT),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,

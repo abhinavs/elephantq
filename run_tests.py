@@ -32,8 +32,6 @@ def _bootstrap_venv(project_root: str) -> None:
     if not os.path.exists(venv_python):
         subprocess.check_call([sys.executable, "-m", "venv", venv_dir])
 
-    _cleanup_legacy_editables(venv_python)
-
     try:
         subprocess.check_call([venv_python, "-m", "pip", "install", "--upgrade", "pip"])
     except Exception as exc:  # noqa: PIE786
@@ -41,26 +39,17 @@ def _bootstrap_venv(project_root: str) -> None:
             "⚠️ pip upgrade failed inside test venv; continuing with the existing pip installation."
         )
         print(f"   Details: {exc}")
-    try:
-        subprocess.check_call(
-            [venv_python, "-m", "pip", "install", "-e", ".[dev]"],
-            cwd=project_root,
-        )
-    except subprocess.CalledProcessError as exc:
-        print(
-            "⚠️ Editable install failed inside test venv; continuing with existing packages."
-        )
-        print(f"   Details: {exc}")
+    # Editable install failures must abort: tests run against a stale venv
+    # are misleading-green and were the symptom that triggered this guard.
+    subprocess.check_call(
+        [venv_python, "-m", "pip", "install", "-e", ".[dev]"],
+        cwd=project_root,
+    )
 
     env = os.environ.copy()
     env["SONIQ_TEST_VENV_BOOTSTRAPPED"] = "1"
     env["SONIQ_TEST_VENV_PYTHON"] = venv_python
     os.execvpe(venv_python, [venv_python, __file__], env)
-
-
-def _cleanup_legacy_editables(venv_python: str) -> None:
-    """No-op placeholder for removed legacy editable-install cleanup."""
-    return
 
 
 def run_test_batch(name, test_paths, verbose=True):

@@ -1,7 +1,7 @@
 """
 Tests for ``soniq tasks-check``.
 
-The historical ``tasks-list`` subcommand was removed in 0.0.3 along
+The historical ``tasks-list`` subcommand was removed in 0.0.2 along
 with the process-global registry: with per-instance registries there
 is no single "current process registry" to dump, and the dashboard
 already exposes the fleet-wide ``soniq_task_registry`` table for the

@@ -56,7 +56,7 @@ Workers run as a separate process. Point them at the module where your jobs are 
 ```bash
 SONIQ_DATABASE_URL="postgresql://localhost/myapp" \
 SONIQ_JOBS_MODULES="app.jobs" \
-soniq start --concurrency 4
+soniq worker --concurrency 4
 ```
 
 `SONIQ_JOBS_MODULES` is a comma-separated list of Python modules the worker imports on startup so it discovers all `@eq.job()` decorators. See [Job module discovery](../getting-started/installation.md#job-module-discovery) for cross-service setups and per-worker overrides.
@@ -64,7 +64,7 @@ soniq start --concurrency 4
 You can also limit a worker to specific queues:
 
 ```bash
-soniq start --concurrency 2 --queues emails,notifications
+soniq worker --concurrency 2 --queues emails,notifications
 ```
 
 ## Complete example
@@ -120,7 +120,7 @@ uvicorn app.main:app --reload
 # Terminal 2: Worker
 SONIQ_DATABASE_URL="postgresql://localhost/myapp" \
 SONIQ_JOBS_MODULES="app.main" \
-soniq start --concurrency 4
+soniq worker --concurrency 4
 ```
 
 ## Multiple instances

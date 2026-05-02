@@ -172,16 +172,6 @@ class LogService:
         self._app = app
         self.analyzer = LogAnalyzer(app)
 
-    async def setup(self) -> int:
-        """No-op in 0.0.3+: log tables are part of the core schema and are
-        applied by ``Soniq.setup()`` (migration ``0006_logs.sql``).
-
-        Kept on the surface to avoid AttributeError for prior callers.
-        Returns 0 (no migrations applied here).
-        """
-        await self._app.ensure_initialized()
-        return 0
-
     async def get_error_summary(self, hours: int = 24) -> Dict[str, Any]:
         return await self.analyzer.get_error_summary(hours)
 

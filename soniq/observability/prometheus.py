@@ -2,7 +2,7 @@
 `PrometheusMetricsSink`: a `MetricsSink` implementation that emits
 Soniq's per-job events as Prometheus metrics.
 
-`prometheus_client` is a default dependency of `soniq` as of 0.0.3, so
+`prometheus_client` is a default dependency of `soniq` as of 0.0.2, so
 this module is importable from a plain `pip install soniq`. The sink
 itself is dormant unless wired via `Soniq(metrics_sink=...)`; the
 default is `NoopMetricsSink`, so a stock install does not register any

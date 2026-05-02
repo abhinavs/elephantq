@@ -212,7 +212,7 @@ class SoniqSettings(BaseSettings):
 
     # Bounded async-handler shutdown wall time. Sync handlers are not
     # bounded by this alone (see sync_handler_grace_seconds and the shutdown
-    # contract in docs/contracts/shutdown.md).
+    # contract in docs/_internals/contracts/shutdown.md).
     shutdown_timeout: float = Field(
         default=30.0,
         ge=0.1,
@@ -258,10 +258,6 @@ class SoniqSettings(BaseSettings):
         description="Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)",
     )
 
-    log_format: str = Field(
-        default="simple", description="Log format: 'simple' or 'structured'"
-    )
-
     # Job Result Retention (TTL)
     result_ttl: int = Field(
         default=300,
@@ -302,14 +298,6 @@ class SoniqSettings(BaseSettings):
         if v.upper() not in valid_levels:
             raise ValueError(f"log_level must be one of {valid_levels}")
         return v.upper()
-
-    @field_validator("log_format")
-    @classmethod
-    def validate_log_format(cls, v: str) -> str:
-        valid_formats = ["simple", "structured"]
-        if v.lower() not in valid_formats:
-            raise ValueError(f"log_format must be one of {valid_formats}")
-        return v.lower()
 
     @field_validator("database_url")
     @classmethod

@@ -1,6 +1,6 @@
--- Dead letter queue table (always created in 0.0.3+).
+-- Dead letter queue table.
 --
--- Per docs/contracts/dead_letter.md (Option A), DLQ rows live exclusively in
+-- Per docs/_internals/contracts/dead_letter.md (Option A), DLQ rows live exclusively in
 -- soniq_dead_letter_jobs; this table is part of the base schema rather than
 -- an opt-in feature so dashboard/metrics queries can rely on it existing.
 

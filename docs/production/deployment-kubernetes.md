@@ -23,7 +23,6 @@ metadata:
   namespace: soniq
 data:
   SONIQ_LOG_LEVEL: "INFO"
-  SONIQ_LOG_FORMAT: "structured"
   SONIQ_JOBS_MODULES: "myapp.jobs"
 ```
 
@@ -49,7 +48,7 @@ spec:
       containers:
       - name: worker
         image: soniq/worker:latest
-        args: ["soniq", "start", "--concurrency=4"]
+        args: ["soniq", "worker", "--concurrency=4"]
         env:
         - name: SONIQ_DATABASE_URL
           valueFrom:

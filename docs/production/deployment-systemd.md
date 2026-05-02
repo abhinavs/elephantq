@@ -17,7 +17,7 @@ WorkingDirectory=/opt/soniq
 Environment=SONIQ_DATABASE_URL=postgresql://soniq:password@localhost/soniq_prod
 Environment=SONIQ_LOG_LEVEL=INFO
 Environment=SONIQ_JOBS_MODULES=myapp.jobs
-ExecStart=/opt/soniq/venv/bin/soniq start --concurrency=4
+ExecStart=/opt/soniq/venv/bin/soniq worker --concurrency=4
 ExecReload=/bin/kill -HUP $MAINPID
 KillMode=mixed
 Restart=always

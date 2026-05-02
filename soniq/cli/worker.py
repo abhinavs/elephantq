@@ -1,4 +1,4 @@
-"""``soniq start`` - run a worker."""
+"""``soniq worker`` - run a worker."""
 
 from __future__ import annotations
 
@@ -12,11 +12,11 @@ from ._helpers import configure_cli_logging, database_url_argument
 from .colors import print_status
 
 
-def add_start_cmd(subparsers) -> None:
+def add_worker_cmd(subparsers) -> None:
     parser = subparsers.add_parser(
-        "start",
-        help="Start Soniq worker",
-        description="Start Soniq worker to process background jobs",
+        "worker",
+        help="Run a Soniq worker",
+        description="Run a Soniq worker to process background jobs",
     )
     parser.add_argument(
         "--concurrency",
@@ -49,10 +49,10 @@ def add_start_cmd(subparsers) -> None:
         help="Root logger level (default: INFO, or $SONIQ_LOG_LEVEL)",
     )
     database_url_argument(parser)
-    parser.set_defaults(func=handle_start)
+    parser.set_defaults(func=handle_worker)
 
 
-async def handle_start(args) -> int:
+async def handle_worker(args) -> int:
     log_level: str = (
         getattr(args, "log_level", None) or os.getenv("SONIQ_LOG_LEVEL") or "INFO"
     )

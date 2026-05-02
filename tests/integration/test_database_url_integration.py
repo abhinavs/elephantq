@@ -147,21 +147,21 @@ class TestDatabaseUrlIntegration:
         assert "Using instance-based configuration" in result.stdout or result.stderr
 
     def test_workers_with_database_url(self):
-        """Test that workers command works with --database-url parameter."""
+        """Test that inspect command works with --database-url parameter."""
         test_db_url = _make_test_db_url("soniq_db_url_test_1")
 
-        result = run_cli_command(["workers", "--database-url", test_db_url])
+        result = run_cli_command(["inspect", "--database-url", test_db_url])
         assert result.returncode == 0
         assert "Using instance-based configuration" in result.stdout or result.stderr
 
     def test_start_worker_with_database_url(self):
-        """Test that start command works with --database-url parameter."""
+        """Test that worker command works with --database-url parameter."""
         test_db_url = _make_test_db_url("soniq_db_url_test_1")
 
         # Use --run-once to exit quickly
         result = run_cli_command(
             [
-                "start",
+                "worker",
                 "--database-url",
                 test_db_url,
                 "--run-once",
@@ -206,7 +206,7 @@ class TestEnvFallback:
                 "Using instance-based configuration" in result.stdout or result.stderr
             )
 
-            result = run_cli_command(["workers"])
+            result = run_cli_command(["inspect"])
             assert result.returncode == 0
             assert (
                 "Using instance-based configuration" in result.stdout or result.stderr

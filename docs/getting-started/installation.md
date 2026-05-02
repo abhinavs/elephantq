@@ -72,7 +72,6 @@ Optional capabilities are activated by running the matching process or by instal
 | Per-job timeouts | Always on (default `SONIQ_JOB_TIMEOUT=300` seconds). Override per-job with `@app.job(timeout=...)` or set `SONIQ_JOB_TIMEOUT=0` to disable. |
 | Recurring jobs | Run `soniq scheduler` alongside your worker. |
 | Web dashboard | `pip install soniq[dashboard]` and run `soniq dashboard`. Dashboard mutations require `SONIQ_DASHBOARD_WRITE_ENABLED=true`. |
-| Structured logging | `pip install soniq[logging]` and set `SONIQ_LOG_FORMAT=structured`. |
 | HTTP webhooks | `pip install soniq[webhooks]` and configure `app.webhooks`. |
 | Prometheus metrics | Wire a `PrometheusMetricsSink` on the `Soniq(...)` constructor. The default sink is a no-op. |
 
@@ -92,7 +91,7 @@ export SONIQ_JOBS_MODULES="app.jobs"
 export SONIQ_JOBS_MODULES="app.jobs,billing.tasks,notifications.handlers"
 ```
 
-The current working directory is added to `sys.path` automatically, so running `soniq start` from your project root is enough. No `PYTHONPATH` gymnastics required.
+The current working directory is added to `sys.path` automatically, so running `soniq worker` from your project root is enough. No `PYTHONPATH` gymnastics required.
 
 ### Single repo vs cross-service
 
@@ -102,7 +101,7 @@ The current working directory is added to `sys.path` automatically, so running `
 
 ### Failure modes
 
-- **Variable unset on the CLI worker.** `soniq start` exits with a clear error: `Error: SONIQ_JOBS_MODULES is not set.`
+- **Variable unset on the CLI worker.** `soniq worker` exits with a clear error: `Error: SONIQ_JOBS_MODULES is not set.`
 - **Module not importable.** The worker raises an `ImportError` at startup -- check spelling, package install, and that the directory you're running from contains the module.
 - **Module imports but a specific job is missing.** The job was renamed or removed but the enqueue side still references the old name. Workers will reject those rows as unknown task names; check `enqueue_validation` settings.
 
@@ -113,10 +112,10 @@ Most teams set `SONIQ_JOBS_MODULES` once globally. If you run heterogeneous work
 ```bash
 # Fleet 1 - billing-focused, sees both shared and billing-specific jobs
 export SONIQ_JOBS_MODULES="app.jobs"
-soniq start --queues billing --jobs-modules billing.critical,billing.fraud
+soniq worker --queues billing --jobs-modules billing.critical,billing.fraud
 
 # Fleet 2 - media-focused, same shared modules + media-specific
-soniq start --queues media --jobs-modules media.processing,media.thumbnails
+soniq worker --queues media --jobs-modules media.processing,media.thumbnails
 ```
 
 ## Verifying the install
@@ -131,7 +130,7 @@ SONIQ_DATABASE_URL="postgresql://localhost/myapp" soniq setup
 # Start a worker
 SONIQ_DATABASE_URL="postgresql://localhost/myapp" \
 SONIQ_JOBS_MODULES="myapp.jobs" \
-soniq start
+soniq worker
 ```
 
 See [quickstart.md](../quickstart.md) to run your first job end-to-end.

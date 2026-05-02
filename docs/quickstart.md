@@ -19,7 +19,7 @@ from soniq import Soniq
 
 app = Soniq(database_url="postgresql://localhost/myapp")
 
-@app.job
+@app.job()
 async def send_welcome(to: str):
     print(f"Sending welcome email to {to}")
 
@@ -40,7 +40,7 @@ Creates the tables Soniq needs. The command is idempotent (safe to run more than
 ```bash
 SONIQ_DATABASE_URL="postgresql://localhost/myapp" \
 SONIQ_JOBS_MODULES="jobs" \
-soniq start --concurrency 4
+soniq worker --concurrency 4
 ```
 
 `SONIQ_JOBS_MODULES` tells the worker which Python modules to import on startup, so the `@app.job` decorators have a chance to run and register the functions. Without it, the worker has no idea which jobs exist. The worker process also needs to be able to actually import your job code - see [Job module discovery](getting-started/installation.md#job-module-discovery) for cross-service setups and per-worker overrides.
@@ -76,3 +76,7 @@ The code above works, but you will want to tighten a few things before deploying
 - [FastAPI guide](guides/fastapi.md) - the most common producer shape
 - [Going to production](production/going-to-production.md) - the eight things that matter for a healthy deploy
 - [Migrating from Celery](migration/from-celery.md) or [from RQ](migration/from-rq.md)
+
+---
+
+*Working with an AI coding agent? Point it at [`AGENTS.md`](https://github.com/abhinavs/soniq/blob/main/AGENTS.md) and [`llms.txt`](llms.txt) - they cover the canonical patterns and the mistakes agents most often make.*

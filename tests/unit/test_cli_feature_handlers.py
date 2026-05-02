@@ -16,6 +16,7 @@ import pytest
 
 from soniq.cli.dashboard import add_dashboard_cmd
 from soniq.cli.dead_letter import add_dead_letter_cmd
+from soniq.cli.inspect import add_inspect_cmd
 from soniq.cli.main import build_parser
 from soniq.cli.scheduler import add_scheduler_cmd
 
@@ -51,13 +52,30 @@ class TestAddSchedulerCmd:
         add_scheduler_cmd(sub)
         args = parser.parse_args(["scheduler"])
         assert args.check_interval == 60
-        assert args.status is False
 
-    def test_status_flag(self):
+    def test_status_flag_removed(self):
+        # --status moved to `soniq inspect` (it now reports schedule counts
+        # alongside worker status). The scheduler subcommand should reject it.
         parser, sub = _bare_subparser()
         add_scheduler_cmd(sub)
-        args = parser.parse_args(["scheduler", "--status"])
-        assert args.status is True
+        with pytest.raises(SystemExit):
+            parser.parse_args(["scheduler", "--status"])
+
+
+class TestAddInspectCmd:
+    def test_defaults(self):
+        parser, sub = _bare_subparser()
+        add_inspect_cmd(sub)
+        args = parser.parse_args(["inspect"])
+        assert args.stale is False
+        assert args.cleanup is False
+        assert args.schedules is False
+
+    def test_schedules_flag(self):
+        parser, sub = _bare_subparser()
+        add_inspect_cmd(sub)
+        args = parser.parse_args(["inspect", "--schedules"])
+        assert args.schedules is True
 
 
 class TestAddDeadLetterCmd:
