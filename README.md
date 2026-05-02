@@ -1,6 +1,10 @@
+<p align="left">
+  <img src="docs/assets/logo.svg" width="72" alt="Soniq logo" />
+</p>
+
 # Soniq
 
-Background jobs for Python. Powered by the Postgres you already have.
+Background jobs for Python. Powered by the Postgres you already have. Nothing else to maintain.
 
 [![PyPI version](https://img.shields.io/pypi/v/soniq)](https://pypi.org/project/soniq/)
 [![Python versions](https://img.shields.io/pypi/pyversions/soniq)](https://pypi.org/project/soniq/)
@@ -20,7 +24,7 @@ from soniq import Soniq
 
 app = Soniq(database_url="postgresql://localhost/myapp")
 
-@app.job
+@app.job()
 async def send_welcome(to: str):
     print(f"Sending welcome email to {to}")
 
@@ -30,7 +34,7 @@ if __name__ == "__main__":
 
 ```bash
 soniq setup                                       # one-time: create tables
-SONIQ_JOBS_MODULES=jobs soniq start --concurrency 4   # run a worker
+SONIQ_JOBS_MODULES=jobs soniq worker --concurrency 4   # run a worker
 python jobs.py                                    # enqueue
 ```
 
@@ -108,7 +112,20 @@ Soniq uses your existing PostgreSQL. One dependency. One place your data lives. 
 - **Middleware hooks** - `before_job`, `after_job`, `on_error` for logging, metrics, tracing
 - **Worker heartbeat** - auto-detect crashed workers, requeue their jobs
 - **Deduplication** - prevent duplicate jobs with `dedup_key` or `unique=True`
-- **CLI + dashboard** - `setup`, `start`, `status`, `workers`, dead-letter management; web UI
+- **CLI + dashboard** - `setup`, `worker`, `scheduler`, `status`, `inspect`, dead-letter management; web UI
+
+## Dashboard
+
+A built-in web dashboard for inspecting jobs, queues, and recent failures. Read-only by default; opt in to retry/cancel/delete actions with `SONIQ_DASHBOARD_WRITE_ENABLED=true` (which also requires `SONIQ_DASHBOARD_API_KEY` as a safety interlock).
+
+<p align="left">
+  <img src="docs/assets/soniq_dashboard.png" width="800" alt="Soniq dashboard showing recent jobs, queue stats, and 24h performance metrics" />
+</p>
+
+```bash
+pip install "soniq[dashboard]"
+soniq dashboard                       # binds 127.0.0.1:6161
+```
 
 ## Install extras
 
@@ -131,6 +148,12 @@ The default install is batteries-included: `croniter` (so `@periodic` and the re
 - [Deployment](docs/production/deployment.md)
 - [CLI reference](docs/cli/commands.md)
 - [API reference](docs/api/soniq.md)
+
+### For AI coding agents
+
+- [`AGENTS.md`](AGENTS.md) - canonical patterns, anti-patterns, and the four mistakes agents most often make.
+- [`docs/llms.txt`](docs/llms.txt) - curated index of the canonical pages, following the [llms.txt convention](https://llmstxt.org).
+- [`docs/llms-full.txt`](docs/llms-full.txt) - the six canonical pages concatenated for one-shot context loading.
 
 ## License
 
