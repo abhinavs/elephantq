@@ -83,10 +83,10 @@ async def handle_status(args) -> int:
                 worker_summary = f"{active_count} active"
                 if stale_count > 0:
                     worker_summary += f", {stale_count} stale"
-                worker_summary += " (use 'soniq workers' for details)"
+                worker_summary += " (use 'soniq inspect' for details)"
                 print(f"\nWorkers: {worker_summary}")
             else:
-                print("\nWorkers: None running (use 'soniq start' to begin)")
+                print("\nWorkers: None running (use 'soniq worker' to begin)")
         except Exception as e:
             logger.debug(f"Could not get worker summary: {e}")
 

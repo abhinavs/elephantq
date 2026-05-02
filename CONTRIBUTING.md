@@ -96,3 +96,16 @@ python -m pytest tests/ --cov=soniq --cov-report=term-missing -v
 - Add type hints for public APIs
 - Keep error messages actionable
 - Add tests for new behavior
+
+## Releasing
+
+Releases are cut by pushing a `v*` tag. The `publish.yml` workflow verifies the tag matches `pyproject.toml:project.version`, builds the sdist + wheel, publishes to PyPI via OIDC, and creates the GitHub Release.
+
+```bash
+# 1. Bump version in pyproject.toml and CHANGELOG.md, commit, push to main
+# 2. Tag and push:
+git tag v0.0.2
+git push origin v0.0.2
+```
+
+That is the only supported release path; there is no local publish script.

@@ -1,4 +1,4 @@
--- Structured logging: persisted log records (always created in 0.0.3+).
+-- Structured logging: persisted log records.
 --
 -- Promoted to the core slice. Empty when the deployment does not opt
 -- into structured logging persistence.

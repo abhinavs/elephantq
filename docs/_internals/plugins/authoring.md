@@ -77,7 +77,7 @@ app = Soniq(database_url=..., autoload_plugins=True)
 # ...or via the CLI:
 #   soniq --plugins=my_plugin start
 # ...or via env:
-#   SONIQ_PLUGINS=my_plugin soniq start
+#   SONIQ_PLUGINS=my_plugin soniq worker
 ```
 
 Entry-point group: `soniq.plugins`. Each entry resolves to a zero-arg
@@ -231,7 +231,7 @@ Plugins should pin a Soniq version range so a major Soniq release
 doesn't silently break them:
 
 ```toml
-dependencies = ["soniq>=0.0.3,<0.1.0"]
+dependencies = ["soniq>=0.0.2,<0.1.0"]
 ```
 
 The plugin contract (`install`, `on_startup`, `on_shutdown`) is part

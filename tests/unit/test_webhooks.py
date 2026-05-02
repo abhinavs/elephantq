@@ -9,7 +9,7 @@ responses, and enforces queue limits to prevent OOM under load.
 
 import inspect
 from datetime import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -70,22 +70,17 @@ async def test_delivery_failure_sets_next_retry_at(dispatcher):
     dispatcher.registry.get_endpoint = AsyncMock(return_value=endpoint)
     dispatcher._save_delivery_record = AsyncMock()
 
-    # Mock aiohttp to raise on send so delivery fails
-    mock_response = AsyncMock()
-    mock_response.status = 500
-    mock_response.text = AsyncMock(return_value="Internal Server Error")
-    mock_response.request_info = MagicMock()
-    mock_response.history = ()
+    # Stub the transport directly; bypassing aiohttp keeps the test focused on
+    # retry-backoff bookkeeping and avoids brittle mock plumbing.
+    from soniq.features.webhooks import WebhookResult
 
-    mock_session = AsyncMock()
-    mock_session.post = MagicMock(return_value=mock_response)
-    mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-    mock_session.__aexit__ = AsyncMock(return_value=False)
+    dispatcher.transport.deliver = AsyncMock(
+        return_value=WebhookResult(
+            ok=False, status=500, body="Internal Server Error", error="HTTP 500"
+        )
+    )
 
-    with patch("aiohttp.ClientSession", return_value=mock_session):
-        # This line will fail with AttributeError: module 'asyncio' has no
-        # attribute 'timedelta' before FIX-01
-        await dispatcher._process_delivery(delivery)
+    await dispatcher._process_delivery(delivery)
 
     # After a failed delivery with retries remaining, next_retry_at should be set
     assert delivery.next_retry_at is not None

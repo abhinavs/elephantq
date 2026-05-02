@@ -126,7 +126,7 @@ async def test_dead_lettered_job_leaves_soniq_jobs(app):
     """Under DLQ Option A a dead-lettered job is removed from
     ``soniq_jobs`` and lives exclusively in ``soniq_dead_letter_jobs``.
     Resurrection lives on ``DeadLetterService.replay``. See
-    ``docs/contracts/dead_letter.md``."""
+    ``docs/_internals/contracts/dead_letter.md``."""
 
     @app.job(name="failing_job", retries=1)
     async def failing_job():

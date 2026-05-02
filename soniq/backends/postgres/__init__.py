@@ -300,6 +300,51 @@ class PostgresBackend:
         )
         return job_id
 
+    async def create_jobs_bulk(
+        self,
+        *,
+        job_ids: list[str],
+        job_name: str,
+        args_list: list[dict],
+        max_attempts: int,
+        priority: int,
+        queue: str,
+        scheduled_at: Optional[datetime] = None,
+        producer_id: Optional[str] = None,
+    ) -> None:
+        """Bulk-insert N jobs sharing the same target/queue/priority in a single round trip.
+
+        Does not honour unique_job or dedup_key - the caller (``Soniq.enqueue_many``)
+        rejects unique tasks before reaching this path.
+        """
+        if not job_ids:
+            return
+        rows = [
+            (
+                uuid.UUID(jid),
+                job_name,
+                args,
+                None,
+                max_attempts,
+                priority,
+                queue,
+                False,
+                scheduled_at,
+                producer_id,
+            )
+            for jid, args in zip(job_ids, args_list)
+        ]
+        async with self.acquire() as conn:
+            await conn.executemany(
+                """
+                INSERT INTO soniq_jobs
+                    (id, job_name, args, args_hash, max_attempts, priority, queue,
+                     unique_job, scheduled_at, producer_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                """,
+                rows,
+            )
+
     async def notify_new_job(self, queue: str) -> None:
         async with self.acquire() as conn:
             await conn.execute(
@@ -807,7 +852,7 @@ class PostgresBackend:
             )
 
     async def get_worker_status(self) -> dict:
-        """Snapshot of registered workers for the CLI ``soniq workers``
+        """Snapshot of registered workers for the CLI ``soniq inspect``
         command. Returns status counts, active workers with uptime, and
         any workers whose heartbeat is older than 5 minutes.
         """

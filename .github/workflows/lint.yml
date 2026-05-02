@@ -24,10 +24,10 @@ jobs:
           pip install mypy
 
       - name: Check formatting with black
-        run: black --check soniq/ tests/ examples/ run_tests.py release.py
+        run: black --check soniq/ tests/ examples/
 
       - name: Check import order with isort
-        run: isort --check-only soniq/ tests/ examples/ run_tests.py release.py
+        run: isort --check-only soniq/ tests/ examples/
 
       - name: Lint with flake8
         run: flake8 soniq/ tests/

@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS soniq_jobs (
   args JSONB NOT NULL,
   args_hash TEXT,
   status TEXT NOT NULL DEFAULT 'queued'
-    CHECK (status IN ('queued', 'processing', 'done', 'failed', 'dead_letter', 'cancelled')),
+    CHECK (status IN ('queued', 'processing', 'done', 'cancelled')),
   attempts INT DEFAULT 0,
   max_attempts INT DEFAULT 3,
   queue TEXT DEFAULT 'default',
@@ -29,8 +29,8 @@ CREATE TABLE IF NOT EXISTS soniq_jobs (
   -- Producer-side observability: each row carries a small string the
   -- producer stamped at enqueue time so an oncall can answer 'who
   -- enqueued this poison message?' from the dashboard without grepping
-  -- logs across services. NULLABLE on purpose; pre-stamping callers
-  -- and legacy rows have no value, and the dashboard renders NULL as
+  -- logs across services. NULLABLE on purpose; producers that opt out
+  -- of stamping leave it NULL, and the dashboard renders NULL as
   -- 'unknown' or '-'.
   producer_id TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

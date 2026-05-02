@@ -1,20 +1,15 @@
 [project]
 site_name = "Soniq"
 site_url = "https://soniq.dev/docs/"
-site_description = "Background jobs for Python. Powered by the Postgres you already have."
+site_description = "Background jobs for Python. Powered by the Postgres you already have. Nothing else to maintain."
 site_author = "Abhinav Saxena"
 docs_dir = "docs"
 site_dir = "site"
 nav = [
   { "Home" = "index.md" },
   { "Why Soniq?" = "why-soniq.md" },
-  { "Coming from Celery / RQ" = [
-    { "Overview" = "migration/index.md" },
-    { "From Celery" = "migration/from-celery.md" },
-    { "From RQ" = "migration/from-rq.md" },
-  ] },
   { "Quickstart" = "quickstart.md" },
-  { "Tutorial (6 chapters, ~30 min)" = [
+  { "Tutorial" = [
     { "1. Defining jobs" = "tutorial/01-defining-jobs.md" },
     { "2. Running workers" = "tutorial/02-running-workers.md" },
     { "3. Retries" = "tutorial/03-retries.md" },
@@ -37,6 +32,11 @@ nav = [
     { "Cross-service task stubs" = "recipes/cross-service-task-stubs.md" },
     { "Custom retry policy" = "recipes/custom-retry-policy.md" },
     { "Custom metrics sink" = "recipes/custom-metrics-sink.md" },
+  ] },
+  { "Migrating" = [
+    { "Overview" = "migration/index.md" },
+    { "From Celery" = "migration/from-celery.md" },
+    { "From RQ" = "migration/from-rq.md" },
   ] },
   { "Reference" = [
     { "Overview" = "reference/index.md" },
@@ -68,6 +68,8 @@ nav = [
 
 [project.theme]
 variant = "modern"
+logo = "assets/logo.svg"
+favicon = "assets/logo.svg"
 
 [[project.theme.palette]]
 media = "(prefers-color-scheme: light)"

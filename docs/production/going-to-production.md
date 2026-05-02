@@ -12,7 +12,7 @@ A copy-into-the-ticket checklist:
 - [ ] `soniq setup` runs once per deploy (CI step, init container, or migration job - never from app startup on every replica)
 - [ ] Process manager sends `SIGTERM` for shutdown, with `terminationGracePeriodSeconds` / `TimeoutStopSec` >= longest job timeout
 - [ ] Handlers are idempotent (safe to run more than once - upserts, dedup keys, idempotency tokens)
-- [ ] Structured logs configured (`SONIQ_LOG_FORMAT=structured`) and a metrics sink wired up
+- [ ] A metrics sink wired up (Prometheus or your own `MetricsSink`)
 - [ ] If you use `@app.periodic`, a separate `soniq scheduler` process is running
 - [ ] `SONIQ_POOL_MAX_SIZE >= concurrency + SONIQ_POOL_HEADROOM`, and `max_connections` on the database has headroom for `num_workers * pool_size`
 - [ ] Per-job timeouts set for slow jobs; the global default is 300s
@@ -50,7 +50,6 @@ Soniq guarantees *at-least-once* delivery: a job will run at least once, and may
 
 ```bash
 export SONIQ_LOG_LEVEL=INFO
-export SONIQ_LOG_FORMAT=structured
 ```
 
 Wire a metrics sink:
@@ -66,7 +65,7 @@ Mount `/metrics` from `prometheus_client.make_asgi_app()` on whatever HTTP surfa
 
 ### Run `soniq scheduler` if you use `@app.periodic`
 
-The CLI worker (`soniq start`) does **not** evaluate due recurring jobs. Run a separate `soniq scheduler` process. Multiple instances coordinate via a Postgres advisory lock; runners-up wait for the leader.
+The CLI worker (`soniq worker`) does **not** evaluate due recurring jobs. Run a separate `soniq scheduler` process. Multiple instances coordinate via a Postgres advisory lock; runners-up wait for the leader.
 
 ### Pool sizing
 
@@ -89,7 +88,7 @@ The global default is `SONIQ_JOB_TIMEOUT=300` seconds. Override for slow jobs wi
 - **Sync handlers monopolising the bounded thread pool.** `def` (non-async) handlers run on a pool of `SONIQ_SYNC_HANDLER_POOL_SIZE` (default 8). If those are slow, async handlers cannot claim slots. Convert to `async def` or raise the pool size.
 - **Worker host does not have your job code installed.** `SONIQ_JOBS_MODULES=myapp.jobs` is an instruction to *import* `myapp.jobs`, not a way to ship code. Bake the code into the worker image.
 - **PgBouncer in transaction-pooling mode.** Breaks `LISTEN/NOTIFY` (workers fall back to polling) and breaks the scheduler advisory lock. Use session pooling for worker and scheduler connections.
-- **`SONIQ_DATABASE_URL` divergence between `setup` and `start`.** `setup` writes to URL A; the worker reads URL B; the worker logs "table does not exist."
+- **`SONIQ_DATABASE_URL` divergence between `setup` and `worker`.** `setup` writes to URL A; the worker reads URL B; the worker logs "table does not exist."
 - **Forgetting `await` after switching from Celery.** Celery's `.delay()` is synchronous. Soniq's `enqueue(...)` is a coroutine. A bare `app.enqueue(send_email, ...)` schedules nothing. Treat the `RuntimeWarning: coroutine was never awaited` warning as an error in CI.
 - **Resurrecting a full DLQ without fixing the cause.** `soniq dead-letter replay --all` re-runs every dead-letter job. Use `--dry-run` first, fix the underlying bug, then replay.
 

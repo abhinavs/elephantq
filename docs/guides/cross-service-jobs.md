@@ -46,7 +46,7 @@ And starts the worker with the CLI:
 ```bash
 export SONIQ_DATABASE_URL="postgresql://shared-pg/jobs"
 export SONIQ_JOBS_MODULES="myservice.tasks"
-soniq start
+soniq worker
 ```
 
 Two repositories, one shared Postgres, one task name. The producer

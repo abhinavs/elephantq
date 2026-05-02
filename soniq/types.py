@@ -2,7 +2,7 @@
 
 Anything in this module is intentionally part of the public API: tests,
 backends, dashboard, and CLI all import from here. Keep additions narrow
-and tied to a contract in ``docs/contracts/``.
+and tied to a contract in ``docs/_internals/contracts/``.
 """
 
 from typing import TypedDict
@@ -22,7 +22,7 @@ class QueueStats(TypedDict):
     ``soniq_jobs.status='dead_letter'`` is rejected at the schema level).
     ``total`` is the sum of all five state counts.
 
-    See ``docs/contracts/queue_stats.md``.
+    See ``docs/_internals/contracts/queue_stats.md``.
     """
 
     total: int

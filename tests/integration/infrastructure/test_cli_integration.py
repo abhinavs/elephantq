@@ -51,8 +51,8 @@ async def test_cli_help_commands():
     result = run_cli_command(["setup", "--help"])
     assert "setup" in result.stdout.lower()
 
-    result = run_cli_command(["start", "--help"])
-    assert "start" in result.stdout.lower()
+    result = run_cli_command(["worker", "--help"])
+    assert "worker" in result.stdout.lower()
 
 
 @pytest.mark.asyncio
@@ -78,15 +78,15 @@ async def test_setup_command():
 
 @pytest.mark.asyncio
 async def test_start_command_structure():
-    """Test start command options and parsing"""
-    result = run_cli_command(["start", "--run-once"], timeout=5)
+    """Test worker command options and parsing"""
+    result = run_cli_command(["worker", "--run-once"], timeout=5)
     assert result.returncode == 0
 
-    result = run_cli_command(["start", "--concurrency", "2", "--run-once"], timeout=5)
+    result = run_cli_command(["worker", "--concurrency", "2", "--run-once"], timeout=5)
     assert result.returncode == 0
 
     result = run_cli_command(
-        ["start", "--queues", "test1,test2", "--run-once"], timeout=5
+        ["worker", "--queues", "test1,test2", "--run-once"], timeout=5
     )
     assert result.returncode == 0
 
@@ -100,7 +100,7 @@ async def test_environment_variable_integration():
         os.environ["SONIQ_LOG_LEVEL"] = "DEBUG"
         os.environ["SONIQ_DATABASE_URL"] = TEST_DATABASE_URL
 
-        result = run_cli_command(["start", "--run-once"], timeout=5)
+        result = run_cli_command(["worker", "--run-once"], timeout=5)
         assert result.returncode == 0
 
     finally:
@@ -114,7 +114,7 @@ async def test_cli_error_handling():
     result = run_cli_command(["invalid-command"], expect_success=False)
     assert result.returncode != 0
 
-    result = run_cli_command(["start", "--invalid-option"], expect_success=False)
+    result = run_cli_command(["worker", "--invalid-option"], expect_success=False)
     assert result.returncode != 0
 
     original_db_url = os.environ.get("SONIQ_DATABASE_URL")
@@ -169,7 +169,7 @@ async def cli_test_job(message: str):
         await app.close()
 
         os.environ["SONIQ_JOBS_MODULES"] = "test_cli_jobs"
-        result = run_cli_command(["start", "--run-once"], timeout=10)
+        result = run_cli_command(["worker", "--run-once"], timeout=10)
         assert result.returncode == 0
 
         output_file = Path("/tmp/soniq_cli_test.txt")
@@ -192,7 +192,7 @@ async def test_cli_output_formats():
 
     assert len(result.stdout) > 0 or len(result.stderr) > 0
 
-    result = run_cli_command(["start", "--run-once"], timeout=5)
+    result = run_cli_command(["worker", "--run-once"], timeout=5)
 
     assert len(result.stdout) > 0 or len(result.stderr) > 0
 
@@ -208,7 +208,7 @@ async def test_cli_concurrent_workers():
             env.setdefault("SONIQ_JOBS_MODULES", "tests.fixtures.cli_jobs")
             env.setdefault("PYTHONPATH", str(PROJECT_ROOT))
             process = subprocess.Popen(
-                [sys.executable, "-m", "soniq.cli.main", "start", "--run-once"],
+                [sys.executable, "-m", "soniq.cli.main", "worker", "--run-once"],
                 cwd=str(PROJECT_ROOT),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -235,7 +235,7 @@ async def test_cli_signal_handling():
     env.setdefault("SONIQ_JOBS_MODULES", "tests.fixtures.cli_jobs")
     env.setdefault("PYTHONPATH", str(PROJECT_ROOT))
     process = subprocess.Popen(
-        [sys.executable, "-m", "soniq.cli.main", "start", "--concurrency", "1"],
+        [sys.executable, "-m", "soniq.cli.main", "worker", "--concurrency", "1"],
         cwd=str(PROJECT_ROOT),
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -288,7 +288,7 @@ async def test_cli_database_url_parameter():
         assert "Database setup completed" in result.stdout or "Applied" in result.stdout
 
         result = run_cli_command(
-            ["start", "--database-url", test_db_url, "--run-once"], timeout=5
+            ["worker", "--database-url", test_db_url, "--run-once"], timeout=5
         )
         assert result.returncode == 0
 
@@ -317,7 +317,7 @@ async def test_cli_database_url_vs_environment():
 
         result = run_cli_command(
             [
-                "start",
+                "worker",
                 "--database-url",
                 test_db_url,
                 "--run-once",
@@ -354,6 +354,6 @@ async def test_cli_database_url_validation():
 async def test_cli_without_database_url_uses_env():
     """Test that CLI without --database-url uses SONIQ_DATABASE_URL env var"""
     result = run_cli_command(
-        ["start", "--run-once", "--queues", "__empty__"], timeout=5
+        ["worker", "--run-once", "--queues", "__empty__"], timeout=5
     )
     assert result.returncode == 0

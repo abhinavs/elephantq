@@ -104,7 +104,7 @@ async def test_dead_letter_removes_row_from_soniq_jobs(backend):
     """Under DLQ Option A the row leaves ``soniq_jobs`` on dead-letter
     and lives exclusively in ``soniq_dead_letter_jobs``. Resurrection
     lives on ``DeadLetterService.replay`` - see
-    ``docs/contracts/dead_letter.md``."""
+    ``docs/_internals/contracts/dead_letter.md``."""
     await backend.create_job(
         job_id="j1",
         job_name="mod.func",

@@ -1,5 +1,5 @@
 # Include migration SQL files
-recursive-include soniq/db/migrations *.sql
+recursive-include soniq/backends/postgres/migrations *.sql
 
 # Include license and readme
 include LICENSE
@@ -10,6 +10,4 @@ include CHANGELOG.md
 exclude tests/
 exclude examples/
 exclude deployment/
-exclude jobs/
 exclude run_tests.py
-exclude release.py

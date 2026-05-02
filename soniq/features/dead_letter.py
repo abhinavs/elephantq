@@ -172,26 +172,10 @@ class DeadLetterService:
         async with self._app.backend.acquire() as conn:
             yield conn
 
-    async def setup_database(self):
-        """Verify dead letter table exists. Tables are created by core migrations."""
-        pass
-
-    async def setup(self) -> int:
-        """No-op in 0.0.3+: the DLQ table is part of the core schema and is
-        applied by ``Soniq.setup()`` (migration ``0003_dead_letter.sql``).
-
-        Kept on the service surface so callers that previously invoked
-        ``app.dead_letter.setup()`` get a clean zero rather than an
-        AttributeError. Returns 0 (no migrations applied here).
-        """
-        await self._app.ensure_initialized()
-        return 0
-
-    # NOTE: ``move_job_to_dead_letter`` was removed in 0.0.3. The DLQ move
-    # is now a backend primitive (``backend.mark_job_dead_letter``) and the
-    # processor is its only legitimate caller. Application code that needs
-    # to forcibly DLQ a job should re-enqueue with ``max_attempts=0`` or
-    # raise from a handler. See docs/contracts/dead_letter.md.
+    # The DLQ move is a backend primitive (``backend.mark_job_dead_letter``)
+    # and the processor is its only legitimate caller. Application code that
+    # needs to forcibly DLQ a job should re-enqueue with ``max_attempts=0`` or
+    # raise from a handler. See docs/_internals/contracts/dead_letter.md.
 
     async def replay(
         self,
@@ -207,7 +191,7 @@ class DeadLetterService:
         ``attempts=0`` by default) and increments ``resurrection_count``
         on the DLQ row in the same transaction. The DLQ row is preserved
         as the audit trail; operators can replay the same row multiple
-        times. See ``docs/contracts/dead_letter.md``.
+        times. See ``docs/_internals/contracts/dead_letter.md``.
         """
         async with self._acquire() as conn:
             async with conn.transaction():

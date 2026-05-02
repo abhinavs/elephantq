@@ -47,7 +47,7 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./app:/app/myapp # Mount your application code
-    command: ["soniq", "start", "--concurrency=4"]
+    command: ["soniq", "worker", "--concurrency=4"]
     healthcheck:
       test: ["CMD", "soniq", "health"]
       interval: 30s
@@ -149,7 +149,7 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./app:/app/myapp
-    command: ["soniq", "start", "--concurrency=2", "--queues=urgent"]
+    command: ["soniq", "worker", "--concurrency=2", "--queues=urgent"]
     profiles:
       - priority # Optional service - enable with --profile priority
     healthcheck:

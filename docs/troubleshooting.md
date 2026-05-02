@@ -26,7 +26,7 @@ See [Job module discovery](getting-started/installation.md#job-module-discovery)
 **Fix:** export the variable before starting the worker, or add it to the worker's environment in your process manager.
 
 ```bash
-SONIQ_JOBS_MODULES=app.jobs soniq start
+SONIQ_JOBS_MODULES=app.jobs soniq worker
 ```
 
 ### Jobs stuck in `processing` after a worker restart
@@ -36,10 +36,10 @@ SONIQ_JOBS_MODULES=app.jobs soniq start
 **Fix:** stale workers and their jobs are recovered by the periodic cleanup that running workers perform every 5 minutes. To force it now:
 
 ```bash
-soniq workers --cleanup
+soniq inspect --cleanup
 ```
 
-In production, either rely on the periodic cleanup or run `soniq workers --cleanup` from a cron job.
+In production, either rely on the periodic cleanup or run `soniq inspect --cleanup` from a cron job.
 
 ### Worker logs say `LISTEN/NOTIFY setup failed, falling back to polling`
 
@@ -51,7 +51,7 @@ In production, either rely on the periodic cleanup or run `soniq workers --clean
 
 ### Recurring jobs are not firing
 
-**Likely cause #1:** the scheduler is not running. The CLI worker (`soniq start`) does not run the scheduler -- it's a separate process.
+**Likely cause #1:** the scheduler is not running. The CLI worker (`soniq worker`) does not run the scheduler -- it's a separate process.
 
 **Fix:**
 

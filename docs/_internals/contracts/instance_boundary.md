@@ -17,7 +17,7 @@ The two-instance bleed test (`tests/integration/test_two_instance_bleed.py`) con
 
 ## Allowed process-global state (locked, exhaustive)
 
-The only state allowed to be process-global in 0.0.3 is **logging configuration**. Specifically:
+The only state allowed to be process-global in 0.0.2 is **logging configuration**. Specifically:
 
 - The Python `logging` module's root logger and handler chain. `Soniq` may install its own log formatter once, on first construction, but does not own the logging stack and does not assume exclusivity.
 - That is the **entire** allowed-globals list. There is nothing else.

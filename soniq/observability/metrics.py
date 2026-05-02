@@ -14,7 +14,7 @@ Status values passed to `record_job_end`:
 - `"dead_letter"`  retries exhausted (or RetryPolicy returned None)
 - `"snoozed"`      handler returned `Snooze(...)`; not a retry burn
 
-Stability: this Protocol may grow new optional methods in 0.0.3+ as
+Stability: this Protocol may grow new optional methods in 0.0.2+ as
 more events are introduced (queue depth, per-queue throughput). New
 methods will be added with default no-op implementations on the base
 classes shipped here, so existing custom sinks don't need to change.

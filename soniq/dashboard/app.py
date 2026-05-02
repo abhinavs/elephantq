@@ -87,8 +87,8 @@ class DashboardService:
         # Per-queue rollup for the dashboard. Distinct from the canonical
         # whole-instance Soniq.get_queue_stats(); the dashboard breaks down
         # by queue and joins in the DLQ count from soniq_dead_letter_jobs
-        # (DLQ Option A). See docs/contracts/dead_letter.md and
-        # docs/contracts/queue_stats.md.
+        # (DLQ Option A). See docs/_internals/contracts/dead_letter.md and
+        # docs/_internals/contracts/queue_stats.md.
         async with self._acquire() as conn:
             rows = await conn.fetch(
                 """

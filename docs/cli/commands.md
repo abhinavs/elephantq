@@ -27,12 +27,12 @@ If the schema is already up to date, it prints a confirmation and exits.
 Soniq.
 
 
-## start
+## worker
 
 Start a worker process that fetches and executes jobs.
 
 ```bash
-soniq start [--concurrency N] [--queues QUEUES] [--run-once]
+soniq worker [--concurrency N] [--queues QUEUES] [--run-once]
 ```
 
 | Flag | Type | Default | Description |
@@ -46,7 +46,7 @@ your job functions. See [Job module discovery](../getting-started/installation.m
 
 ```bash
 export SONIQ_JOBS_MODULES=myapp.tasks,myapp.other_tasks
-soniq start --concurrency 8 --queues urgent,default
+soniq worker --concurrency 8 --queues urgent,default
 ```
 
 When `--queues` is omitted, the worker processes **all queues** in the database. Pass `--queues=name1,name2` to restrict.
@@ -74,38 +74,49 @@ soniq status --verbose --jobs
 
 Output includes:
 - Database connection health check
-- Total jobs, queued count, failed/dead-letter count
+- Total jobs, queued count, dead-letter count
 - Active and stale worker summary
 - Per-queue breakdown (with `--verbose`)
 - Recent job list (with `--jobs`)
 
 
-## workers
+## inspect
 
-List registered workers and their status.
+List registered workers and recurring schedules.
 
 ```bash
-soniq workers [--stale] [--cleanup]
+soniq inspect [--stale] [--cleanup] [--schedules]
 ```
 
 | Flag | Type | Default | Description |
 |---|---|---|---|
 | `--stale` | flag | off | Include stale (no recent heartbeat) workers in the output. |
 | `--cleanup` | flag | off | Remove stale worker records from the database. |
+| `--schedules` | flag | off | List each recurring schedule (name, status, next run). Without this flag, only the active/paused counts are shown. |
 
 ```bash
-# Show active workers
-soniq workers
+# Show active workers + schedule summary (counts only)
+soniq inspect
 
 # Show stale workers too
-soniq workers --stale
+soniq inspect --stale
 
 # Clean up stale records
-soniq workers --cleanup
+soniq inspect --cleanup
+
+# List every recurring schedule
+soniq inspect --schedules
 ```
 
 For each active worker, shows: hostname, PID, queues, concurrency, uptime, last
 heartbeat, and resource usage (CPU/memory) when available.
+
+The output also includes a **Recurring Schedules** section with the count of
+active and paused schedules registered via `@app.periodic(...)` or
+`app.scheduler.add(...)`. Note that scheduler liveness is leader-elected per
+tick (no persistent process record), so `inspect` reports what is *registered*,
+not which scheduler process is currently the leader. To verify a scheduler
+process is up, check your process supervisor (systemd, Kubernetes, Docker).
 
 
 ## dead-letter
@@ -210,23 +221,23 @@ Start the recurring job scheduler. It checks for due `@periodic` jobs and
 enqueues them.
 
 ```bash
-soniq scheduler [--check-interval SECONDS] [--status]
+soniq scheduler [--check-interval SECONDS]
 ```
 
 | Flag | Type | Default | Description |
 |---|---|---|---|
 | `--check-interval` | `int` | `60` | Seconds between checks for due recurring jobs. |
-| `--status` | flag | off | Print scheduler status and exit. |
 
 ```bash
 # Start the scheduler
 soniq scheduler --check-interval 30
-
-# Check if the scheduler is running
-soniq scheduler --status
 ```
 
 Stop the scheduler gracefully with `Ctrl+C`.
+
+To inspect registered schedules, use `soniq inspect` (it includes a
+**Recurring Schedules** section) or `soniq inspect --schedules` to list each
+one by name.
 
 
 ## migrate-status

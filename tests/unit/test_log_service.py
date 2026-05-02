@@ -51,7 +51,7 @@ async def test_log_service_methods_delegate_to_analyzer():
 def test_no_module_level_global_factory():
     """The legacy ``_service()`` helper and module-level
     ``get_error_summary`` / ``get_performance_logs`` / ``search_logs``
-    wrappers were removed in 0.0.3. Callers must construct a
+    wrappers were removed in 0.0.2. Callers must construct a
     ``LogService(app)`` against an explicit ``Soniq`` instance."""
     import soniq.features.logging as logging_mod
 

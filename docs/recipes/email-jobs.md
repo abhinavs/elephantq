@@ -46,7 +46,7 @@ async def create_user(name: str, email: str):
 ## Running the worker
 
 ```bash
-soniq start --queues emails --concurrency 2
+soniq worker --queues emails --concurrency 2
 ```
 
 Keep email worker concurrency low to respect rate limits. If your provider allows 10 requests/second, two concurrent workers with a small batch size is plenty.

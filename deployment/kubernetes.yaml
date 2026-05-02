@@ -51,7 +51,7 @@ spec:
         imagePullPolicy: Always
         args:
           - "soniq"
-          - "start"
+          - "worker"
           - "--concurrency=4"
         env:
         - name: SONIQ_DATABASE_URL

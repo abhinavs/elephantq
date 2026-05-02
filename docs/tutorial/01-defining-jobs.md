@@ -11,7 +11,7 @@ from soniq import Soniq
 
 app = Soniq(database_url="postgresql://localhost/myapp")
 
-@app.job
+@app.job()
 async def send_welcome_email(user_id: int, template: str = "default"):
     user = await get_user(user_id)
     await send_email(user.email, template)
@@ -123,7 +123,7 @@ Add a parameter typed as `JobContext` and Soniq injects metadata about the runni
 ```python
 from soniq import JobContext
 
-@app.job
+@app.job()
 async def process_invoice(invoice_id: str, ctx: JobContext):
     print(f"Job {ctx.job_id}, attempt {ctx.attempt} of {ctx.max_attempts}")
 ```

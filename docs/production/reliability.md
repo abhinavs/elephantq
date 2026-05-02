@@ -90,7 +90,7 @@ WHERE status = 'processing'
 ### Cleaning up stale workers
 
 ```bash
-soniq workers --cleanup
+soniq inspect --cleanup
 ```
 
 Or manually:
@@ -115,7 +115,7 @@ ORDER BY updated_at ASC;
 Check for stale workers:
 
 ```bash
-soniq workers --stale
+soniq inspect --stale
 ```
 
 ## Worker crash behavior

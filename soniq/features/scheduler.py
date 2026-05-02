@@ -308,16 +308,6 @@ class Scheduler:
         self._running = False
         self._check_interval = 30
 
-    async def setup(self) -> int:
-        """No-op in 0.0.3+: the scheduler table is part of the core schema
-        and is applied by ``Soniq.setup()`` (migration ``0004_scheduler.sql``).
-
-        Kept on the surface to avoid AttributeError for prior callers.
-        Returns 0 (no migrations applied here).
-        """
-        await self._app.ensure_initialized()
-        return 0
-
     # ------------------------------------------------------------------
     # Storage selection and cache maintenance
     # ------------------------------------------------------------------

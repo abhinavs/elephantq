@@ -33,7 +33,7 @@ The `dead_letter` cross-table aggregation is the only departure from a single GR
 
 ## Backend implementation notes
 
-All three backends ship in 0.0.3 with the canonical shape directly. No backend may return additional keys; no backend may omit a key.
+All three backends ship in 0.0.2 with the canonical shape directly. No backend may return additional keys; no backend may omit a key.
 
 - **Postgres** (`soniq/backends/postgres/__init__.py:get_queue_stats`):
   - One `SELECT status, COUNT(*) FROM soniq_jobs GROUP BY status` for the four `soniq_jobs` buckets.

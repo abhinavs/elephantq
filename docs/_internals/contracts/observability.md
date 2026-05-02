@@ -1,6 +1,6 @@
 # Observability seam
 
-Soniq has exactly one metrics surface as of 0.0.3: the
+Soniq has exactly one metrics surface as of 0.0.2: the
 `MetricsSink` Protocol in `soniq.observability`. The legacy
 `soniq.features.metrics` analytics stack (`MetricsCollector`,
 `MetricsAnalyzer`, `AlertManager`, `MetricsService`) has been removed,
@@ -64,6 +64,6 @@ signature; runtime checks use `isinstance(sink, MetricsSink)`.
 ## Stability
 
 The Protocol may grow new optional methods (queue depth, per-queue
-throughput) in 0.0.3+. New methods will be added with default no-op
+throughput) in 0.0.2+. New methods will be added with default no-op
 implementations on `NoopMetricsSink` and `PrometheusMetricsSink`, so
 existing custom sinks don't need to change.

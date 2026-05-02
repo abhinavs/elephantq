@@ -1,7 +1,7 @@
 """Queue routing example.
 
 Run workers for specific queues:
-  soniq start --queues emails,media
+  soniq worker --queues emails,media
 """
 
 import asyncio

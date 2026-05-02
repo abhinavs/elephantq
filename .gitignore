@@ -72,18 +72,6 @@ logs/
 .cache/
 
 # Development files (these should be in parent directory)
-STATUS*.md
-TEST_SUMMARY*.md
 CLAUDE.md
 .claude/
-*AGENT_README*.md
-IMPLEMENTATION*.md
-RECOMMENDATIONS*.md
-REFACTORING*.md
-PACKAGE_STRUCTURE*.md
-verify_structure.py
-jobs_examples/
-
-PLAN.md
-TODO.md
 site/
