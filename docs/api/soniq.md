@@ -29,7 +29,7 @@ Common settings you can pass as keyword arguments:
 | `concurrency` | `int` | `4` | `SONIQ_CONCURRENCY` |
 | `max_retries` | `int` | `3` | `SONIQ_MAX_RETRIES` |
 | `priority` | `int` | `100` | `SONIQ_PRIORITY` |
-| `queues` | `list[str]` | `["default"]` | `SONIQ_QUEUES` (comma-separated). Stored as a setting on the instance for your code to read; **not** auto-applied as the worker's queue filter. The `soniq start` CLI worker processes all queues unless `--queues` is passed. |
+| `queues` | `list[str]` | `["default"]` | `SONIQ_QUEUES` (comma-separated). Stored as a setting on the instance for your code to read; **not** auto-applied as the worker's queue filter. The `soniq worker` CLI worker processes all queues unless `--queues` is passed. |
 | `result_ttl` | `int` | `300` | `SONIQ_RESULT_TTL` |
 | `job_timeout` | `float \| None` | `300.0` | `SONIQ_JOB_TIMEOUT` (0 to disable) |
 | `pool_min_size` | `int` | `5` | `SONIQ_POOL_MIN_SIZE` |
@@ -41,7 +41,6 @@ Common settings you can pass as keyword arguments:
 | `cleanup_interval` | `float` | `300.0` | `SONIQ_CLEANUP_INTERVAL` |
 | `error_retry_delay` | `float` | `5.0` | `SONIQ_ERROR_RETRY_DELAY` |
 | `log_level` | `str` | `"INFO"` | `SONIQ_LOG_LEVEL` |
-| `log_format` | `str` | `"simple"` | `SONIQ_LOG_FORMAT` (`simple` or `structured`) |
 | `debug` | `bool` | `False` | `SONIQ_DEBUG` |
 | `environment` | `str` | `"production"` | `SONIQ_ENVIRONMENT` |
 

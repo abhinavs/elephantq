@@ -687,16 +687,6 @@ class WebhookService:
         """The transport this service routes deliveries through."""
         return self.dispatcher.transport
 
-    async def setup(self) -> int:
-        """No-op in 0.0.3+: webhook tables are part of the core schema
-        and are applied by ``Soniq.setup()`` (migration ``0005_webhooks.sql``).
-
-        Kept on the surface to avoid AttributeError for prior callers.
-        Returns 0 (no migrations applied here).
-        """
-        await self._app.ensure_initialized()
-        return 0
-
     def _acquire(self):
         return self.registry._acquire()
 

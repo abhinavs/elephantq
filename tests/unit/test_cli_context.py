@@ -5,7 +5,7 @@ Unit tests for the unified CLI app helper.
 every CLI subcommand uses. The helper always builds a fresh Soniq scoped
 to this invocation and closes it on context-manager exit. There is no
 fallback to a process-global instance (see
-``docs/contracts/instance_boundary.md``).
+``docs/_internals/contracts/instance_boundary.md``).
 """
 
 from __future__ import annotations

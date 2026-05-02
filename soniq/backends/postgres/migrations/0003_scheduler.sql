@@ -1,4 +1,4 @@
--- Scheduler: recurring jobs table (always created in 0.0.3+).
+-- Scheduler: recurring jobs table.
 --
 -- Promoted to the core slice so dashboard/metrics surfaces can reference
 -- it unconditionally. Empty when the deployment never schedules recurring

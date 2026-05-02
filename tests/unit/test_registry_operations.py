@@ -265,7 +265,7 @@ class TestNameResolution:
 
         app = Soniq(database_url=TEST_DATABASE_URL)
 
-        @app.job
+        @app.job()
         async def my_local_handler():
             pass
 
@@ -304,7 +304,7 @@ class TestNameResolution:
 
         app = Soniq()
 
-        @app.job
+        @app.job()
         async def my_handler():
             pass
 

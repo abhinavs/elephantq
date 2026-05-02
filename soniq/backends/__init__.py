@@ -194,7 +194,7 @@ class JobStore(Protocol):
         Single-transaction INSERT-then-DELETE. The DLQ row keeps the
         original ``soniq_jobs.id`` as primary key, with ``reason`` and
         ``tags`` populated from the call site. After commit the row
-        exists in exactly one table. See ``docs/contracts/dead_letter.md``
+        exists in exactly one table. See ``docs/_internals/contracts/dead_letter.md``
         and ``docs/design/dlq_option_a.md``.
         """
         ...
@@ -219,7 +219,7 @@ class JobStore(Protocol):
         Called only on the async branch of ``FORCE_TIMEOUT_PATH``. Sync
         handlers never go through ``nack_job``; their rows are left in
         ``processing`` and reclaimed by stale-worker recovery in a
-        subsequent process. See ``docs/contracts/shutdown.md``.
+        subsequent process. See ``docs/_internals/contracts/shutdown.md``.
         """
         ...
 
@@ -272,7 +272,7 @@ class JobStore(Protocol):
         cancelled``. ``dead_letter`` is sourced from the separate
         ``soniq_dead_letter_jobs`` table - DLQ Option A means
         ``soniq_jobs.status='dead_letter'`` no longer exists. See
-        ``docs/contracts/queue_stats.md``.
+        ``docs/_internals/contracts/queue_stats.md``.
         """
         ...
 

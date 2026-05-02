@@ -73,7 +73,7 @@ or reverse proxy.
 | Task | CLI command | Dashboard |
 |---|---|---|
 | Queue stats | `soniq status --verbose` | Queue overview page |
-| Worker list | `soniq workers` | Workers panel |
+| Worker list | `soniq inspect` | Workers panel |
 | Recent jobs | `soniq status --jobs` | Jobs page with search |
 | Dead-letter list | `soniq dead-letter list` | DLQ tab |
 | Replay a job | `soniq dead-letter replay <id>` | Replay button (write mode) |

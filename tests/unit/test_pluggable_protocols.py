@@ -1,5 +1,5 @@
 """
-Soniq exposes two pluggable extension points in 0.0.3:
+Soniq exposes two pluggable extension points in 0.0.2:
 
 - `RetryPolicy` (`soniq.core.retry`)
 - `MetricsSink` (`soniq.observability`)
@@ -38,14 +38,14 @@ def test_soniq_accepts_custom_retry_policy():
 
 
 def test_soniq_no_log_sink_attr():
-    """``log_sink`` was a half-wired knob and was removed in 0.0.3."""
+    """``log_sink`` was a half-wired knob and was removed in 0.0.2."""
     app = Soniq(database_url="postgresql://user:pass@localhost/test")
     assert not hasattr(app, "log_sink")
     assert not hasattr(app, "_log_sink")
 
 
 def test_soniq_no_serializer_attr():
-    """The half-wired ``serializer`` knob was removed in 0.0.3. The
+    """The half-wired ``serializer`` knob was removed in 0.0.2. The
     constructor swallows unknown kwargs through
     ``SoniqSettings(extra='ignore')``, so pin removal at the
     attribute / property level instead."""

@@ -11,12 +11,18 @@
 
 ## CLI
 
-- [Commands](../cli/commands.md) - `setup`, `start`, `scheduler`, `dead-letter`, `status`, `workers`, `dashboard`
+- [Commands](../cli/commands.md) - `setup`, `worker`, `scheduler`, `dead-letter`, `status`, `inspect`, `dashboard`
 
 ## Operational reference
 
 - [Dead-letter queue](dead-letter.md) - how the DLQ works and how to inspect it
 - [Glossary](glossary.md) - one-paragraph definitions for the words the docs use
+
+## Migration
+
+- [Migrating to Soniq](../migration/index.md) - tradeoffs and shared facts
+- [From Celery](../migration/from-celery.md) - concept map, retry/result/Beat equivalents, module-at-a-time sequence
+- [From RQ](../migration/from-rq.md) - concept map, four-state lifecycle vs registries, mechanical rewrite
 
 ## Dashboard
 

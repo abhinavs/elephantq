@@ -1,4 +1,4 @@
--- Webhooks: endpoints + delivery tracking (always created in 0.0.3+).
+-- Webhooks: endpoints + delivery tracking.
 --
 -- Promoted to the core slice. Empty when the deployment never registers
 -- webhook endpoints.

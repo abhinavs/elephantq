@@ -8,7 +8,7 @@ in either direction.
 
 This is the runtime counterpart to
 ``scripts/check_no_global_settings.py`` (the static lint) and to
-``docs/contracts/instance_boundary.md`` (the contract). The lint catches
+``docs/_internals/contracts/instance_boundary.md`` (the contract). The lint catches
 ``get_settings()`` calls that would re-introduce a process-global cache;
 this test catches the same regression by black-box behavior - if a
 runtime path silently consults a shared cache, one of these assertions

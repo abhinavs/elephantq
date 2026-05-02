@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 _REJECTED_JOB_STATUS = "dead_letter"
 _REJECT_DEAD_LETTER_MSG = (
     "soniq_jobs.status=dead_letter is rejected: DLQ rows live in "
-    "soniq_dead_letter_jobs (see docs/contracts/dead_letter.md)"
+    "soniq_dead_letter_jobs (see docs/_internals/contracts/dead_letter.md)"
 )
 
 

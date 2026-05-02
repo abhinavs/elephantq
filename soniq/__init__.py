@@ -2,7 +2,7 @@
 Soniq: Async Job Queue for Python (Backed by PostgreSQL)
 
 The public API is the ``Soniq`` instance. There is no process-global
-Soniq in 0.0.3 - per ``docs/contracts/instance_boundary.md``, the only
+Soniq in 0.0.2 - per ``docs/_internals/contracts/instance_boundary.md``, the only
 state allowed to be process-global is logging configuration.
 
 Usage::

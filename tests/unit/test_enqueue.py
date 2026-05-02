@@ -137,7 +137,7 @@ async def test_enqueue_callable_with_kwargs():
     f'{module}.{qualname}'; **kwargs are the function args."""
     app = make_app(enqueue_validation="strict")
 
-    @app.job
+    @app.job()
     async def send_welcome(user_id: int, template: str = "default"):
         pass
 
@@ -170,7 +170,7 @@ async def test_enqueue_callable_with_options():
     go into args."""
     app = make_app(enqueue_validation="none")
 
-    @app.job
+    @app.job()
     async def my_task(x: int, y: int):
         pass
 
@@ -187,7 +187,7 @@ async def test_enqueue_callable_rejects_args_dict():
     """Cannot mix args=dict with **func_kwargs in the callable form."""
     app = make_app(enqueue_validation="none")
 
-    @app.job
+    @app.job()
     async def my_task(x: int):
         pass
 
@@ -544,3 +544,195 @@ async def test_enqueue_taskref_with_registered_handler_uses_ref_args_model():
     with pytest.raises(SoniqError) as exc_info:
         await app.enqueue(ref, args={"order_id": 123})
     assert exc_info.value.error_code == SONIQ_TASK_ARGS_INVALID
+
+
+# ---------------------------------------------------------------------------
+# enqueue_many
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_enqueue_many_writes_all_rows(app):
+    @app.job(name="billing.bulk")
+    async def bulk(order_id: str):
+        pass
+
+    ids = await app.enqueue_many(
+        "billing.bulk",
+        [{"order_id": f"o{i}"} for i in range(5)],
+    )
+    assert len(ids) == 5
+    assert len(set(ids)) == 5
+
+    rows = await app.list_jobs()
+    bulk_rows = [r for r in rows if r["job_name"] == "billing.bulk"]
+    assert len(bulk_rows) == 5
+    assert {r["args"]["order_id"] for r in bulk_rows} == {f"o{i}" for i in range(5)}
+
+
+@pytest.mark.asyncio
+async def test_enqueue_many_empty_list_returns_empty(app):
+    @app.job(name="billing.empty")
+    async def empty():
+        pass
+
+    ids = await app.enqueue_many("billing.empty", [])
+    assert ids == []
+
+
+@pytest.mark.asyncio
+async def test_enqueue_many_accepts_callable(app):
+    @app.job(name="billing.callable_bulk")
+    async def handler(n: int):
+        pass
+
+    ids = await app.enqueue_many(handler, [{"n": i} for i in range(3)])
+    assert len(ids) == 3
+
+
+@pytest.mark.asyncio
+async def test_enqueue_many_shared_options(app):
+    @app.job(name="billing.opts", queue="default", priority=100)
+    async def handler(n: int):
+        pass
+
+    await app.enqueue_many(
+        "billing.opts",
+        [{"n": 1}, {"n": 2}],
+        queue="urgent",
+        priority=10,
+    )
+    rows = await app.list_jobs()
+    opts_rows = [r for r in rows if r["job_name"] == "billing.opts"]
+    assert all(r["queue"] == "urgent" for r in opts_rows)
+    assert all(r["priority"] == 10 for r in opts_rows)
+
+
+@pytest.mark.asyncio
+async def test_enqueue_many_validates_each_args_dict(app):
+    from pydantic import BaseModel
+
+    class Args(BaseModel):
+        n: int
+
+    @app.job(name="billing.validated_bulk", validate=Args)
+    async def handler(n: int):
+        pass
+
+    with pytest.raises(SoniqError) as exc_info:
+        await app.enqueue_many(
+            "billing.validated_bulk",
+            [{"n": 1}, {"n": "not-an-int"}],
+        )
+    assert exc_info.value.error_code == SONIQ_TASK_ARGS_INVALID
+    assert exc_info.value.context.get("index") == 1
+
+
+@pytest.mark.asyncio
+async def test_enqueue_many_rejects_unique_jobs(app):
+    @app.job(name="billing.unique_bulk", unique=True)
+    async def handler(n: int):
+        pass
+
+    with pytest.raises(TypeError, match="unique"):
+        await app.enqueue_many("billing.unique_bulk", [{"n": 1}])
+
+
+@pytest.mark.asyncio
+async def test_enqueue_many_rejects_non_dict_items(app):
+    @app.job(name="billing.bad_items")
+    async def handler():
+        pass
+
+    with pytest.raises(TypeError, match="must be a dict"):
+        await app.enqueue_many("billing.bad_items", [{"n": 1}, "not-a-dict"])  # type: ignore[list-item]
+
+
+@pytest.mark.asyncio
+async def test_enqueue_many_strict_unknown_task_raises(app):
+    with pytest.raises(SoniqError) as exc_info:
+        await app.enqueue_many("billing.never_registered", [{}])
+    assert exc_info.value.error_code == SONIQ_UNKNOWN_TASK_NAME
+
+
+@pytest.mark.asyncio
+async def test_enqueue_many_lenient_unknown_task_proceeds(lenient_app):
+    ids = await lenient_app.enqueue_many(
+        "billing.unknown_bulk",
+        [{"x": 1}, {"x": 2}],
+    )
+    assert len(ids) == 2
+
+
+@pytest.mark.asyncio
+async def test_enqueue_many_taskref_validates_each_against_ref_model():
+    from pydantic import BaseModel
+
+    from soniq import task_ref
+
+    class FooArgs(BaseModel):
+        order_id: str
+
+    app = make_app(enqueue_validation="none")
+    ref = task_ref(name="billing.taskref.bulk", args_model=FooArgs)
+
+    # All-valid path: writes every row.
+    ids = await app.enqueue_many(ref, [{"order_id": "o1"}, {"order_id": "o2"}])
+    assert len(ids) == 2
+
+    # One-bad row: nothing is written, error pinpoints the index.
+    with pytest.raises(SoniqError) as exc_info:
+        await app.enqueue_many(
+            ref,
+            [{"order_id": "o3"}, {"order_id": 999}],  # int -> ValidationError
+        )
+    assert exc_info.value.error_code == SONIQ_TASK_ARGS_INVALID
+    assert exc_info.value.context.get("index") == 1
+
+    rows = await app.list_jobs()
+    bulk_rows = [r for r in rows if r["job_name"] == "billing.taskref.bulk"]
+    assert len(bulk_rows) == 2  # only the all-valid call wrote rows
+    assert {r["args"]["order_id"] for r in bulk_rows} == {"o1", "o2"}
+
+
+@pytest.mark.asyncio
+async def test_enqueue_many_scheduled_at_applied_to_every_row(app):
+    from datetime import datetime, timedelta, timezone
+
+    @app.job(name="billing.scheduled_bulk")
+    async def handler(n: int):
+        pass
+
+    run_at = datetime.now(timezone.utc) + timedelta(hours=1)
+    ids = await app.enqueue_many(
+        "billing.scheduled_bulk",
+        [{"n": i} for i in range(3)],
+        scheduled_at=run_at,
+    )
+    assert len(ids) == 3
+
+    rows = await app.list_jobs()
+    scheduled_rows = [r for r in rows if r["job_name"] == "billing.scheduled_bulk"]
+    assert len(scheduled_rows) == 3
+    for r in scheduled_rows:
+        # Memory backend stores the datetime directly, not an ISO string.
+        ts = r["scheduled_at"]
+        if isinstance(ts, str):
+            ts = datetime.fromisoformat(ts)
+        assert abs((ts - run_at).total_seconds()) < 1
+
+
+@pytest.mark.asyncio
+async def test_enqueue_many_args_list_not_a_list_raises(app):
+    @app.job(name="billing.bad_args_list")
+    async def handler():
+        pass
+
+    with pytest.raises(TypeError, match="args_list must be a list"):
+        await app.enqueue_many("billing.bad_args_list", {"n": 1})  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_enqueue_many_invalid_target_type_raises(app):
+    with pytest.raises(TypeError, match="must be a callable, string, or TaskRef"):
+        await app.enqueue_many(12345, [{}])  # type: ignore[arg-type]

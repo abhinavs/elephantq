@@ -134,7 +134,8 @@ async def handle_dead_letter(args) -> int:
             # ``cleanup_old_dead_letter_jobs`` does not honour ``--dry-run``;
             # the flag stays on the parser for symmetry but is a no-op here.
             removed = await dead_letter.cleanup_old_dead_letter_jobs(days=args.days)
-            return int(removed)
+            print(f"Removed {removed} dead-letter job(s) older than {args.days} days.")
+            return 0
 
         if action == "delete":
             if args.all:

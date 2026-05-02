@@ -5,7 +5,7 @@ Compares the TaskRef declarations in a stub package against the
 soniq_task_registry table populated by running workers. Drift exits
 non-zero so CI can block deploys.
 
-Note: the historical ``soniq tasks-list`` command was removed in 0.0.3.
+Note: the historical ``soniq tasks-list`` command was removed in 0.0.2.
 With per-instance registries (no process-global Soniq), there is no
 "current process registry" - the registry belongs to a Soniq instance,
 and the dashboard already exposes the fleet-wide

@@ -178,13 +178,13 @@ async def test_task_discovery():
     of registering its jobs on the module's own Soniq instance. The same
     instance is then used to enqueue and run the job."""
     original_env = os.environ.copy()
-    os.environ["SONIQ_JOBS_MODULES"] = "jobs.my_tasks"
+    os.environ["SONIQ_JOBS_MODULES"] = "tests.fixtures.discovery_jobs.my_tasks"
     os.environ["SONIQ_DATABASE_URL"] = TEST_DATABASE_URL
 
     try:
         import importlib
 
-        my_tasks = importlib.import_module("jobs.my_tasks")
+        my_tasks = importlib.import_module("tests.fixtures.discovery_jobs.my_tasks")
         importlib.reload(my_tasks)
         app = my_tasks.app
 

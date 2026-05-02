@@ -5,16 +5,16 @@ Everything about defining, enqueueing, scheduling, and inspecting jobs.
 
 ## @app.job decorator
 
-Registers a function as a job. Both `@app.job` (no parens) and `@app.job(...)` (with kwargs) are accepted.
+Registers a function as a job. Always called with parentheses, even with no kwargs.
 
 ```python
 app = Soniq(database_url="postgresql://localhost/myapp")
 
-@app.job
+@app.job()
 async def send_email(to: str, subject: str, body: str):
     ...
 
-@app.job()  # equivalent; useful if you might add kwargs later
+@app.job(retries=5, queue="urgent")
 async def send_password_reset(to: str, token: str):
     ...
 ```
@@ -108,6 +108,41 @@ async with app.backend.acquire() as conn:
 Transactional enqueue requires the PostgreSQL backend.
 
 
+## enqueue_many()
+
+Bulk-enqueue many jobs that share the same target. Returns a list of job IDs in input order.
+
+```python
+ids = await app.enqueue_many(
+    send_email,
+    [
+        {"to": "a@example.com", "subject": "Hi", "body": "Hello"},
+        {"to": "b@example.com", "subject": "Hi", "body": "Hello"},
+        {"to": "c@example.com", "subject": "Hi", "body": "Hello"},
+    ],
+    queue="emails",   # optional, applies to all rows
+    priority=50,      # optional, applies to all rows
+)
+```
+
+### Signature
+
+```python
+async def enqueue_many(
+    target,                         # Callable, string task name, or TaskRef
+    args_list: list[dict],          # One args dict per job
+    *,
+    queue: str | None = None,       # Shared override for all rows
+    priority: int | None = None,    # Shared override for all rows
+    scheduled_at = None,            # Shared override for all rows
+) -> list[str]
+```
+
+On Postgres this issues one batched INSERT round-trip; on SQLite/Memory it loops over `create_job`. Each `args_list[i]` is validated against the registered `args_model` (if any) before any row is written.
+
+`enqueue_many()` does not support `unique=True` or `dedup_key=`. If the registered job declares `unique=True`, or you need per-row dedup, call `enqueue()` in a loop instead.
+
+
 ## schedule()
 
 Schedule a job for future execution.
@@ -182,7 +217,7 @@ type annotation `JobContext` and Soniq fills it in automatically.
 ```python
 from soniq import JobContext
 
-@app.job
+@app.job()
 async def process_order(order_id: int, ctx: JobContext):
     print(f"Job {ctx.job_id}, attempt {ctx.attempt} of {ctx.max_attempts}")
 ```

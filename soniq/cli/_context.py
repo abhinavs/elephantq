@@ -9,8 +9,8 @@ Every subcommand that talks to a Soniq instance goes through ``cli_app``:
 ``cli_app`` always builds a fresh Soniq instance scoped to this CLI
 invocation. URL precedence: ``--database-url`` > ``$SONIQ_DATABASE_URL``
 > the default in ``SoniqSettings``. There is no fallback to a
-process-global instance - per ``docs/contracts/instance_boundary.md``,
-the only state allowed to be process-global in 0.0.3 is logging
+process-global instance - per ``docs/_internals/contracts/instance_boundary.md``,
+the only state allowed to be process-global in 0.0.2 is logging
 configuration.
 """
 

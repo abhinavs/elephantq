@@ -78,7 +78,6 @@ class TestPydanticConfiguration:
         assert settings.pool_max_size == 20
         assert settings.pool_headroom == 2
         assert settings.log_level == "INFO"
-        assert settings.log_format == "simple"
         assert settings.debug is False
         assert settings.environment == "production"
 
@@ -97,7 +96,6 @@ class TestPydanticConfiguration:
         os.environ["SONIQ_POOL_MAX_SIZE"] = "50"
         os.environ["SONIQ_POOL_HEADROOM"] = "4"
         os.environ["SONIQ_LOG_LEVEL"] = "DEBUG"
-        os.environ["SONIQ_LOG_FORMAT"] = "structured"
         os.environ["SONIQ_DEBUG"] = "true"
         os.environ["SONIQ_ENVIRONMENT"] = "development"
 
@@ -118,7 +116,6 @@ class TestPydanticConfiguration:
         assert settings.pool_max_size == 50
         assert settings.pool_headroom == 4
         assert settings.log_level == "DEBUG"
-        assert settings.log_format == "structured"
         assert settings.debug is True
         assert settings.environment == "development"
 
@@ -144,19 +141,6 @@ class TestPydanticConfiguration:
         with pytest.raises(
             ValueError,
             match=r"(?s)Invalid Soniq configuration.*log_level must be one of",
-        ):
-            get_settings(reload=True)
-
-    def test_configuration_validation_invalid_log_format(self):
-        """Test configuration validation for invalid log formats."""
-        os.environ["SONIQ_LOG_FORMAT"] = "json"
-
-        from soniq.settings import get_settings
-
-        # Should raise validation error for invalid log format
-        with pytest.raises(
-            ValueError,
-            match=r"(?s)Invalid Soniq configuration.*log_format must be one of",
         ):
             get_settings(reload=True)
 
@@ -302,9 +286,6 @@ class TestPydanticConfiguration:
             "postgresql://case@localhost/case_db"  # lowercase
         )
         os.environ["SONIQ_LOG_LEVEL"] = "debug"  # lowercase value should be normalized
-        os.environ["SONIQ_LOG_FORMAT"] = (
-            "STRUCTURED"  # uppercase value should be normalized
-        )
 
         from soniq.settings import get_settings
 
@@ -313,7 +294,6 @@ class TestPydanticConfiguration:
         # Should handle case variations properly
         assert settings.database_url == "postgresql://case@localhost/case_db"
         assert settings.log_level == "DEBUG"  # Should be normalized to uppercase
-        assert settings.log_format == "structured"  # Should be normalized to lowercase
 
     def test_list_configuration_parsing(self):
         """Test parsing of comma-separated list configurations."""

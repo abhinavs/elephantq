@@ -1,7 +1,7 @@
 """
 Shutdown state machine.
 
-Source of truth: ``docs/contracts/shutdown.md``. The state machine is:
+Source of truth: ``docs/_internals/contracts/shutdown.md``. The state machine is:
 
     RUNNING -> DRAINING (on SIGTERM)
     DRAINING -> STOPPED (clean drain within shutdown_timeout)

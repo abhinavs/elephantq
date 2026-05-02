@@ -1,13 +1,11 @@
 """DLQ contract test matrix.
 
 Group A (8 tests, parameterized over memory + sqlite + postgres = 24 runs):
-the runtime contract from ``docs/contracts/dead_letter.md`` and
-``docs/contracts/queue_stats.md`` enforced at the backend level.
+the runtime contract from ``docs/_internals/contracts/dead_letter.md`` and
+``docs/_internals/contracts/queue_stats.md`` enforced at the backend level.
 
-Group B (postgres-only): migration mechanics for
-``0002_dead_letter_option_a.sql``. Overlaps with
-``tests/migrations/test_0002_dead_letter_option_a.py`` but lives here so the
-DLQ contract suite is complete in one location.
+Group B (postgres-only): migration mechanics for the dead-letter
+schema enforced in ``0001_core.sql`` and ``0002_dead_letter.sql``.
 """
 
 import asyncio
@@ -61,7 +59,7 @@ async def test_dlq_runtime_move_atomicity(backend):
 
     After commit the id exists in exactly one of the two tables, with
     reason/tags/error/attempts populated from the call site. See
-    docs/contracts/dead_letter.md.
+    docs/_internals/contracts/dead_letter.md.
     """
     job_id = await _create_test_job(backend)
 
@@ -272,9 +270,9 @@ async def test_dlq_purge_deletes_from_dlq(backend):
 async def test_dlq_status_rejects_dead_letter(backend):
     """The contract: backends never accept status='dead_letter' in soniq_jobs.
 
-    Postgres rejects via the rebuilt CHECK + defensive named CHECK from
-    0002_dead_letter_option_a.sql; SQLite via BEFORE INSERT/UPDATE
-    triggers; memory via _reject_dead_letter_status.
+    Postgres rejects via the column-level CHECK on soniq_jobs.status
+    set in 0001_core.sql; SQLite via BEFORE INSERT/UPDATE triggers;
+    memory via _reject_dead_letter_status.
     """
     job_id = str(uuid.uuid4())
 
@@ -364,42 +362,9 @@ async def fresh_postgres_db():
 
 
 @pytest.mark.asyncio
-async def test_dlq_migration_drops_legacy_rows_postgres(fresh_postgres_db):
-    """Applying 0002 deletes any pre-existing soniq_jobs.status='dead_letter' rows."""
-    import asyncpg
-
-    from soniq.backends.postgres.migration_runner import MigrationRunner
-
-    pool = await asyncpg.create_pool(fresh_postgres_db)
-    try:
-        async with pool.acquire() as conn:
-            runner = MigrationRunner()
-            await runner._run_migrations_with_connection(conn, version_filter="0001")
-
-            legacy_id = uuid.uuid4()
-            keep_id = uuid.uuid4()
-            await conn.execute(
-                """
-                INSERT INTO soniq_jobs (id, job_name, args, status, max_attempts)
-                VALUES ($1, 'legacy.dlq', '{}'::jsonb, 'dead_letter', 3),
-                       ($2, 'legacy.queued', '{}'::jsonb, 'queued', 3)
-                """,
-                legacy_id,
-                keep_id,
-            )
-
-            await runner._run_migrations_with_connection(conn, version_filter="0002")
-
-            ids = {row["id"] for row in await conn.fetch("SELECT id FROM soniq_jobs")}
-            assert legacy_id not in ids
-            assert keep_id in ids
-    finally:
-        await pool.close()
-
-
-@pytest.mark.asyncio
 async def test_dlq_migration_idempotent_postgres(fresh_postgres_db):
-    """Re-running 0002 is a no-op and both CHECK constraints survive."""
+    """Re-running the DLQ migration is a no-op; the canonical status check
+    constraint stays intact and soniq_dead_letter_jobs exists."""
     import asyncpg
 
     from soniq.backends.postgres.migration_runner import MigrationRunner
@@ -416,14 +381,16 @@ async def test_dlq_migration_idempotent_postgres(fresh_postgres_db):
                 """
                 SELECT conname FROM pg_constraint
                 WHERE conrelid = 'soniq_jobs'::regclass
-                  AND conname IN (
-                      'soniq_jobs_status_check',
-                      'soniq_jobs_status_no_dead_letter'
-                  )
+                  AND conname = 'soniq_jobs_status_check'
                 """
             )
-            names = {row["conname"] for row in constraints}
-            assert "soniq_jobs_status_check" in names
-            assert "soniq_jobs_status_no_dead_letter" in names
+            assert {row["conname"] for row in constraints} == {
+                "soniq_jobs_status_check"
+            }
+
+            dlq_exists = await conn.fetchval(
+                "SELECT to_regclass('soniq_dead_letter_jobs') IS NOT NULL"
+            )
+            assert dlq_exists is True
     finally:
         await pool.close()

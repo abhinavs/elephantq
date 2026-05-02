@@ -208,7 +208,7 @@ class Worker:
         # Per-worker-task in-flight slot. The processor populates each slot
         # at claim time so the shutdown state machine can pick the
         # async-vs-sync branch under FORCE_TIMEOUT_PATH (see
-        # docs/contracts/shutdown.md).
+        # docs/_internals/contracts/shutdown.md).
         in_flight_slots: list[dict] = [{} for _ in range(concurrency)]
 
         async def worker_task(slot: dict):
@@ -277,7 +277,7 @@ class Worker:
 
             if shutdown_task in done:
                 # Shutdown state machine. Source of truth:
-                # docs/contracts/shutdown.md. RUNNING -> DRAINING here;
+                # docs/_internals/contracts/shutdown.md. RUNNING -> DRAINING here;
                 # the per-task while-loop already stops fetching when
                 # shutdown_event is set, so DRAINING is "wait up to
                 # shutdown_timeout for the in-flight jobs". On expiry we
@@ -442,7 +442,7 @@ class Worker:
         # Sync branch: wait the flat grace budget for the threads to
         # return on their own. Then enter WAIT_FOR_THREAD: keep waiting
         # forever (until the thread returns or supervisor SIGKILL ends
-        # the process). docs/contracts/shutdown.md is explicit that
+        # the process). docs/_internals/contracts/shutdown.md is explicit that
         # Soniq does not bound this tail.
         grace = self._settings.sync_handler_grace_seconds
         if grace is None:

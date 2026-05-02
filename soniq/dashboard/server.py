@@ -313,7 +313,7 @@ def get_dashboard_html() -> str:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Soniq Dashboard</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='0.9em' font-size='90'>🐘</text></svg>">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256' fill='none' stroke='%232c7a66' stroke-width='16' stroke-linecap='round' stroke-linejoin='round'><line x1='24' y1='216' x2='168' y2='216'/><path d='M88,116.51,58.65,88a8,8,0,0,1,2.2-13.3L68,72l57.53,21.17,54.84-32.75a32,32,0,0,1,41,7.32L240,91.64l-147.41,88a32,32,0,0,1-38-4.32L18.53,140a8,8,0,0,1,2.32-13.19L24,125.27,55.79,136Z'/></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -392,6 +392,17 @@ def get_dashboard_html() -> str:
         }
         [data-theme="light"] .topbar {
             background: linear-gradient(135deg, #fff6e8 0%, #f2f5ff 100%);
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .brand-logo {
+            width: 44px;
+            height: 44px;
+            flex-shrink: 0;
+            color: var(--accent-2);
         }
         .title {
             display: flex;
@@ -624,9 +635,15 @@ def get_dashboard_html() -> str:
 <body>
     <div class="page">
         <div class="topbar">
-            <div class="title">
-                <h1>Soniq Dashboard</h1>
-                <p>Real-time job monitoring and system signals</p>
+            <div class="brand">
+                <svg class="brand-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none" stroke="currentColor" stroke-width="16" stroke-linecap="round" stroke-linejoin="round" aria-label="Soniq logo" role="img">
+                    <line x1="24" y1="216" x2="168" y2="216"/>
+                    <path d="M88,116.51,58.65,88a8,8,0,0,1,2.2-13.3L68,72l57.53,21.17,54.84-32.75a32,32,0,0,1,41,7.32L240,91.64l-147.41,88a32,32,0,0,1-38-4.32L18.53,140a8,8,0,0,1,2.32-13.19L24,125.27,55.79,136Z"/>
+                </svg>
+                <div class="title">
+                    <h1>Soniq Dashboard</h1>
+                    <p>Real-time job monitoring and system signals</p>
+                </div>
             </div>
             <div class="topbar-actions">
                 <div class="theme-toggle" id="theme-toggle" role="group" aria-label="Theme toggle">

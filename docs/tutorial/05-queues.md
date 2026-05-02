@@ -50,23 +50,23 @@ await app.enqueue(charge_subscription, account_id="acct_123", amount=999, priori
 
 ## Running workers on specific queues
 
-**Default behaviour: a worker processes all queues.** Run `soniq start` with no flags and the worker pulls jobs from every queue in your database. There is no "process everything" shorthand because that's already the default.
+**Default behaviour: a worker processes all queues.** Run `soniq worker` with no flags and the worker pulls jobs from every queue in your database. There is no "process everything" shorthand because that's already the default.
 
 To restrict a worker to a named subset, pass `--queues`:
 
 ```bash
 # Process only email and billing jobs
-soniq start --queues emails,billing
+soniq worker --queues emails,billing
 
 # Dedicated urgent worker with higher concurrency
-soniq start --queues urgent --concurrency 8
+soniq worker --queues urgent --concurrency 8
 ```
 
 Run two distinct worker processes, one per queue group:
 
 ```bash
-soniq start --queues emails,billing --concurrency 4
-soniq start --queues urgent --concurrency 8
+soniq worker --queues emails,billing --concurrency 4
+soniq worker --queues urgent --concurrency 8
 ```
 
 This lets you scale queue capacity independently. Run more email workers during peak hours, or dedicate a fast machine to your billing queue.

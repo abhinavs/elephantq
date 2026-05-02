@@ -75,7 +75,7 @@ def test_plugin_command_appears_alongside_builtins():
     )
     choices = set(sub_action.choices.keys())
     assert "plugin-cmd" in choices
-    assert {"start", "setup", "status", "workers"} <= choices
+    assert {"worker", "setup", "status", "inspect"} <= choices
 
 
 def test_command_without_plugin_app_skips_plugin_specs():

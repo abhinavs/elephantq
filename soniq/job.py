@@ -29,7 +29,7 @@ class Snooze:
 class JobStatus(str, Enum):
     """Job lifecycle statuses for ``soniq_jobs.status``.
 
-    See ``docs/contracts/job_lifecycle.md``. The four live values are
+    See ``docs/_internals/contracts/job_lifecycle.md``. The four live values are
     the only ones any backend ever writes to ``soniq_jobs``. Failures
     either re-queue (``status`` flips back to ``queued``) or move
     rows into ``soniq_dead_letter_jobs``; there is no ``failed`` or

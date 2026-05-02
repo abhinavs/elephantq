@@ -14,10 +14,10 @@ import pytest
 from soniq.cli.main import build_parser
 
 EXPECTED_SUBCOMMANDS = {
-    "start",
+    "worker",
     "setup",
     "status",
-    "workers",
+    "inspect",
     "migrate-status",
     "dashboard",
     "scheduler",

@@ -32,7 +32,7 @@ Anything else is rejected at the storage layer:
 - There is no `dead_letter` row state. DLQ rows live in their own
   table; see [`dead_letter.md`](dead_letter.md).
 - There is no `failed -> queued` transition. The retry path goes
-  `processing -> queued` directly. The pre-0.0.3 backend method
+  `processing -> queued` directly. The pre-0.0.2 backend method
   `retry_job(job_id)` that gated on `status='failed'` is gone.
 
 ## Replay (post-DLQ)
@@ -51,21 +51,6 @@ failure. It does **not** mutate the failed row or transition status:
 
 See [`dead_letter.md`](dead_letter.md) for the full DLQ contract.
 
-## Migration from earlier 0.0.3 builds
-
-Databases that ran any pre-0.0.3 build may carry rows with
-`status='failed'` (or, more rarely, the legacy `status='dead_letter'`).
-Migration `0007_drop_failed_status.sql` reconciles them:
-
-- Rows with `status='failed' AND attempts >= max_attempts` move into
-  `soniq_dead_letter_jobs` with `dead_letter_reason='reconciled_from_failed_status'`.
-- Rows with `status='failed' AND attempts < max_attempts` are
-  re-queued: `status='queued', attempts=0, last_error=NULL`.
-- Legacy `status='dead_letter'` rows in `soniq_jobs` are either
-  dropped (if already mirrored in the DLQ table) or coerced into
-  the terminal-failure path.
-- The CHECK constraint is then tightened to the four canonical
-  values.
-
-The migration is wrapped in the runner's transaction and is
-idempotent: re-running it is a no-op once the state above is reached.
+The four-state CHECK constraint is set on the column when
+`0001_core.sql` runs. There is no `failed` or `dead_letter` row
+state in `soniq_jobs` at any point in 0.0.2.

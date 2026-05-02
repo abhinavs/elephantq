@@ -44,7 +44,7 @@ await app.setup()  # plugin's on_startup runs here
 Or via entry points (after `pip install`):
 
 ```bash
-SONIQ_PLUGINS=sentry_breadcrumb SONIQ_SENTRY_DSN=https://... soniq start
+SONIQ_PLUGINS=sentry_breadcrumb SONIQ_SENTRY_DSN=https://... soniq worker
 # or
 soniq --plugins=sentry_breadcrumb start
 ```

@@ -32,7 +32,7 @@ services:
     environment:
       SONIQ_DATABASE_URL: postgresql://soniq:${POSTGRES_PASSWORD:-changeme}@postgres:5432/soniq_prod
       SONIQ_JOBS_MODULES: myapp.jobs
-    command: ["soniq", "start", "--concurrency=4"]
+    command: ["soniq", "worker", "--concurrency=4"]
     deploy:
       resources:
         limits:
